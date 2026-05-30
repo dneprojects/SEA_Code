@@ -1,0 +1,16 @@
+{
+  "grid_invert": false,
+  "battery_invert": false,
+  "retention_days": null,
+  "control_enabled": false,
+  "tariff": {
+    "mode": "static",
+    "price_ct": 30.0,
+    "ht_price_ct": 35.0,
+    "nt_price_ct": 25.0,
+    "nt_start": "22:00",
+    "nt_end": "06:00",
+    "price_entity": "",
+    "feed_in_ct": 12.0
+  }
+}

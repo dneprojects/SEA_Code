@@ -1,0 +1,38 @@
+# Home Assistant App (formerly add-on) configuration for Smart Energy Agent.
+# Phase 1: entity discovery, curation & monitoring
+name: Smart Energy Agent
+version: "0.1.0"
+slug: smart_energy_agent
+description: >-
+  Erkennt energiebezogene HA-Entitäten (Leistung, Energie, PV, Netz, Batterie,
+  Verbraucher), klassifiziert sie und zeigt sie live an. Grundlage für die
+  spätere tarif-/PV-optimierte Steuerung. (Phase 1: Monitoring & Kuratierung.)
+url: "https://github.com/dneprojects/SAE_App"
+# Preferred reference: the generic multi-arch manifest image published by the
+# CI workflow (publish-multi-arch-manifest). The Supervisor resolves the right
+# architecture from the manifest.
+image: "ghcr.io/dneprojects/smart_energy_agent"
+arch:
+  - aarch64
+  - amd64
+init: false
+ingress: true
+ingress_port: 7790
+panel_icon: mdi:transmission-tower
+panel_title: Smart Energy Agent
+hassio_api: true
+homeassistant_api: true
+# Persistent storage for config (YAML) and history (SQLite).
+map:
+  - addon_config:rw
+options:
+  log_level: info
+  # Storage location for the SQLite history. Use the add-on data dir by default;
+  # can be pointed to a mounted SSD/share later.
+  history_db_path: "/data/smart_energy_agent.db"
+  # Hard cap for raw history retention (days) to protect SD-card lifetime.
+  history_retention_days: 90
+schema:
+  log_level: list(debug|info|warning|error)?
+  history_db_path: str?
+  history_retention_days: int(1,3650)?

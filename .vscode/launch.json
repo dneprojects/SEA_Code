@@ -1,0 +1,18 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Smart Energy Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "smart_energy_agent.main",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "SEA_HISTORY_DB": "${workspaceFolder}/dev_history.db",
+        "SEA_LOG_LEVEL": "debug"
+      }
+    }
+  ]
+}

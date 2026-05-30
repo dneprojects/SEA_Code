@@ -1,0 +1,17 @@
+{
+  "sensor.ac_elwa_2_speicher_1_energy_consumption_daily": {
+    "include": false
+  },
+  "sensor.ac_elwa_2_speicher_1_energy_consumption_monthly": {
+    "include": false
+  },
+  "number.ac_elwa_2_speicher_1_pid_power_elwa_2": {
+    "include": false
+  },
+  "sensor.ac_elwa_2_speicher_1_power_max": {
+    "include": false
+  },
+  "switch.myrelais_ausgang_3": {
+    "include": true
+  }
+}

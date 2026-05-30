@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Smart Energy Agent</title>
+  <style>
+    :root {
+      --brand:#c0372d; --brand-dark:#6c1610; --brand-edge:#ff6633;
+      --fg:#343434; --muted:#6b6c6e; --bg:#ffffff; --alt:#f9f9f9; --border:#dcdcdc;
+      --head-font:"Lucida Sans",Arial,Verdana,Helvetica,sans-serif;
+      --body-font:Verdana,Arial,Helvetica,sans-serif;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--muted);
+           font-family:var(--body-font); font-size:13px; }
+    a { color:var(--brand); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+
+    header { background:#fff; }
+    .topbar { display:flex; align-items:center; justify-content:space-between;
+              gap:16px; padding:14px 22px 12px; flex-wrap:wrap; }
+    .topbar .logo { height:46px; display:block; }
+    .topbar .logo-fallback { font-family:var(--head-font); font-weight:bold;
+                             color:var(--brand); font-size:24px; }
+    .topbar .titlebox { text-align:right; }
+    .topbar .apptitle { font-family:var(--head-font); font-size:26px; font-weight:bold;
+                        color:#5f6b76; letter-spacing:.01em; display:block; }
+    .topbar .status { font-size:12px; color:var(--muted); }
+    .banner { height:84px; width:100%; display:block; }
+    .dot { display:inline-block; width:9px; height:9px; border-radius:50%;
+           background:#bbb; margin-right:6px; vertical-align:middle; }
+    .dot.ok { background:#3f9b2f; } .dot.bad { background:var(--brand); }
+
+    .layout { display:flex; align-items:flex-start; }
+    .sidebar { width:200px; flex:none; background:#fff; border-right:1px solid var(--border);
+               padding:18px 0; min-height:400px; }
+    .sidebar a { display:block; padding:8px 18px 8px 42px; color:var(--brand);
+                 font-family:var(--head-font); font-size:15px;
+                 background:url("static/navi_dot.png") no-repeat 18px center; }
+    .sidebar a.sub { display:none; background:none; padding:5px 18px 5px 42px; font-size:13px; }
+    .sidebar a.active { color:#5f6b76; }
+    .content { flex:1; min-width:0; padding:0 22px 30px; }
+
+    .panel-title { font-family:var(--head-font); color:var(--brand); font-size:14px;
+                   font-weight:bold; text-transform:uppercase; letter-spacing:.04em;
+                   margin:24px 0 10px; border-bottom:1px solid var(--border); padding-bottom:5px; }
+    .cards { display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; }
+    .card { background:#fff; border:1px solid var(--border);
+            box-shadow:1px 1px 4px rgba(120,120,120,.25); padding:11px 16px; min-width:130px; }
+    .card .v { font-size:20px; font-weight:bold; color:var(--fg); }
+    .card .l { font-size:11px; color:var(--muted); margin-top:3px; text-transform:uppercase; letter-spacing:.03em; }
+    .card .sub { font-size:11px; color:var(--muted); margin-top:3px; }
+    .card.surplus { border-color:var(--brand); } .card.surplus .v { color:var(--brand); }
+    .pos { color:#c0372d; } .neg { color:#3f9b2f; }
+
+    .controls { margin-top:18px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+    .seg { display:inline-flex; border:1px solid var(--brand); overflow:hidden; }
+    .seg button { border:none; background:#fff; color:var(--brand); padding:5px 13px;
+                  cursor:pointer; font-family:var(--body-font); font-size:12px; }
+    .seg button.active { background:var(--brand); color:#fff; }
+
+    table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--border);
+            box-shadow:1px 1px 4px rgba(120,120,120,.18); }
+    th, td { text-align:left; padding:7px 11px; border-bottom:1px solid var(--border); vertical-align:top; }
+    thead th { background:#f1f1f1; color:var(--muted); font-weight:bold; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+    tbody tr:nth-child(even) { background:var(--alt); }
+    tr:last-child td { border-bottom:none; }
+    tr.excluded { color:#aaa; } tr.excluded .eid { color:#bbb; }
+    .num { text-align:right; font-variant-numeric:tabular-nums; }
+    .count { color:#fff; background:var(--brand); border-radius:9px; padding:1px 8px; font-size:11px; font-weight:normal; vertical-align:middle; }
+    .eid { color:var(--muted); font-size:11px; }
+    .conf { color:var(--muted); font-size:11px; }
+    .ov { color:var(--brand); font-size:11px; margin-left:4px; }
+    select { font-family:var(--body-font); font-size:12px; color:var(--fg); border:1px solid var(--border); padding:2px 5px; background:#fff; }
+    input[type=checkbox] { width:16px; height:16px; accent-color:var(--brand); cursor:pointer; }
+    input[type=number] { font-family:var(--body-font); font-size:13px; border:1px solid var(--border); padding:4px 6px; width:90px; }
+
+    .legend { display:flex; gap:14px; flex-wrap:wrap; margin:10px 0; font-size:12px; }
+    .legend span { cursor:pointer; user-select:none; }
+    .legend .sw { display:inline-block; width:11px; height:11px; margin-right:5px; vertical-align:middle; }
+    .legend .off { opacity:.4; text-decoration:line-through; }
+    .chart-wrap { background:#fff; border:1px solid var(--border); box-shadow:1px 1px 4px rgba(120,120,120,.18); padding:8px; }
+    .setrow { display:flex; align-items:center; gap:10px; margin:10px 0; }
+    .setrow label { min-width:230px; color:var(--fg); }
+    .btn { font-family:var(--body-font); font-size:13px; background:#eee; border:1px solid #bbb;
+           padding:5px 16px; cursor:pointer; }
+    .btn:hover { background:#e3e3e3; }
+    .info-tbl td { border:none; padding:3px 14px 3px 0; }
+    .info-tbl td:first-child { color:var(--muted); }
+
+    footer { background:var(--brand-dark); border-top:1px solid #611611; color:#f0d9d7;
+             font-size:11px; padding:12px 22px; margin-top:26px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <img class="logo" src="static/logo.png" alt="habitron"
+           onerror="this.style.display='none';this.nextElementSibling.style.display='inline';">
+      <span class="logo-fallback" style="display:none">habitron</span>
+      <div class="titlebox">
+        <span class="apptitle">Smart Energy Agent</span>
+        <span class="status"><span id="ha-dot" class="dot"></span><span id="ha-text">verbinde…</span> · <span id="updated"></span></span>
+      </div>
+    </div>
+    <svg class="banner" viewBox="0 0 1200 90" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+      <defs>
+        <linearGradient id="redbg" x1="0" y1="0" x2="1" y2="0.5">
+          <stop offset="0" stop-color="#561f1c"/><stop offset="0.55" stop-color="#7d2723"/><stop offset="1" stop-color="#c0392e"/>
+        </linearGradient>
+      </defs>
+      <rect width="1200" height="90" fill="url(#redbg)"/>
+      <ellipse cx="1050" cy="45" rx="320" ry="130" fill="#d34b3f" opacity="0.22"/>
+      <g stroke="#ffffff" stroke-width="1" opacity="0.06">
+        <line x1="0" y1="30" x2="1200" y2="30"/><line x1="0" y1="60" x2="1200" y2="60"/>
+        <line x1="250" y1="0" x2="250" y2="90"/><line x1="520" y1="0" x2="520" y2="90"/><line x1="800" y1="0" x2="800" y2="90"/>
+      </g>
+      <g fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" opacity="0.85">
+        <circle cx="-6" cy="92" r="54" stroke-dasharray="9 8" opacity="0.5"/>
+        <circle cx="1025" cy="45" r="26"/>
+        <circle cx="1025" cy="45" r="48" stroke-dasharray="8 8" opacity="0.5"/>
+        <line x1="1057" y1="45" x2="1071" y2="45"/>
+        <line x1="1047.6" y1="67.4" x2="1057.5" y2="77.3"/>
+        <line x1="1025" y1="77" x2="1025" y2="91"/>
+        <line x1="1002.4" y1="67.4" x2="992.5" y2="77.3"/>
+        <line x1="993" y1="45" x2="979" y2="45"/>
+        <line x1="1002.4" y1="22.6" x2="992.5" y2="12.7"/>
+        <line x1="1025" y1="13" x2="1025" y2="-1"/>
+        <line x1="1047.6" y1="22.6" x2="1057.5" y2="12.7"/>
+        <polygon points="700,52 818,38 818,60 700,74"/>
+        <line x1="739.3" y1="47.3" x2="739.3" y2="69.3"/>
+        <line x1="778.7" y1="42.7" x2="778.7" y2="64.7"/>
+        <line x1="700" y1="63" x2="818" y2="49"/>
+        <line x1="759" y1="67" x2="759" y2="90"/>
+        <polygon points="556,10 528,46 548,46 536,80 584,38 558,38 576,10" fill="#ffffff" stroke="none" opacity="0.9"/>
+        <g opacity="0.35">
+          <line x1="300" y1="20" x2="312" y2="20"/><line x1="306" y1="14" x2="306" y2="26"/>
+          <line x1="430" y1="70" x2="442" y2="70"/><line x1="436" y1="64" x2="436" y2="76"/>
+          <line x1="880" y1="74" x2="892" y2="74"/><line x1="886" y1="68" x2="886" y2="80"/>
+        </g>
+      </g>
+    </svg>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar">
+      <a href="#" data-view="dashboard" class="active" onclick="showView('dashboard');return false;">Dashboard</a>
+      <a href="#" data-view="history" onclick="showView('history');return false;">Verlauf</a>
+      <a href="#" data-view="savings" onclick="showView('savings');return false;">Einsparung</a>
+      <a href="#" data-view="consumers" onclick="showView('consumers');return false;">Verbraucher</a>
+      <a href="#" class="parent" onclick="showView('settings');return false;">Einstellungen</a>
+      <a href="#" class="sub" data-view="basic" onclick="showView('basic');return false;">Grundeinstellungen</a>
+      <a href="#" class="sub" data-view="tariff" onclick="showView('tariff');return false;">Tarife</a>
+      <a href="#" class="sub" data-view="entities" onclick="showView('entities');return false;">Auswahl der Entitäten</a>
+    </nav>
+
+    <div class="content">
+      <!-- Dashboard -->
+      <section id="view-dashboard">
+        <div class="panel-title">Übersicht</div>
+        <div class="cards" id="summary"></div>
+        <div class="panel-title">Energiefluss</div>
+        <div class="cards" id="flow"></div>
+      </section>
+
+      <!-- Verlauf -->
+      <section id="view-history" hidden>
+        <div class="panel-title">Verlauf</div>
+        <div class="controls">
+          <span>Zeitraum:</span>
+          <span class="seg" id="range-seg">
+            <button data-range="24h" class="active" onclick="setRange('24h')">24 h</button>
+            <button data-range="7d" onclick="setRange('7d')">7 Tage</button>
+            <button data-range="30d" onclick="setRange('30d')">30 Tage</button>
+          </span>
+        </div>
+        <div class="legend" id="chart-legend"></div>
+        <div class="chart-wrap"><div id="chart"></div></div>
+      </section>
+
+      <!-- Einsparung -->
+      <section id="view-savings" hidden>
+        <div class="panel-title">Einsparung durch Optimierung</div>
+        <div class="controls">
+          <span>Zeitraum:</span>
+          <span class="seg" id="sav-seg">
+            <button data-range="day" class="active" onclick="setSavRange('day')">Tag</button>
+            <button data-range="week" onclick="setSavRange('week')">Woche</button>
+            <button data-range="month" onclick="setSavRange('month')">Monat</button>
+            <button data-range="year" onclick="setSavRange('year')">Jahr</button>
+          </span>
+        </div>
+        <div class="controls">
+          <span>Vergleich gegen:</span>
+          <select id="sav-baseline" onchange="savBaselineChanged()">
+            <option value="full_feed">Volleinspeisung (kein Eigenverbrauch)</option>
+            <option value="direct">Direkter Eigenverbrauch (ohne Speicher/Steuerung)</option>
+            <option value="surplus_sink">PV-Überschuss-Senke (Heizstab/Auto)</option>
+          </select>
+          <span id="sav-cap-wrap" style="display:none">
+            <span class="sub">Leistungsgrenze (W)</span>
+            <input type="number" id="sav-cap" value="3000" step="500" style="width:90px" onchange="loadSavings()">
+            <button class="btn" onclick="document.getElementById('sav-cap').value=3000;loadSavings()">Heizstab</button>
+            <button class="btn" onclick="document.getElementById('sav-cap').value=11000;loadSavings()">Auto</button>
+          </span>
+        </div>
+        <div class="cards" id="sav-cards"></div>
+        <div class="panel-title">Energiebilanz im Zeitraum</div>
+        <table class="info-tbl"><tbody id="sav-info"></tbody></table>
+        <p class="sub" style="margin-top:10px">Referenz: gesamte PV-Erzeugung eingespeist (Einspeisevergütung), gesamter Verbrauch aus dem Netz (Bezugspreis). Differenz zur Ist-Situation = Wert von Eigenverbrauch und Speicher. Schätzung auf Basis der aufgezeichneten Messpunkte und der hinterlegten Tarife.</p>
+      </section>
+
+      <!-- Verbraucher -->
+      <section id="view-consumers" hidden>
+        <div class="panel-title">Verbraucher</div>
+        <div style="background:#fff;border:1px solid var(--border);box-shadow:1px 1px 4px rgba(120,120,120,.18);padding:10px 14px;margin:12px 0">
+          <label style="font-weight:bold;color:var(--fg)"><input type="checkbox" id="ctrl-master" onchange="toggleControl()"> PV-Überschusssteuerung aktiv</label>
+          <span class="sub" id="ctrl-status" style="margin-left:8px"></span>
+          <div class="sub" style="margin-top:4px">Schaltet nur Verbraucher im Modus „Automatisch“ und nur schaltbare Geräte (Schalter/Lampe). Solange aus, wird nichts geschaltet.</div>
+        </div>
+        <div id="consumers"></div>
+      </section>
+
+      <!-- Einstellungen -->
+      <section id="view-settings" hidden>
+        <div class="panel-title">Einstellungen</div>
+        <p class="sub" style="margin:0 0 8px">Links ein Unterthema wählen — Grundeinstellungen oder Auswahl der Entitäten.</p>
+        <div class="panel-title">Status</div>
+        <table class="info-tbl"><tbody id="info-body"></tbody></table>
+      </section>
+
+      <!-- Grundeinstellungen -->
+      <section id="view-basic" hidden>
+        <div class="panel-title">Grundeinstellungen</div>
+        <div class="setrow"><label>Netz-Vorzeichen invertieren</label>
+          <input type="checkbox" id="set-grid"> <span class="sub">+ soll Bezug bedeuten</span></div>
+        <div class="setrow"><label>Batterie-Vorzeichen invertieren</label>
+          <input type="checkbox" id="set-batt"> <span class="sub">+ soll Laden bedeuten</span></div>
+        <div class="setrow"><label>Aufbewahrung Historie (Tage)</label>
+          <input type="number" id="set-ret" min="1" max="3650"> <span class="sub">leer = Standard</span></div>
+        <div class="setrow"><button class="btn" onclick="saveSettings()">Speichern</button>
+          <span id="set-msg" class="sub"></span></div>
+      </section>
+
+      <!-- Tarife -->
+      <section id="view-tariff" hidden>
+        <div class="panel-title">Tarife — Bezugspreis &amp; Einspeisevergütung</div>
+        <div class="setrow"><label>Tarifmodell</label>
+          <select id="t-mode" onchange="tariffModeChanged()">
+            <option value="static">Statisch (fester Preis)</option>
+            <option value="ht_nt">HT/NT (Hoch-/Niedertarif)</option>
+            <option value="dynamic">Dynamisch (HA-Entität)</option>
+          </select></div>
+
+        <div id="t-static">
+          <div class="setrow"><label>Bezugspreis (ct/kWh)</label>
+            <input type="number" id="t-price" step="0.1"></div>
+        </div>
+        <div id="t-htnt">
+          <div class="setrow"><label>HT-Preis (ct/kWh)</label>
+            <input type="number" id="t-ht" step="0.1"></div>
+          <div class="setrow"><label>NT-Preis (ct/kWh)</label>
+            <input type="number" id="t-nt" step="0.1"></div>
+          <div class="setrow"><label>NT-Fenster von</label>
+            <input type="time" id="t-nt-start"> <span class="sub">bis</span>
+            <input type="time" id="t-nt-end"></div>
+        </div>
+        <div id="t-dynamic">
+          <div class="setrow"><label>Preis-Entität (ct/kWh)</label>
+            <input type="text" id="t-entity" placeholder="sensor.strompreis" style="width:240px"></div>
+          <div class="setrow"><span class="sub">Aktueller Wert wird laufend aus dieser HA-Entität gelesen.</span></div>
+        </div>
+
+        <div class="setrow"><label>Einspeisevergütung (ct/kWh)</label>
+          <input type="number" id="t-feedin" step="0.1"></div>
+        <div class="setrow"><button class="btn" onclick="saveTariff()">Speichern</button>
+          <span id="t-msg" class="sub"></span></div>
+
+        <div class="panel-title">Aktuell</div>
+        <table class="info-tbl"><tbody id="t-info"></tbody></table>
+      </section>
+
+      <!-- Auswahl der Entitäten -->
+      <section id="view-entities" hidden>
+        <div class="panel-title">Auswahl der Entitäten</div>
+        <p class="sub" style="margin:0 0 8px">Haken = in Energiemodell einbeziehen; Rolle per Auswahl korrigieren. Auswahl wird gespeichert.</p>
+        <div class="controls">
+          <span>Anzeige:</span>
+          <span class="seg">
+            <button id="scope-included" class="active" onclick="setScope('included')">nur einbezogene</button>
+            <button id="scope-all" onclick="setScope('all')">alle Kandidaten</button>
+          </span>
+          <span id="scope-hint"></span>
+        </div>
+        <div id="groups"></div>
+      </section>
+    </div>
+  </div>
+  <footer>Phase 1 — Beobachtung &amp; Kuratierung. Haken = in Energiemodell einbeziehen; Rolle per Auswahl korrigieren. Auswahl wird gespeichert.</footer>
+
+  <script>
+    const api = (p) => p.replace(/^\//, "");
+    let scope = "included";
+    let roles = [];
+    let view = "dashboard";
+    let chartRange = "24h";
+    let chartData = [];
+    const SERIES = [
+      { key:"pv_w", label:"PV", color:"#c0372d" },
+      { key:"house_load_w", label:"Hausverbrauch", color:"#5f6b76" },
+      { key:"grid_w", label:"Netz", color:"#9c3a2f" },
+      { key:"battery_w", label:"Batterie", color:"#d97a2b" },
+      { key:"surplus_w", label:"Überschuss", color:"#3f9b2f" },
+    ];
+    const visible = { pv_w:true, house_load_w:true, grid_w:true, battery_w:true, surplus_w:true };
+
+    function fmtW(w) {
+      if (w === null || w === undefined) return "–";
+      const a = Math.abs(w);
+      return a >= 1000 ? (w/1000).toFixed(2)+" kW" : Math.round(w)+" W";
+    }
+    function fmtState(s, unit) {
+      if (s === null || s === undefined) return "–";
+      const n = Number(s);
+      const txt = (Number.isFinite(n) && /^-?\d*\.?\d+(e[-+]?\d+)?$/i.test(String(s).trim()))
+        ? (Math.abs(n) >= 100 ? n.toFixed(1) : n.toFixed(2)).replace(/\.0+$/, "") : s;
+      return txt + (unit ? " "+unit : "");
+    }
+
+    function showView(name) {
+      view = name;
+      ["dashboard","history","savings","consumers","settings","basic","tariff","entities"].forEach(v => {
+        document.getElementById("view-"+v).hidden = (v !== name);
+      });
+      document.querySelectorAll(".sidebar a").forEach(a =>
+        a.classList.toggle("active", a.dataset.view === name));
+      const inSettings = ["settings","basic","tariff","entities"].includes(name);
+      const parent = document.querySelector(".sidebar a.parent");
+      if (parent) parent.classList.toggle("active", inSettings);
+      document.querySelectorAll(".sidebar a.sub").forEach(a =>
+        a.style.display = inSettings ? "block" : "none");
+      if (name === "history") loadHistory();
+      if (name === "savings") loadSavings();
+      if (name === "consumers") loadConsumers();
+      if (name === "settings" || name === "basic") loadSettings();
+      if (name === "tariff") loadTariff();
+      if (name === "entities") refresh();
+    }
+
+    // ---------- Dashboard ----------
+    async function loadRoles() {
+      try { roles = (await fetch(api("/api/roles")).then(r=>r.json())).roles || []; }
+      catch(e) { roles = []; }
+    }
+    function setScope(s) {
+      scope = s;
+      document.getElementById("scope-included").classList.toggle("active", s==="included");
+      document.getElementById("scope-all").classList.toggle("active", s==="all");
+      refresh();
+    }
+    async function sendOverride(entity_id, patch) {
+      try {
+        await fetch(api("/api/override"), { method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(Object.assign({entity_id}, patch)) });
+      } catch(e) {}
+      refresh();
+    }
+    function renderFlow(f) {
+      if (!f || (f.sources && (f.sources.pv+f.sources.grid+f.sources.battery+f.sources.house)===0)) {
+        document.getElementById("flow").innerHTML =
+          "<div class='card'><div class='sub'>Noch keine einbezogenen Quellen (PV/Netz/Batterie/Hausverbrauch).</div></div>";
+        return;
+      }
+      const signed = (w) => { if (w==null) return "–";
+        const cls = w>0?"pos":(w<0?"neg":""); return `<span class="${cls}">${fmtW(w)}</span>`; };
+      const nodes = [
+        { l:"PV-Erzeugung", v:fmtW(f.pv_w) },
+        { l:"Hausverbrauch", v:fmtW(f.house_load_w), sub:f.house_load_measured?"gemessen":"aus Bilanz hergeleitet" },
+        { l:"Netz", v:signed(f.grid_w), sub:"+ Bezug / − Einspeisung" },
+        { l:"Batterie", v:signed(f.battery_w), sub:(f.battery_soc!=null?"SoC "+f.battery_soc+" % · ":"")+"+ laden / − entladen" },
+        { l:"PV-Überschuss", v:fmtW(f.surplus_w), cls:"surplus" },
+      ];
+      document.getElementById("flow").innerHTML = nodes.map(n =>
+        `<div class="card ${n.cls||''}"><div class="v">${n.v}</div><div class="l">${n.l}</div>${n.sub?`<div class="sub">${n.sub}</div>`:""}</div>`).join("");
+    }
+    function renderSummary(s) {
+      const dot = document.getElementById("ha-dot"), txt = document.getElementById("ha-text");
+      dot.className = "dot "+(s.ha_connected?"ok":"bad");
+      txt.textContent = s.ha_connected ? "verbunden mit HA "+(s.ha_version||"") : "nicht verbunden";
+      document.getElementById("scope-hint").textContent = s.included+" von "+s.total+" einbezogen";
+      const ct = (x) => x!=null ? x+" ct" : "–";
+      const metrics = [
+        { v:s.included+" / "+s.total, l:"einbezogen / erkannt" },
+        { v:fmtW(s.pv_w), l:"PV-Erzeugung" }, { v:fmtW(s.grid_w), l:"Netz" }, { v:fmtW(s.battery_w), l:"Batterie" },
+        { v:ct(s.current_price_ct), l:"Bezugspreis /kWh" }, { v:ct(s.feed_in_ct), l:"Einspeisung /kWh" },
+      ];
+      document.getElementById("summary").innerHTML = metrics.map(m =>
+        `<div class="card"><div class="v">${m.v}</div><div class="l">${m.l}</div></div>`).join("");
+    }
+    function roleSelect(en) {
+      const opts = roles.map(r => `<option value="${r.value}"${r.value===en.role?" selected":""}>${r.label}</option>`).join("");
+      return `<select onchange="sendOverride('${en.entity_id}', {role:this.value})">${opts}</select>`;
+    }
+    function renderGroups(groups) {
+      if (!groups.length) { document.getElementById("groups").innerHTML =
+        "<p style='color:var(--muted)'>Keine Entitäten in dieser Ansicht.</p>"; return; }
+      document.getElementById("groups").innerHTML = groups.map(g => `
+        <div class="panel-title">${g.label} <span class="count">${g.count}</span></div>
+        <table><thead><tr><th style="width:34px">✓</th><th>Name</th><th>Bereich</th>
+          <th class="num">Leistung</th><th class="num">Zustand</th><th>Rolle</th><th>Erkennung</th></tr></thead>
+          <tbody>${g.entities.map(en => `
+            <tr class="${en.include?"":"excluded"}">
+              <td><input type="checkbox" ${en.include?"checked":""} onchange="sendOverride('${en.entity_id}', {include:this.checked})"></td>
+              <td>${en.friendly_name}<div class="eid">${en.entity_id}</div></td>
+              <td>${en.area||"–"}</td>
+              <td class="num">${en.power_w!=null?fmtW(en.power_w):"–"}</td>
+              <td class="num">${fmtState(en.state, en.unit)}</td>
+              <td>${roleSelect(en)}</td>
+              <td class="conf">${en.reason} (${Math.round((en.confidence||0)*100)}%)${en.overridden?'<span class="ov">• angepasst</span>':''}</td>
+            </tr>`).join("")}</tbody></table>`).join("");
+    }
+    async function refresh() {
+      try {
+        const [s,f,e] = await Promise.all([
+          fetch(api("/api/summary")).then(r=>r.json()),
+          fetch(api("/api/flow")).then(r=>r.json()),
+          fetch(api("/api/entities")+"?scope="+scope).then(r=>r.json()),
+        ]);
+        renderSummary(s); renderFlow(f); renderGroups(e.groups||[]);
+        document.getElementById("updated").textContent = "Stand: "+new Date().toLocaleTimeString("de-DE");
+      } catch(err) { document.getElementById("ha-text").textContent = "Fehler beim Laden"; }
+    }
+
+    // ---------- Verlauf (offline SVG chart) ----------
+    function setRange(r) {
+      chartRange = r;
+      document.querySelectorAll("#range-seg button").forEach(b => b.classList.toggle("active", b.dataset.range===r));
+      loadHistory();
+    }
+    async function loadHistory() {
+      try { chartData = (await fetch(api("/api/history")+"?range="+chartRange).then(r=>r.json())).series || []; }
+      catch(e) { chartData = []; }
+      renderLegend(); renderChart();
+    }
+    function renderLegend() {
+      document.getElementById("chart-legend").innerHTML = SERIES.map(s =>
+        `<span class="${visible[s.key]?"":"off"}" onclick="toggleSeries('${s.key}')">
+           <span class="sw" style="background:${s.color}"></span>${s.label}</span>`).join("");
+    }
+    function toggleSeries(k) { visible[k] = !visible[k]; renderLegend(); renderChart(); }
+    function renderChart() {
+      const el = document.getElementById("chart");
+      const data = chartData;
+      if (!data.length) { el.innerHTML = "<p style='color:var(--muted);padding:20px'>Noch keine Verlaufsdaten — der Recorder zeichnet alle 30 s auf.</p>"; return; }
+      const W=900,H=300, L=58,R=14,T=14,B=30;
+      const x0=L, x1=W-R, y0=T, y1=H-B;
+      const keys = SERIES.filter(s=>visible[s.key]).map(s=>s.key);
+      let vmin=0, vmax=0;
+      data.forEach(d => keys.forEach(k => { const v=d[k]; if (v!=null){ if(v<vmin)vmin=v; if(v>vmax)vmax=v; } }));
+      if (vmax===vmin) vmax = vmin+1;
+      const n = data.length;
+      const X = i => x0 + (x1-x0)*(n<=1?0.5:i/(n-1));
+      const Y = v => y1 - (v-vmin)/(vmax-vmin)*(y1-y0);
+      const yz = Y(0);
+      const fmtY = v => Math.abs(v)>=1000 ? (v/1000).toFixed(1)+"kW" : Math.round(v)+"W";
+      const t0 = new Date(data[0].ts*1000), tN = new Date(data[n-1].ts*1000);
+      const tlabel = d => d.toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+      let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">`;
+      svg += `<line x1="${x0}" y1="${yz}" x2="${x1}" y2="${yz}" stroke="#cfcfcf" stroke-width="1"/>`;
+      svg += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="#e2e2e2" stroke-width="1"/>`;
+      [vmax,0,vmin].forEach(v => { const yy=Y(v);
+        svg += `<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="#6b6c6e">${fmtY(v)}</text>`; });
+      svg += `<text x="${x0}" y="${H-8}" font-size="10" fill="#6b6c6e">${tlabel(t0)}</text>`;
+      svg += `<text x="${x1}" y="${H-8}" text-anchor="end" font-size="10" fill="#6b6c6e">${tlabel(tN)}</text>`;
+      SERIES.filter(s=>visible[s.key]).forEach(s => {
+        let pts="", started=false;
+        data.forEach((d,i) => { const v=d[s.key]; if (v==null){started=false;return;}
+          pts += (started?" L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1); started=true; });
+        svg += `<path d="${pts}" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linejoin="round"/>`;
+      });
+      svg += `</svg>`;
+      el.innerHTML = svg;
+    }
+
+    // ---------- Einsparung ----------
+    let savRange = "day";
+    function setSavRange(r) {
+      savRange = r;
+      document.querySelectorAll("#sav-seg button").forEach(b => b.classList.toggle("active", b.dataset.range===r));
+      loadSavings();
+    }
+    function savBaselineChanged() {
+      document.getElementById("sav-cap-wrap").style.display =
+        document.getElementById("sav-baseline").value === "surplus_sink" ? "inline" : "none";
+      loadSavings();
+    }
+    async function loadSavings() {
+      const baseline = document.getElementById("sav-baseline").value;
+      const cap = document.getElementById("sav-cap").value || 3000;
+      let d = {};
+      try { d = await fetch(api("/api/savings")+"?range="+savRange+"&baseline="+baseline+"&cap="+cap).then(r=>r.json()); } catch(e) {}
+      const eur = (x) => x!=null ? x.toFixed(2).replace(".",",")+" €" : "–";
+      const kwh = (x) => x!=null ? x.toFixed(1).replace(".",",")+" kWh" : "–";
+      const cards = [
+        { v:eur(d.savings_eur), l:"Ersparnis vs. Baseline", cls:"surplus" },
+        { v:kwh(d.self_kwh), l:"selbst genutzt (Ist)" },
+        { v:eur(d.baseline_eur), l:"Baseline-Kosten" },
+        { v:eur(d.actual_eur), l:"Ist-Kosten" },
+      ];
+      document.getElementById("sav-cards").innerHTML = cards.map(c =>
+        `<div class="card ${c.cls||''}"><div class="v">${c.v}</div><div class="l">${c.l}</div></div>`).join("");
+      const info = [
+        ["PV-Erzeugung", kwh(d.pv_kwh)],
+        ["Verbrauch", kwh(d.house_kwh)],
+        ["Netzbezug (Ist)", kwh(d.import_kwh)],
+        ["Einspeisung (Ist)", kwh(d.export_kwh)],
+      ];
+      if (baseline === "surplus_sink") info.push(["Überschuss-Senke (Baseline)", kwh(d.sink_kwh)]);
+      info.push(["Messpunkte", d.samples!=null?d.samples:"–"]);
+      document.getElementById("sav-info").innerHTML = info.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("");
+    }
+
+    // ---------- Einstellungen ----------
+    async function loadSettings() {
+      let s = {};
+      try { s = await fetch(api("/api/settings")).then(r=>r.json()); } catch(e) {}
+      document.getElementById("set-grid").checked = !!s.grid_invert;
+      document.getElementById("set-batt").checked = !!s.battery_invert;
+      document.getElementById("set-ret").value = (s.retention_days==null?"":s.retention_days);
+      const info = [
+        ["Version", s.version||"–"],
+        ["HA-Verbindung", s.ha_connected ? ("verbunden ("+(s.ha_version||"")+")") : "nicht verbunden"],
+        ["Entitäten", (s.included!=null?s.included+" einbezogen / "+s.total+" erkannt":"–")],
+        ["History-Datenpunkte", s.history_count!=null?s.history_count:"–"],
+        ["History-DB", s.db_path||"–"],
+        ["Aufbewahrung (effektiv)", (s.effective_retention_days!=null?s.effective_retention_days+" Tage":"–")],
+      ];
+      document.getElementById("info-body").innerHTML = info.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("");
+    }
+    async function saveSettings() {
+      const body = {
+        grid_invert: document.getElementById("set-grid").checked,
+        battery_invert: document.getElementById("set-batt").checked,
+        retention_days: document.getElementById("set-ret").value || null,
+      };
+      const msg = document.getElementById("set-msg");
+      try {
+        await fetch(api("/api/settings"), { method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+        msg.textContent = "gespeichert"; setTimeout(()=>msg.textContent="", 2500);
+        loadSettings();
+      } catch(e) { msg.textContent = "Fehler beim Speichern"; }
+    }
+
+    // ---------- Tarife ----------
+    function tariffModeChanged() {
+      const m = document.getElementById("t-mode").value;
+      document.getElementById("t-static").style.display = m==="static" ? "block" : "none";
+      document.getElementById("t-htnt").style.display = m==="ht_nt" ? "block" : "none";
+      document.getElementById("t-dynamic").style.display = m==="dynamic" ? "block" : "none";
+    }
+    async function loadTariff() {
+      let s = {};
+      try { s = await fetch(api("/api/settings")).then(r=>r.json()); } catch(e) {}
+      const t = s.tariff || {};
+      document.getElementById("t-mode").value = t.mode || "static";
+      document.getElementById("t-price").value = t.price_ct!=null?t.price_ct:"";
+      document.getElementById("t-ht").value = t.ht_price_ct!=null?t.ht_price_ct:"";
+      document.getElementById("t-nt").value = t.nt_price_ct!=null?t.nt_price_ct:"";
+      document.getElementById("t-nt-start").value = t.nt_start||"22:00";
+      document.getElementById("t-nt-end").value = t.nt_end||"06:00";
+      document.getElementById("t-entity").value = t.price_entity||"";
+      document.getElementById("t-feedin").value = t.feed_in_ct!=null?t.feed_in_ct:"";
+      tariffModeChanged();
+      const cur = s.current_price_ct;
+      document.getElementById("t-info").innerHTML =
+        `<tr><td>Aktueller Bezugspreis</td><td>${cur!=null?cur+" ct/kWh":"– (Entität liefert noch keinen Wert)"}</td></tr>` +
+        `<tr><td>Einspeisevergütung</td><td>${t.feed_in_ct!=null?t.feed_in_ct+" ct/kWh":"–"}</td></tr>`;
+    }
+    async function saveTariff() {
+      const tariff = {
+        mode: document.getElementById("t-mode").value,
+        price_ct: document.getElementById("t-price").value,
+        ht_price_ct: document.getElementById("t-ht").value,
+        nt_price_ct: document.getElementById("t-nt").value,
+        nt_start: document.getElementById("t-nt-start").value,
+        nt_end: document.getElementById("t-nt-end").value,
+        price_entity: document.getElementById("t-entity").value,
+        feed_in_ct: document.getElementById("t-feedin").value,
+      };
+      const msg = document.getElementById("t-msg");
+      try {
+        await fetch(api("/api/settings"), { method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({tariff}) });
+        msg.textContent = "gespeichert"; setTimeout(()=>msg.textContent="", 2500);
+        loadTariff();
+      } catch(e) { msg.textContent = "Fehler beim Speichern"; }
+    }
+
+    // ---------- Verbraucher ----------
+    let consumerMeta = { types:[], modes:[], combine:[] };
+    function sid(eid) { return eid.replace(/[^a-z0-9]/gi, "_"); }
+    function opts(list, val) {
+      return list.map(o => `<option value="${o.value}"${o.value===val?" selected":""}>${o.label}</option>`).join("");
+    }
+    function field(id, label, inner) {
+      return `<div style="display:flex;flex-direction:column;gap:3px">
+        <label style="font-size:11px;color:var(--muted)">${label}</label>${inner}</div>`;
+    }
+    async function loadConsumers() {
+      let data = { consumers:[], types:[], modes:[], combine:[] };
+      try { data = await fetch(api("/api/consumers")).then(r=>r.json()); } catch(e) {}
+      consumerMeta = { types:data.types||[], modes:data.modes||[], combine:data.combine||[] };
+      try {
+        const s = await fetch(api("/api/settings")).then(r=>r.json());
+        document.getElementById("ctrl-master").checked = !!s.control_enabled;
+        document.getElementById("ctrl-status").textContent = s.control_enabled ? "aktiv" : "aus";
+      } catch(e) {}
+      renderConsumers(data.consumers||[]);
+    }
+    async function toggleControl() {
+      const on = document.getElementById("ctrl-master").checked;
+      document.getElementById("ctrl-status").textContent = on ? "aktiv" : "aus";
+      try {
+        await fetch(api("/api/settings"), { method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({control_enabled:on}) });
+      } catch(e) {}
+    }
+    function renderConsumers(list) {
+      const el = document.getElementById("consumers");
+      if (!list.length) {
+        el.innerHTML = "<p style='color:var(--muted)'>Keine einbezogenen steuerbaren Verbraucher. Auf dem Dashboard unter ‚alle Kandidaten‘ einbeziehen.</p>";
+        return;
+      }
+      el.innerHTML = list.map(c => {
+        const k = sid(c.entity_id), cf = c.config;
+        const num = (f,val,step) => `<input type="number" id="c_${k}_${f}"${step?` step="${step}"`:""} value="${val}">`;
+        return `<details style="border:1px solid var(--border);box-shadow:1px 1px 4px rgba(120,120,120,.18);margin-bottom:10px;background:#fff">
+          <summary style="padding:8px 12px;cursor:pointer;color:var(--fg)">
+            <b>${c.name}</b> <span class="eid">${c.entity_id}</span>
+            ${c.power_w!=null?`· <span class="sub">${fmtW(c.power_w)}</span>`:""}
+            ${c.auto?(c.controllable?`· <span style="color:${c.is_on?'#3f9b2f':'#9c3a2f'}">${c.is_on?'AN':'AUS'}</span>${c.reason?` <span class="sub">(${c.reason})</span>`:''}`:`· <span class="sub">autom., aber nicht schaltbar</span>`):''}
+            ${c.configured?'<span class="ov">• konfiguriert</span>':''}</summary>
+          <div style="padding:10px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px">
+            ${field(`c_${k}_control_mode`,"Steuermodus",`<select id="c_${k}_control_mode">${opts(consumerMeta.modes,cf.control_mode)}</select>`)}
+            ${field(`c_${k}_type`,"Typ",`<select id="c_${k}_type">${opts(consumerMeta.types,cf.type)}</select>`)}
+            ${field(`c_${k}_nominal_power_w`,"Nennleistung (W)",num("nominal_power_w",cf.nominal_power_w))}
+            ${field(`c_${k}_priority`,"Priorität (1–10)",num("priority",cf.priority))}
+            ${field(`c_${k}_earliest_start`,"Frühester Start",`<input type="time" id="c_${k}_earliest_start" value="${cf.earliest_start||""}">`)}
+            ${field(`c_${k}_latest_finish`,"Fertig bis (Deadline)",`<input type="time" id="c_${k}_latest_finish" value="${cf.latest_finish||""}">`)}
+            ${field(`c_${k}_min_runtime_min`,"Mindestlaufzeit (min)",num("min_runtime_min",cf.min_runtime_min))}
+            ${field(`c_${k}_max_starts_per_day`,"Max. Starts/Tag",num("max_starts_per_day",cf.max_starts_per_day))}
+            ${field(`c_${k}_min_off_min`,"Mindest-Auszeit (min)",num("min_off_min",cf.min_off_min))}
+            ${field(`c_${k}_required_kwh`,"Energieziel (kWh)",num("required_kwh",cf.required_kwh,"0.1"))}
+            ${field(`c_${k}_pv_surplus_threshold_w`,"PV-Überschuss-Schwelle (W)",num("pv_surplus_threshold_w",cf.pv_surplus_threshold_w))}
+            ${field(`c_${k}_price_threshold_ct`,"Preis-Schwelle (ct/kWh)",num("price_threshold_ct",cf.price_threshold_ct,"0.1"))}
+            ${field(`c_${k}_soc_min_pct`,"Batterie-SoC min (%)",num("soc_min_pct",cf.soc_min_pct))}
+            ${field(`c_${k}_combine`,"Auslöse-Verknüpfung",`<select id="c_${k}_combine">${opts(consumerMeta.combine,cf.combine)}</select>`)}
+            ${field(`c_${k}_deferrable`,"Verschiebbar",`<label><input type="checkbox" id="c_${k}_deferrable" ${cf.deferrable?"checked":""}> ja</label>`)}
+            ${field(`c_${k}_interruptible`,"Unterbrechbar",`<label><input type="checkbox" id="c_${k}_interruptible" ${cf.interruptible?"checked":""}> ja</label>`)}
+          </div>
+          <div style="padding:0 12px 12px"><button class="btn" onclick="saveConsumer('${c.entity_id}')">Speichern</button>
+            <span class="sub" id="c_${k}_msg"></span></div>
+        </details>`;
+      }).join("");
+    }
+    async function saveConsumer(eid) {
+      const k = sid(eid);
+      const g = (f) => document.getElementById(`c_${k}_${f}`);
+      const patch = { entity_id: eid,
+        control_mode:g("control_mode").value, type:g("type").value,
+        nominal_power_w:g("nominal_power_w").value, priority:g("priority").value,
+        earliest_start:g("earliest_start").value, latest_finish:g("latest_finish").value,
+        min_runtime_min:g("min_runtime_min").value, max_starts_per_day:g("max_starts_per_day").value,
+        min_off_min:g("min_off_min").value, required_kwh:g("required_kwh").value,
+        pv_surplus_threshold_w:g("pv_surplus_threshold_w").value, price_threshold_ct:g("price_threshold_ct").value,
+        soc_min_pct:g("soc_min_pct").value, combine:g("combine").value,
+        deferrable:g("deferrable").checked, interruptible:g("interruptible").checked };
+      const msg = document.getElementById(`c_${k}_msg`);
+      try {
+        await fetch(api("/api/consumers"), { method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify(patch) });
+        msg.textContent = " gespeichert"; setTimeout(()=>msg.textContent="", 2500);
+      } catch(e) { msg.textContent = " Fehler beim Speichern"; }
+    }
+
+    (async () => { await loadRoles(); refresh(); setInterval(refresh, 5000); })();
+  </script>
+</body>
+</html>

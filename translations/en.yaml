@@ -1,0 +1,10 @@
+configuration:
+  log_level:
+    name: Log level
+    description: Verbosity of the add-on log (debug/info/warning/error).
+  history_db_path:
+    name: History database path
+    description: Location of the SQLite history file. Point to a mounted SSD/share to spare the SD card.
+  history_retention_days:
+    name: History retention (days)
+    description: How long raw history is kept before being purged.

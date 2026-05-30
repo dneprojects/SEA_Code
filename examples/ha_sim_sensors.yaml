@@ -1,0 +1,91 @@
+# Simulations-Sensoren für die Testumgebung (kein echter PV/Speicher nötig).
+# -----------------------------------------------------------------------------
+# Diese Template-Sensoren bilden einen realistischen Tagesverlauf für
+# PV-Erzeugung, Hausverbrauch, Batterie und Netz nach, damit EnergyAgent etwas
+# zu erkennen und (später) zu optimieren hat.
+#
+# Einbinden (Home Assistant Container):
+#   1. Inhalt in die configuration.yaml übernehmen ODER als Package ablegen:
+#      configuration.yaml:
+#        homeassistant:
+#          packages: !include_dir_named packages
+#      dann diese Datei nach  config/packages/energyagent_sim.yaml  kopieren.
+#   2. HA neu starten (Entwicklertools -> YAML -> "Vollständiger Neustart").
+#   3. In EnergyAgent erscheinen die Sensoren als PV / Netz / Batterie und
+#      können dort einbezogen werden.
+#
+# Die Namen enthalten bewusst PV-/Netz-/Batterie-Schlüsselwörter, damit die
+# Discovery sie korrekt einsortiert.
+
+template:
+  - sensor:
+      # --- PV-Erzeugung: Glockenkurve nach Sonnenstand ------------------------
+      - name: "Sim PV Leistung"
+        unique_id: sim_pv_power
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set elev = state_attr('sun.sun', 'elevation') | float(-90) %}
+          {% set peak = 6000 %}
+          {% if elev > 0 %}
+            {% set base = (elev / 55.0) * peak %}
+            {# leichte Wolken-Variation #}
+            {% set noise = (range(-400, 400) | random) %}
+            {{ [ (base + noise) | round(0), 0 ] | max }}
+          {% else %}
+            0
+          {% endif %}
+
+      # --- Hausverbrauch: Grundlast + Morgen-/Abendspitzen --------------------
+      - name: "Sim Hausverbrauch"
+        unique_id: sim_house_load
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set h = now().hour + now().minute / 60.0 %}
+          {% set base = 350 %}
+          {% set morning = 1500 * (2.718 ** (-(((h - 7.0))**2) / 1.5)) %}
+          {% set evening = 2200 * (2.718 ** (-(((h - 19.0))**2) / 2.0)) %}
+          {% set noise = (range(-120, 120) | random) %}
+          {{ (base + morning + evening + noise) | round(0) }}
+
+      # --- Batterie-Ladezustand: morgens leer, mittags voll, abends leerer ----
+      - name: "Sim Batterie SoC"
+        unique_id: sim_battery_soc
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+        state: >
+          {% set h = now().hour + now().minute / 60.0 %}
+          {# Minimum ~6 Uhr, Maximum ~18 Uhr #}
+          {% set soc = 55 + 40 * sin((h - 12.0) / 24.0 * 2 * pi - pi/2) %}
+          {{ [ [soc | round(0), 5] | max, 100 ] | min }}
+
+      # --- Batterie-Leistung: + = laden (PV-Überschuss), - = entladen ---------
+      - name: "Sim Batterie Leistung"
+        unique_id: sim_battery_power
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set pv = states('sensor.sim_pv_leistung') | float(0) %}
+          {% set load = states('sensor.sim_hausverbrauch') | float(0) %}
+          {% set surplus = pv - load %}
+          {# bis +/- 3000 W, lädt bei Überschuss, entlädt bei Defizit #}
+          {{ [ [surplus | round(0), -3000] | max, 3000 ] | min }}
+
+      # --- Netzleistung: Rest nach PV, Haus und Batterie ----------------------
+      # + = Bezug aus dem Netz, - = Einspeisung
+      - name: "Sim Netz Leistung"
+        unique_id: sim_grid_power
+        unit_of_measurement: "W"
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set pv = states('sensor.sim_pv_leistung') | float(0) %}
+          {% set load = states('sensor.sim_hausverbrauch') | float(0) %}
+          {% set batt = states('sensor.sim_batterie_leistung') | float(0) %}
+          {# Netz = Last - PV + Batterieladung #}
+          {{ (load - pv + batt) | round(0) }}
