@@ -56,6 +56,9 @@ class SmartEnergyAgent:
             return
         entities = discovery.discover(states, ent_reg, dev_reg, area_reg)
         self.store.set_entities(entities)
+        self.store.set_devices(
+            discovery.discover_devices(states, ent_reg, dev_reg, area_reg)
+        )
         await self.client.subscribe_state_changes()
 
     def _on_state_changed(self, data: dict[str, Any]) -> None:
@@ -63,6 +66,7 @@ class SmartEnergyAgent:
         new_state = data.get("new_state")
         if entity_id and new_state:
             self.store.update_state(entity_id, new_state)
+            self.store.update_device_state(entity_id, new_state)
             self.store.observe_external(entity_id, new_state)
 
     async def _recorder(self) -> None:

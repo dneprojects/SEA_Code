@@ -13,7 +13,10 @@ from typing import Any
 from aiohttp import web
 
 from . import const
-from .models import ROLE_LABELS, ROLE_ORDER, CONSUMER_TYPES, CONTROL_MODES, COMBINE_MODES
+from .models import (
+    ROLE_LABELS, ROLE_ORDER, CONSUMER_TYPES, CONTROL_MODES, COMBINE_MODES,
+    DEVICE_TYPE_LABELS, DEVICE_TYPE_ORDER, SUBROLE_LABELS, SUBROLE_ORDER,
+)
 from .store import Store
 
 _RANGES = {"6h": 21600, "24h": 86400, "48h": 172800, "7d": 604800, "30d": 2592000}
@@ -39,6 +42,8 @@ class WebServer:
         self._app.router.add_post("/api/settings", self._api_settings_post)
         self._app.router.add_get("/api/consumers", self._api_consumers_get)
         self._app.router.add_post("/api/consumers", self._api_consumers_post)
+        self._app.router.add_get("/api/devices", self._api_devices_get)
+        self._app.router.add_post("/api/device-override", self._api_device_override)
         self._app.router.add_static(
             "/static", str(const.WEB_DIR), show_index=False
         )
@@ -161,4 +166,28 @@ class WebServer:
         ok = self._store.set_consumer(entity_id, body)
         if not ok:
             return web.json_response({"error": "unknown entity_id"}, status=404)
+        return web.json_response({"ok": True})
+
+    async def _api_devices_get(self, request: web.Request) -> web.Response:
+        include_only = request.query.get("scope", "all") == "included"
+        return web.json_response({
+            "groups": self._store.grouped_devices(include_only=include_only),
+            "summary": self._store.device_summary(),
+            "types": [{"value": t, "label": DEVICE_TYPE_LABELS.get(t, t)} for t in DEVICE_TYPE_ORDER],
+            "subroles": [{"value": r, "label": SUBROLE_LABELS.get(r, r)} for r in SUBROLE_ORDER],
+        })
+
+    async def _api_device_override(self, request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "invalid json"}, status=400)
+        device_id = body.get("device_id")
+        if not device_id:
+            return web.json_response({"error": "device_id required"}, status=400)
+        ok = self._store.set_device_override(
+            device_id, include=body.get("include"), device_type=body.get("device_type"),
+        )
+        if not ok:
+            return web.json_response({"error": "unknown device_id"}, status=404)
         return web.json_response({"ok": True})

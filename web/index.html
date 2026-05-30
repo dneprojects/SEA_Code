@@ -146,6 +146,7 @@
   <div class="layout">
     <nav class="sidebar">
       <a href="#" data-view="dashboard" class="active" onclick="showView('dashboard');return false;">Dashboard</a>
+      <a href="#" data-view="devices" onclick="showView('devices');return false;">Geräte</a>
       <a href="#" data-view="history" onclick="showView('history');return false;">Verlauf</a>
       <a href="#" data-view="savings" onclick="showView('savings');return false;">Einsparung</a>
       <a href="#" data-view="consumers" onclick="showView('consumers');return false;">Verbraucher</a>
@@ -162,6 +163,21 @@
         <div class="cards" id="summary"></div>
         <div class="panel-title">Energiefluss</div>
         <div class="cards" id="flow"></div>
+      </section>
+
+      <!-- Geräte -->
+      <section id="view-devices" hidden>
+        <div class="panel-title">Geräte</div>
+        <p class="sub" style="margin:0 0 8px">Erkannte Geräte nach Typ. Haken = in Energiemodell einbeziehen; Typ bei Bedarf korrigieren. Auswahl wird gespeichert. Einzelne Sonderfälle (z. B. geschaltete Steckdosen) unter Einstellungen → Auswahl der Entitäten.</p>
+        <div class="controls">
+          <span>Anzeige:</span>
+          <span class="seg">
+            <button id="dev-scope-included" class="active" onclick="setDevScope('included')">nur einbezogene</button>
+            <button id="dev-scope-all" onclick="setDevScope('all')">alle</button>
+          </span>
+          <span id="dev-scope-hint"></span>
+        </div>
+        <div id="devices"></div>
       </section>
 
       <!-- Verlauf -->
@@ -330,7 +346,7 @@
 
     function showView(name) {
       view = name;
-      ["dashboard","history","savings","consumers","settings","basic","tariff","entities"].forEach(v => {
+      ["dashboard","devices","history","savings","consumers","settings","basic","tariff","entities"].forEach(v => {
         document.getElementById("view-"+v).hidden = (v !== name);
       });
       document.querySelectorAll(".sidebar a").forEach(a =>
@@ -340,6 +356,7 @@
       if (parent) parent.classList.toggle("active", inSettings);
       document.querySelectorAll(".sidebar a.sub").forEach(a =>
         a.style.display = inSettings ? "block" : "none");
+      if (name === "devices") loadDevices();
       if (name === "history") loadHistory();
       if (name === "savings") loadSavings();
       if (name === "consumers") loadConsumers();
@@ -431,6 +448,80 @@
         renderSummary(s); renderFlow(f); renderGroups(e.groups||[]);
         document.getElementById("updated").textContent = "Stand: "+new Date().toLocaleTimeString("de-DE");
       } catch(err) { document.getElementById("ha-text").textContent = "Fehler beim Laden"; }
+    }
+
+    // ---------- Geräte ----------
+    let devScope = "included";
+    let deviceMeta = { types:[], subroles:[] };
+    function setDevScope(s) {
+      devScope = s;
+      document.getElementById("dev-scope-included").classList.toggle("active", s==="included");
+      document.getElementById("dev-scope-all").classList.toggle("active", s==="all");
+      loadDevices();
+    }
+    async function loadDevices() {
+      let data = { groups:[], summary:{}, types:[], subroles:[] };
+      try { data = await fetch(api("/api/devices")+"?scope="+devScope).then(r=>r.json()); } catch(e) {}
+      deviceMeta = { types:data.types||[], subroles:data.subroles||[] };
+      const s = data.summary || {};
+      document.getElementById("dev-scope-hint").textContent =
+        (s.included!=null ? s.included+" von "+s.total+" einbezogen" : "");
+      renderDevices(data.groups || []);
+    }
+    function devTypeSelect(dev) {
+      const opts = deviceMeta.types.map(t =>
+        `<option value="${t.value}"${t.value===dev.device_type?" selected":""}>${t.label}</option>`).join("");
+      return `<select onchange="saveDevice('${dev.device_id}', {device_type:this.value})">${opts}</select>`;
+    }
+    function deviceBody(dev) {
+      const byRole = {};
+      (dev.entities||[]).forEach(e => { (byRole[e.sub_role] = byRole[e.sub_role] || []).push(e); });
+      const val = (e) => e.power_w!=null ? fmtW(e.power_w) : fmtState(e.state, e.unit);
+      let html = "";
+      deviceMeta.subroles.forEach(r => {
+        const list = byRole[r.value]; if (!list || !list.length) return;
+        html += `<div style="margin:6px 0 2px;color:var(--brand);font-size:11px;text-transform:uppercase">${r.label}</div>`;
+        html += list.map(e =>
+          `<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-bottom:1px solid var(--alt)">
+             <span>${e.friendly_name}<span class="eid"> ${e.entity_id}</span></span>
+             <span class="num">${val(e)}</span></div>`).join("");
+      });
+      return html || "<div class='sub'>Keine Entitäten.</div>";
+    }
+    function renderDevices(groups) {
+      const el = document.getElementById("devices");
+      if (!groups.length) {
+        el.innerHTML = "<p style='color:var(--muted)'>Keine Geräte in dieser Ansicht.</p>";
+        return;
+      }
+      el.innerHTML = groups.map(g => `
+        <div class="panel-title">${g.label} <span class="count">${g.count}</span></div>
+        ${g.devices.map(dev => `
+          <details style="border:1px solid var(--border);box-shadow:1px 1px 4px rgba(120,120,120,.18);margin-bottom:8px;background:#fff" ${dev.include?"open":""}>
+            <summary style="padding:8px 12px;cursor:pointer;color:var(--fg)">
+              <input type="checkbox" ${dev.include?"checked":""} onclick="event.stopPropagation()"
+                     onchange="saveDevice('${dev.device_id}', {include:this.checked})">
+              <b>${dev.name}</b>
+              ${dev.manufacturer||dev.model?`<span class="sub"> · ${[dev.manufacturer,dev.model].filter(Boolean).join(" ")}</span>`:""}
+              ${dev.area?`<span class="sub"> · ${dev.area}</span>`:""}
+              ${dev.overridden?'<span class="ov">• angepasst</span>':''}
+            </summary>
+            <div style="padding:8px 12px">
+              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+                <label class="sub">Typ</label> ${devTypeSelect(dev)}
+                <span class="conf">${dev.reason} (${Math.round((dev.confidence||0)*100)}%)</span>
+              </div>
+              ${deviceBody(dev)}
+            </div>
+          </details>`).join("")}`).join("");
+    }
+    async function saveDevice(device_id, patch) {
+      try {
+        await fetch(api("/api/device-override"), { method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(Object.assign({device_id}, patch)) });
+      } catch(e) {}
+      loadDevices();
     }
 
     // ---------- Verlauf (offline SVG chart) ----------

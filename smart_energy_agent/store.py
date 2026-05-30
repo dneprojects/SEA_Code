@@ -21,6 +21,7 @@ from .aggregator import compute_balance
 from .models import (
     EnergyEntity, EnergyRole, ROLE_LABELS, ROLE_ORDER,
     CONSUMER_ROLES, DEFAULT_CONSUMER, CONSUMER_FIELD_TYPES,
+    Device, DeviceType, DEVICE_TYPE_LABELS, DEVICE_TYPE_ORDER,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,6 +63,11 @@ class Store:
         self._load_consumers()
         # In-memory control runtime state, keyed by control entity_id.
         self._runtime: dict[str, dict[str, Any]] = {}
+        # Devices (primary discovery unit) + curation overrides + entity index.
+        self._devices: dict[str, Device] = {}
+        self._device_entity_index: dict[str, tuple[str, int]] = {}
+        self._device_overrides: dict[str, dict[str, Any]] = {}
+        self._load_device_overrides()
 
     # --- user curation / overrides ------------------------------------------
     def _load_overrides(self) -> None:
@@ -236,6 +242,107 @@ class Store:
         else:
             rt["last_off"] = now
         rt["reason"] = reason
+
+    # --- devices -------------------------------------------------------------
+    def _load_device_overrides(self) -> None:
+        path = const.get_device_overrides_path()
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as fh:
+                    self._device_overrides = json.load(fh)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Could not load device overrides: %s", err)
+            self._device_overrides = {}
+
+    def _save_device_overrides(self) -> None:
+        path = const.get_device_overrides_path()
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(self._device_overrides, fh, indent=2)
+            os.replace(tmp, path)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Could not save device overrides: %s", err)
+
+    def _apply_device_override(self, dev: Device) -> None:
+        ov = self._device_overrides.get(dev.device_id)
+        if not ov:
+            return
+        if ov.get("device_type"):
+            dev.device_type = ov["device_type"]
+        if ov.get("include") is not None:
+            dev.include = bool(ov["include"])
+        dev.overridden = True
+
+    def set_devices(self, devices: list[Device]) -> None:
+        self._devices = {d.device_id: d for d in devices}
+        self._device_entity_index = {}
+        for d in self._devices.values():
+            self._apply_device_override(d)
+            for i, e in enumerate(d.entities):
+                self._device_entity_index[e["entity_id"]] = (d.device_id, i)
+
+    def set_device_override(
+        self, device_id: str, include: Optional[bool] = None,
+        device_type: Optional[str] = None,
+    ) -> bool:
+        dev = self._devices.get(device_id)
+        if dev is None:
+            return False
+        ov = self._device_overrides.setdefault(device_id, {})
+        if include is not None:
+            ov["include"] = bool(include)
+        if device_type is not None:
+            ov["device_type"] = device_type
+        self._apply_device_override(dev)
+        self._save_device_overrides()
+        return True
+
+    def update_device_state(self, entity_id: str, new_state: dict[str, Any]) -> None:
+        """Live-update a device's entity value from a state_changed event."""
+        loc = self._device_entity_index.get(entity_id)
+        if not loc or new_state is None:
+            return
+        did, idx = loc
+        dev = self._devices.get(did)
+        if not dev or idx >= len(dev.entities):
+            return
+        e = dev.entities[idx]
+        e["state"] = new_state.get("state")
+        unit = (new_state.get("attributes", {}) or {}).get("unit_of_measurement") or e.get("unit")
+        if unit in ("W", "kW", "MW"):
+            try:
+                val = float(new_state.get("state"))
+                factor = 1000.0 if unit == "kW" else (1_000_000.0 if unit == "MW" else 1.0)
+                e["power_w"] = val * factor
+            except (TypeError, ValueError):
+                pass
+
+    def devices(self) -> list[Device]:
+        return list(self._devices.values())
+
+    def grouped_devices(self, include_only: bool = False) -> list[dict[str, Any]]:
+        by: dict[str, list[Device]] = {}
+        for d in self._devices.values():
+            if include_only and not d.include:
+                continue
+            by.setdefault(d.device_type, []).append(d)
+        groups: list[dict[str, Any]] = []
+        for t in DEVICE_TYPE_ORDER:
+            items = sorted(by.get(t, []), key=lambda x: (x.name or "").lower())
+            if items:
+                groups.append({
+                    "type": t, "label": DEVICE_TYPE_LABELS.get(t, t),
+                    "count": len(items), "devices": [d.to_dict() for d in items],
+                })
+        return groups
+
+    def device_summary(self) -> dict[str, Any]:
+        return {
+            "total": len(self._devices),
+            "included": sum(1 for d in self._devices.values() if d.include),
+        }
 
     # --- managed consumers (control configuration) ---------------------------
     def _load_consumers(self) -> None:

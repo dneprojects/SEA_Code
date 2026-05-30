@@ -139,3 +139,95 @@ class EnergyEntity:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+# --- Device-centric model (primary unit of discovery) ------------------------
+class DeviceType(str, Enum):
+    BATTERY = "battery"            # storage: SoC + charge/discharge power
+    PV = "pv"                      # PV inverter / generation
+    GRID = "grid"                  # grid connection / smart meter
+    HEAT_PUMP = "heat_pump"        # heat pump (thermal store via setpoints)
+    WATER_HEATER = "water_heater"  # heating rod / hot water
+    WASHING_MACHINE = "washing_machine"
+    DRYER = "dryer"
+    DISHWASHER = "dishwasher"
+    EV_CHARGER = "ev_charger"      # wallbox / EV
+    CONSUMER = "consumer"          # other controllable load
+    OTHER = "other"
+
+
+DEVICE_TYPE_LABELS: dict[str, str] = {
+    DeviceType.BATTERY: "Batteriespeicher",
+    DeviceType.PV: "PV-Anlage",
+    DeviceType.GRID: "Netzanschluss",
+    DeviceType.HEAT_PUMP: "Wärmepumpe",
+    DeviceType.WATER_HEATER: "Heizstab / Warmwasser",
+    DeviceType.WASHING_MACHINE: "Waschmaschine",
+    DeviceType.DRYER: "Wäschetrockner",
+    DeviceType.DISHWASHER: "Geschirrspüler",
+    DeviceType.EV_CHARGER: "Wallbox / E-Auto",
+    DeviceType.CONSUMER: "Sonstiger Verbraucher",
+    DeviceType.OTHER: "Sonstiges Gerät",
+}
+
+DEVICE_TYPE_ORDER: list[str] = [
+    DeviceType.PV, DeviceType.BATTERY, DeviceType.GRID, DeviceType.HEAT_PUMP,
+    DeviceType.WATER_HEATER, DeviceType.EV_CHARGER, DeviceType.WASHING_MACHINE,
+    DeviceType.DRYER, DeviceType.DISHWASHER, DeviceType.CONSUMER, DeviceType.OTHER,
+]
+
+# Device types that are included in the energy model by default.
+DEVICE_DEFAULT_INCLUDE = {
+    DeviceType.PV, DeviceType.BATTERY, DeviceType.GRID, DeviceType.HEAT_PUMP,
+    DeviceType.WATER_HEATER, DeviceType.EV_CHARGER, DeviceType.WASHING_MACHINE,
+    DeviceType.DRYER, DeviceType.DISHWASHER,
+}
+
+
+# Sub-roles an entity plays within its device.
+class SubRole(str, Enum):
+    POWER = "power"
+    ENERGY = "energy"
+    SOC = "soc"
+    TEMPERATURE = "temperature"
+    CLIMATE = "climate"
+    SWITCH = "switch"
+    SETPOINT = "setpoint"
+    PROGRAM = "program"
+    OTHER = "other"
+
+
+SUBROLE_LABELS: dict[str, str] = {
+    SubRole.POWER: "Leistung", SubRole.ENERGY: "Energie", SubRole.SOC: "Ladezustand",
+    SubRole.TEMPERATURE: "Temperatur", SubRole.CLIMATE: "Klima/Thermostat",
+    SubRole.SWITCH: "Schalter", SubRole.SETPOINT: "Sollwert",
+    SubRole.PROGRAM: "Programm/Status", SubRole.OTHER: "Sonstige",
+}
+
+SUBROLE_ORDER: list[str] = [
+    SubRole.POWER, SubRole.ENERGY, SubRole.SOC, SubRole.TEMPERATURE,
+    SubRole.CLIMATE, SubRole.SETPOINT, SubRole.SWITCH, SubRole.PROGRAM, SubRole.OTHER,
+]
+
+
+@dataclass
+class Device:
+    """A Home Assistant device with its grouped, sub-classified entities."""
+
+    device_id: str
+    name: str
+    device_type: str
+    manufacturer: Optional[str] = None
+    model: Optional[str] = None
+    area: Optional[str] = None
+    integration: Optional[str] = None
+    confidence: float = 0.0
+    reason: str = ""
+    include: bool = False
+    overridden: bool = False
+    # Each entry: {entity_id, friendly_name, sub_role, domain, device_class,
+    #              unit, state, power_w, entity_category}
+    entities: list[dict[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

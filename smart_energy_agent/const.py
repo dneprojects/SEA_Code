@@ -87,3 +87,10 @@ def get_consumers_path() -> str:
     db = get_history_db()
     directory = os.path.dirname(db) or "."
     return os.path.join(directory, "consumers.json")
+
+
+def get_device_overrides_path() -> str:
+    """JSON file storing device curation (include/type)."""
+    db = get_history_db()
+    directory = os.path.dirname(db) or "."
+    return os.path.join(directory, "device_overrides.json")

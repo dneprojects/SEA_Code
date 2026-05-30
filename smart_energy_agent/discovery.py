@@ -21,7 +21,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from .models import EnergyEntity, EnergyRole
+from .models import (
+    EnergyEntity, EnergyRole,
+    Device, DeviceType, SubRole, DEVICE_DEFAULT_INCLUDE,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -220,3 +223,180 @@ def discover(
         len(result), n_incl,
     )
     return result
+
+
+# --- device-centric discovery -----------------------------------------------
+TEMP_UNITS = {"°C", "°F"}
+
+WASH_HINTS = ("washer", "washing", "wasch")
+DRYER_HINTS = ("dryer", "trockner", "tumble")
+DISH_HINTS = ("dishwash", "geschirr", "spül", "spuel")
+HEATPUMP_HINTS = ("heat pump", "heatpump", "wärmepump", "waermepump", "aquarea",
+                  "daikin", "nibe", "viessmann", "vaillant", "stiebel")
+WATERHEATER_HINTS = ("heizstab", "boiler", "warmwasser", "water heater", "dhw",
+                     "immersion", "elwa")
+EV_HINTS = ("wallbox", "wall box", "charger", "evse", "go-e", "goe", "keba",
+            "easee", "wallbe", "e-auto", "ev charge", "openevse")
+PV_HINTS_DEV = ("pv", "solar", "photovolt", "inverter", "wechselrichter",
+                "fronius", "solaredge", "kostal", "huawei", "growatt")
+GRID_HINTS_DEV = ("grid", "netz", "smartmeter", "smart meter", "powermeter",
+                  "stromzähler", "stromzaehler", "shelly em", "shelly 3em")
+BATTERY_HINTS_DEV = ("battery", "batterie", "akku", "speicher", "sonnen",
+                     "powerwall", "byd", "victron", "pylontech")
+PROGRAM_HINTS = ("program", "programm", "status", "phase", "remaining",
+                 "restzeit", "door", "tür", "cycle", "betrieb")
+
+
+def _subrole(domain: str, device_class: Optional[str], unit: Optional[str],
+             name: str, entity_category: Optional[str] = None) -> str:
+    # Config/diagnostic entities (device battery level, signal strength, ...)
+    # are not energy-relevant and must not drive sub-role or type detection.
+    if entity_category in ("config", "diagnostic"):
+        return SubRole.OTHER
+    # Controllable domains take priority over measurement units: a `number`
+    # with unit °C is a target-temperature setpoint, not a temperature reading.
+    if domain == "climate":
+        return SubRole.CLIMATE
+    if domain == "number":
+        return SubRole.SETPOINT
+    if domain in SWITCH_DOMAINS:
+        return SubRole.SWITCH
+    if domain == "select":
+        return SubRole.PROGRAM
+    if device_class == "battery" and unit == "%":
+        return SubRole.SOC
+    if device_class == "power" or unit in POWER_UNITS:
+        return SubRole.POWER
+    if device_class == "energy" or unit in ENERGY_UNITS:
+        return SubRole.ENERGY
+    if device_class == "temperature" or unit in TEMP_UNITS:
+        return SubRole.TEMPERATURE
+    if domain == "sensor" and any(h in name.lower() for h in PROGRAM_HINTS):
+        return SubRole.PROGRAM
+    return SubRole.OTHER
+
+
+def classify_device(meta: dict[str, Any], ents: list[dict[str, Any]]) -> tuple[str, float, str]:
+    """Determine the semantic device type from registry meta + entity composition."""
+    parts = [meta.get("name"), meta.get("model"), meta.get("manufacturer"), meta.get("integration")]
+    # Only let non-diagnostic/config entity names influence the name matching.
+    named = [e for e in ents if e.get("entity_category") not in ("config", "diagnostic")]
+    parts += [e["friendly_name"] for e in named] + [e["entity_id"] for e in named]
+    hay = " ".join(p for p in parts if p).lower()
+
+    roles = {e["sub_role"] for e in ents}
+    has_soc = SubRole.SOC in roles
+    has_power = SubRole.POWER in roles
+    has_energy = SubRole.ENERGY in roles
+    has_temp = SubRole.TEMPERATURE in roles
+    has_climate = SubRole.CLIMATE in roles
+    has_switch = SubRole.SWITCH in roles
+    has_number = SubRole.SETPOINT in roles
+
+    def m(hints: tuple[str, ...]) -> bool:
+        return any(h in hay for h in hints)
+
+    if m(WASH_HINTS):
+        return DeviceType.WASHING_MACHINE, 0.8, "Namensmuster Waschmaschine"
+    if m(DRYER_HINTS):
+        return DeviceType.DRYER, 0.8, "Namensmuster Trockner"
+    if m(DISH_HINTS):
+        return DeviceType.DISHWASHER, 0.8, "Namensmuster Geschirrspüler"
+    if has_soc and (has_power or m(BATTERY_HINTS_DEV)):
+        return DeviceType.BATTERY, 0.85, "Ladezustand + Leistung"
+    if m(BATTERY_HINTS_DEV) and (has_power or has_soc):
+        return DeviceType.BATTERY, 0.75, "Namensmuster Batterie"
+    if m(HEATPUMP_HINTS) or (has_climate and has_temp):
+        return DeviceType.HEAT_PUMP, 0.8 if m(HEATPUMP_HINTS) else 0.6, "Wärmepumpe (Klima + Temperatur)"
+    if m(WATERHEATER_HINTS) or (has_temp and has_switch):
+        return DeviceType.WATER_HEATER, 0.8 if m(WATERHEATER_HINTS) else 0.55, "Heizstab/Warmwasser"
+    if m(EV_HINTS):
+        return DeviceType.EV_CHARGER, 0.8, "Namensmuster Wallbox"
+    if m(PV_HINTS_DEV) and (has_power or has_energy):
+        return DeviceType.PV, 0.8, "PV-Namensmuster + Leistung"
+    if m(GRID_HINTS_DEV) and has_power:
+        return DeviceType.GRID, 0.75, "Netz-Namensmuster + Leistung"
+    if has_switch or has_number:
+        return DeviceType.CONSUMER, 0.5, "Schalt-/regelbares Gerät"
+    return DeviceType.OTHER, 0.3, "nicht eindeutig"
+
+
+def discover_devices(
+    states: list[dict[str, Any]],
+    entity_registry: Optional[list[dict[str, Any]]] = None,
+    device_registry: Optional[list[dict[str, Any]]] = None,
+    area_registry: Optional[list[dict[str, Any]]] = None,
+) -> list[Device]:
+    """Group entities by HA device and classify each device semantically."""
+    state_by_id = {s.get("entity_id"): s for s in states if s.get("entity_id")}
+    meta_by_entity = {e["entity_id"]: e for e in (entity_registry or []) if e.get("entity_id")}
+    area_names = {
+        a["area_id"]: a.get("name", a["area_id"])
+        for a in (area_registry or []) if a.get("area_id")
+    }
+    devmeta = {d["id"]: d for d in (device_registry or []) if d.get("id")}
+
+    ents_by_dev: dict[str, list[dict[str, Any]]] = {}
+    for eid, em in meta_by_entity.items():
+        did = em.get("device_id")
+        if not did or em.get("disabled_by") or em.get("hidden_by"):
+            continue
+        st = state_by_id.get(eid, {})
+        attrs = st.get("attributes", {}) or {}
+        domain = _domain(eid)
+        dc = attrs.get("device_class")
+        unit = attrs.get("unit_of_measurement")
+        name = attrs.get("friendly_name", eid)
+        sr = _subrole(domain, dc, unit, name, em.get("entity_category"))
+        ent = {
+            "entity_id": eid, "friendly_name": name, "sub_role": sr,
+            "domain": domain, "device_class": dc, "unit": unit,
+            "state": st.get("state"), "power_w": None,
+            "entity_category": em.get("entity_category"),
+        }
+        if sr == SubRole.SOC or sr == SubRole.POWER:
+            pass
+        if sr == SubRole.POWER:
+            pw = _to_float(st.get("state"))
+            if pw is not None and unit == "kW":
+                pw *= 1000.0
+            ent["power_w"] = pw
+        ents_by_dev.setdefault(did, []).append(ent)
+
+    relevant_roles = {
+        SubRole.POWER, SubRole.ENERGY, SubRole.SOC, SubRole.CLIMATE,
+        SubRole.SWITCH, SubRole.SETPOINT, SubRole.PROGRAM,
+    }
+    devices: list[Device] = []
+    for did, ents in ents_by_dev.items():
+        dm = devmeta.get(did, {})
+        integration = None
+        ids = dm.get("identifiers")
+        if isinstance(ids, list) and ids and isinstance(ids[0], (list, tuple)) and ids[0]:
+            integration = ids[0][0]
+        if not integration:
+            integration = meta_by_entity.get(ents[0]["entity_id"], {}).get("platform")
+        name = dm.get("name_by_user") or dm.get("name") or ents[0]["friendly_name"]
+        area = area_names.get(dm.get("area_id"), dm.get("area_id"))
+        meta = {
+            "name": name, "model": dm.get("model"),
+            "manufacturer": dm.get("manufacturer"), "integration": integration,
+        }
+        dtype, conf, reason = classify_device(meta, ents)
+        relevant = any(
+            e["sub_role"] in relevant_roles
+            and e["entity_category"] not in ("config", "diagnostic")
+            for e in ents
+        )
+        if dtype == DeviceType.OTHER and not relevant:
+            continue
+        devices.append(Device(
+            device_id=did, name=name, device_type=dtype.value,
+            manufacturer=dm.get("manufacturer"), model=dm.get("model"),
+            area=area, integration=integration, confidence=conf, reason=reason,
+            include=(dtype in DEVICE_DEFAULT_INCLUDE),
+            entities=sorted(ents, key=lambda e: str(e["sub_role"])),
+        ))
+    devices.sort(key=lambda d: (d.name or "").lower())
+    _LOGGER.info("Discovery found %d devices", len(devices))
+    return devices
