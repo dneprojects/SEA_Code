@@ -1,5 +1,7 @@
-#!/usr/bin/env sh
+#!/usr/bin/with-contenv bashio
 # Smart Energy Agent add-on entrypoint.
+# with-contenv injects the container environment (incl. SUPERVISOR_TOKEN) that
+# the Supervisor provides — without it the HA websocket auth has no token.
 set -e
 
 # Read add-on options (provided by Supervisor as /data/options.json) and export
