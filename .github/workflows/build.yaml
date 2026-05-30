@@ -57,34 +57,40 @@ jobs:
 
       - name: Normalize app information
         id: normalize
+        env:
+          IMAGE: ${{ steps.info.outputs.image }}
+          DESCRIPTION: ${{ steps.info.outputs.description }}
+          URL: ${{ steps.info.outputs.url }}
         run: |
-          image=${{ steps.info.outputs.image }}
-          echo "registry_prefix=${image%/*}" >> "$GITHUB_OUTPUT"
-          echo "description=${{ steps.info.outputs.description }}" >> "$GITHUB_OUTPUT"
-          url=${{ steps.info.outputs.url }}
-          if [[ -n "$url" && "$url" != "null" ]]; then
-            echo "url=${url}" >> "$GITHUB_OUTPUT"
+          echo "registry_prefix=${IMAGE%/*}" >> "$GITHUB_OUTPUT"
+          echo "description=${DESCRIPTION}" >> "$GITHUB_OUTPUT"
+          if [[ -n "$URL" && "$URL" != "null" ]]; then
+            echo "url=${URL}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Determine channel (Public vs Beta)
         id: channel
+        env:
+          BASE: ${{ steps.info.outputs.version }}
+          NAME: ${{ steps.info.outputs.name }}
+          EVENT: ${{ github.event_name }}
+          TARGET: ${{ inputs.target }}
+          RUN: ${{ github.run_number }}
         run: |
-          base="${{ steps.info.outputs.version }}"
-          name="${{ steps.info.outputs.name }}"
-          if [[ "${{ github.event_name }}" == "release" || "${{ inputs.target }}" == "Public" ]]; then
+          if [[ "$EVENT" == "release" || "$TARGET" == "Public" ]]; then
             echo "mode=Public" >> "$GITHUB_OUTPUT"
-            echo "version=${base}" >> "$GITHUB_OUTPUT"
+            echo "version=${BASE}" >> "$GITHUB_OUTPUT"
             echo "branch=main" >> "$GITHUB_OUTPUT"
             echo "slug=smart_energy_agent" >> "$GITHUB_OUTPUT"
             echo "image_name=smart_energy_agent" >> "$GITHUB_OUTPUT"
-            echo "appname=${name}" >> "$GITHUB_OUTPUT"
+            echo "appname=${NAME}" >> "$GITHUB_OUTPUT"
           else
             echo "mode=Beta" >> "$GITHUB_OUTPUT"
-            echo "version=${base}-beta.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "version=${BASE}-beta.${RUN}" >> "$GITHUB_OUTPUT"
             echo "branch=beta" >> "$GITHUB_OUTPUT"
             echo "slug=smart_energy_agent_beta" >> "$GITHUB_OUTPUT"
             echo "image_name=smart_energy_agent_beta" >> "$GITHUB_OUTPUT"
-            echo "appname=${name} (Beta)" >> "$GITHUB_OUTPUT"
+            echo "appname=${NAME} (Beta)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Prepare build matrix
@@ -203,7 +209,7 @@ jobs:
           git config user.name "SmartEnergyAgent Bot"
           git config user.email "bot@smartenergyagent.local"
           git add -A
-          git commit -m "Release ${{ needs.prepare.outputs.slug }} ${VERSION} (${BRANCH})" || {
+          git commit -m "Release ${SLUG} ${VERSION} (${BRANCH})" || {
             echo "No changes to publish"; exit 0;
           }
           git push origin "${BRANCH}"
