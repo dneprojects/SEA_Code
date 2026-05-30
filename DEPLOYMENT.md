@@ -1,33 +1,33 @@
 # Deployment: SAE_Code → SAE_App (Home Assistant App)
 
-Home Assistant nennt „Add-ons" inzwischen **Apps**. Veröffentlicht wird mit
-**vorgebauten Multi-Arch-Images** (empfohlener Weg) über die aktuellen
-Home-Assistant-Builder-Composite-Actions.
-Doku: https://developers.home-assistant.io/docs/apps/publishing
+Home Assistant now calls "add-ons" **apps**. Publishing uses **prebuilt
+multi-arch images** (the recommended way) via the current Home Assistant builder
+composite actions.
+Docs: https://developers.home-assistant.io/docs/apps/publishing
 
-Zwei Repositories:
+Two repositories:
 
-- **SAE_Code** (dieses Repo): Quellcode + `Dockerfile` + `build.yaml` +
-  `config.yaml` + GitHub-Action. Baut bei einem Release je Architektur ein Image,
-  veröffentlicht ein **generisches Multi-Arch-Manifest** nach GHCR und schreibt
-  die App-Metadaten ins Install-Repo.
-- **SAE_App** (öffentlich): das HA-App-Repository, das Nutzer in HA hinzufügen.
-  `repository.yaml` + Ordner `smart_energy_agent/` mit `config.yaml`
-  (referenziert das generische GHCR-Image), README, Icons. Wird von der Action befüllt.
+- **SAE_Code** (this repo): source code + `Dockerfile` + `config.yaml` +
+  GitHub Action. On a build it builds one image per architecture, publishes a
+  **generic multi-arch manifest** to GHCR, and writes the app metadata to the
+  install repo.
+- **SAE_App** (public): the HA app repository users add in HA. Contains
+  `repository.yaml` + a `smart_energy_agent/` folder with `config.yaml`
+  (referencing the generic GHCR image), README, icons. Populated by the Action.
 
 ```
-Release in SAE_Code ──> GitHub Action
+Build in SAE_Code ──> GitHub Action
    ├─ build-image (aarch64, amd64) ─> ghcr.io/dneprojects/{arch}-smart_energy_agent
    ├─ publish-multi-arch-manifest  ─> ghcr.io/dneprojects/smart_energy_agent  (← image: in config.yaml)
    └─ publish-metadata             ─> SAE_App/smart_energy_agent/
-HA-Nutzer ── fügt SAE_App-URL hinzu ──> installiert ──> HA zieht das Manifest-Image
+HA user ── adds SAE_App URL ──> installs ──> HA pulls the manifest image
 ```
 
-## Einmalige Einrichtung
+## One-time setup
 
-### 1. Repos anlegen
-- `dneprojects/SAE_Code` — diesen Ordner hineinpushen.
-- `dneprojects/SAE_App` — **öffentlich**, darf zunächst leer sein.
+### 1. Create the repos
+- `dneprojects/SAE_Code` — push this folder into it.
+- `dneprojects/SAE_App` — **public**, may start empty.
 
 ```bash
 git init -b main
@@ -37,72 +37,73 @@ git remote add origin https://github.com/dneprojects/SAE_Code.git
 git push -u origin main
 ```
 
-### 2. Token für das Install-Repo
-Die Action pusht in ein **anderes** Repo (SAE_App); das automatische
-`GITHUB_TOKEN` reicht dafür nicht. Fine-grained Token erstellen:
+### 2. Token for the install repo
+The Action pushes to a **different** repo (SAE_App); the built-in `GITHUB_TOKEN`
+is not enough. Create a fine-grained token:
 - GitHub → Settings → Developer settings → Fine-grained tokens
-- Repository access: nur `dneprojects/SAE_App`; Permission **Contents: Read and write**
-- In **SAE_Code** → Settings → Secrets and variables → Actions → Secret
-  `APP_REPO_TOKEN` = das Token.
+- Repository access: only `dneprojects/SAE_App`; permission **Contents: Read and write**
+- In **SAE_Code** → Settings → Secrets and variables → Actions → secret
+  `APP_REPO_TOKEN` = the token.
 
-Das Bauen/Pushen der Images nach GHCR nutzt das eingebaute `GITHUB_TOKEN`
-(Jobs haben `packages: write` und `id-token: write`).
+Building/pushing images to GHCR uses the built-in `GITHUB_TOKEN` (jobs have
+`packages: write` and `id-token: write`).
 
-### 3. Icons (optional, empfohlen)
-`icon.png` (~256×256) und `logo.png` im Wurzelverzeichnis ablegen (z. B. das
-Habitron-Logo) — werden mit veröffentlicht.
+### 3. Icons (optional, recommended)
+Place `icon.png` (~256×256, square) and `logo.png` in the `web/` folder. The
+workflow copies them into the published app folder, and `web/logo.png` is also
+served as the in-app header logo (`static/logo.png`).
 
-## Release Manager: Public (main) & Beta (beta) — wie SmartHub-Addon
+## Release Manager: Public (main) & Beta (beta) — like SmartHub-Addon
 
-Der Workflow „Smart Energy Agent Release Manager" steuert beide Kanäle, analog
-zum SmartHub Release Manager:
+The "Smart Energy Agent Release Manager" workflow drives both channels, analogous
+to the SmartHub Release Manager:
 
-- **Auto-Beta:** jeder Commit auf `main` baut die Beta.
-- **Manuell:** „Run workflow" mit Ziel **Beta** oder **Public**.
-- **Release:** ein veröffentlichtes Release baut Public.
+- **Auto-beta:** every commit on `main` builds the beta.
+- **Manual:** "Run workflow" with target **Beta** or **Public**.
+- **Release:** a published release builds Public.
 
-| Kanal  | Branch von SAE_App | Slug                     | Name                       | Image                                   |
-|--------|--------------------|--------------------------|----------------------------|-----------------------------------------|
-| Public | `main`             | `smart_energy_agent`     | Smart Energy Agent         | `ghcr.io/dneprojects/smart_energy_agent`      |
-| Beta   | `beta`             | `smart_energy_agent_beta`| Smart Energy Agent (Beta)  | `ghcr.io/dneprojects/smart_energy_agent_beta` |
+| Channel | SAE_App branch | Slug                      | Name                      | Image                                         |
+|---------|----------------|---------------------------|---------------------------|-----------------------------------------------|
+| Public  | `main`         | `smart_energy_agent`      | Smart Energy Agent        | `ghcr.io/dneprojects/smart_energy_agent`      |
+| Beta    | `beta`         | `smart_energy_agent_beta` | Smart Energy Agent (Beta) | `ghcr.io/dneprojects/smart_energy_agent_beta` |
 
-Eigener Branch, eigener Slug und eigenes Image je Kanal — beide lassen sich also
-parallel installieren. Der in HA gezeigte Name/Slug kommt aus `name:`/`slug:`
-der `config.yaml` auf dem jeweiligen Branch (wie SmartHubs `smarthub_beta`).
-Die Beta-Version trägt `…-beta.<run>`, damit HA jede neue Beta als Update erkennt.
+Separate branch, slug and image per channel, so both can be installed in
+parallel. The name/slug HA shows comes from `name:`/`slug:` in the `config.yaml`
+on the respective branch (like SmartHub's `smarthub_beta`). The beta version
+carries `…-beta.<run>` so HA recognizes each new beta as an update.
 
-## Release bauen
-1. `version` in `config.yaml` erhöhen, committen/pushen.
-2. In **SAE_Code** ein **Release** mit Tag (z. B. `v0.2.0`) anlegen — oder die
-   Action manuell über „Run workflow" starten.
-3. Die Action baut `aarch64` + `amd64`, veröffentlicht das Manifest und
-   committet die Metadaten nach SAE_App.
+## Build a release
+1. Bump `version` in `config.yaml`, commit/push.
+2. In **SAE_Code** create a **release** with a tag (e.g. `v0.2.0`) — or run the
+   Action manually via "Run workflow" → Public.
+3. The Action builds `aarch64` + `amd64`, publishes the manifest, and commits the
+   metadata to SAE_App.
 
-### GHCR-Pakete öffentlich schalten (einmalig)
-GitHub → Profil → **Packages**: das generische Paket `smart_energy_agent`
-(und die Arch-Pakete `aarch64-…`, `amd64-…`) → Package settings →
-**Change visibility → Public**. Sonst kann HA das Image nicht ohne Login ziehen.
+### Make the GHCR packages public (one-time)
+GitHub → profile → **Packages**: the generic package `smart_energy_agent`
+(and the arch packages `aarch64-…`, `amd64-…`) → Package settings →
+**Change visibility → Public**. Otherwise HA cannot pull the image without login.
 
-## Installation in Home Assistant
-Einstellungen → Add-ons/Apps → Store → ⋮ → **Repositories** →
-`https://github.com/dneprojects/SAE_App` → „Smart Energy Agent" installieren.
+## Install in Home Assistant
+Settings → Add-ons/Apps → Store → ⋮ → **Repositories** →
+`https://github.com/dneprojects/SAE_App` → install "Smart Energy Agent".
 
-## Versionierung
-Quelle der Wahrheit ist `version` in `config.yaml`. Version erhöhen → Release/Tag
-→ Action → HA bietet das Update an.
+## Versioning
+The source of truth is `version` in `config.yaml`. Bump version → release/tag (or
+manual run) → Action → HA offers the update.
 
-## Dasselbe für SmartHub-Addon
-`SmartHub-Addon` ist bereits ein App-Repository, hat aber keinen aktuellen
-Build-Workflow. Übernimm `.github/workflows/build.yaml` und passe an:
-`ADDON_SLUG: smart_hub`, in dessen `config.yaml`
-`image: ghcr.io/dneprojects/smart_hub` (generisch) setzen und `build.yaml` um
-`amd64` ergänzen, falls gewünscht. Da dort Quelle und App im selben Repo liegen,
-kann der `publish-metadata`-Job entfallen (oder ins selbe Repo committen).
+## Same for SmartHub-Addon
+`SmartHub-Addon` is already an app repository but lacks a current build workflow.
+Reuse `.github/workflows/build.yaml` and adapt it: set the slug/image to
+`smart_hub`. Since source and app live in the same repo there, the
+`publish-metadata` job can be dropped (or commit into the same repo).
 
-## Hinweise
-- Builder-Actions sind auf `@2026.03.2` gepinnt (Stand der HA-Doku). Bei neueren
-  Releases den Tag aktualisieren.
-- Label `io.hass.type=app` (neu; früher `addon`).
-- Dev-Dateien (`Dockerfile.standalone`, `docker-compose.yml`, `examples/`) sind
-  fürs App-Image irrelevant — gebaut wird mit `Dockerfile`, `build.yaml`,
-  `config.yaml` und dem Quellcode.
+## Notes
+- Builder actions are pinned to `@2026.03.2` (per the HA docs). Update the tag
+  for newer releases.
+- Label `io.hass.type=app` (new; formerly `addon`).
+- The base image and labels live in the `Dockerfile` (`ARG BUILD_FROM=...` +
+  `LABEL`); `build.yaml` is no longer used.
+- Dev files (`Dockerfile.standalone`, `docker-compose.yml`, `examples/`) are
+  irrelevant to the app image — it is built from `Dockerfile`, `config.yaml` and
+  the source code.

@@ -2,7 +2,7 @@
 
 ## 0.1.0
 
-- Erste Version: Erkennung & Kuratierung energiebezogener Entitäten,
-  Live-Energiefluss, Verlauf, Verbraucher-Konfiguration, Tarife
-  (Bezugspreis/Einspeisevergütung), Einsparungsrechnung mit wählbarer Baseline
-  und (standardmäßig deaktivierte) PV-Überschusssteuerung.
+- First version: detection and curation of energy-related entities, live energy
+  flow, history, consumer configuration, tariffs (purchase price/feed-in
+  compensation), savings calculation with selectable baseline, and
+  (off-by-default) PV-surplus control.

@@ -1,60 +1,61 @@
 # Smart Energy Agent
 
-Energiebezogene Erkennung, Überwachung und (später) tarif-/PV-optimierte Steuerung
-für Home Assistant. Aktueller Stand: Phase 1 – Monitoring & Kuratierung.
+Energy-aware detection, monitoring and (later) tariff-/PV-optimized control for
+Home Assistant. Current status: Phase 1 – monitoring and curation.
 
-Konzept: siehe [`EnergyAgent_Konzept.md`](EnergyAgent_Konzept.md).
+Concept (German): see [`EnergyAgent_Konzept.md`](EnergyAgent_Konzept.md).
 
-## Bedienung (Phase 1)
+## Usage (Phase 1)
 
-Die UI zeigt die erkannten Entitäten gruppiert nach Energierolle. Konfig-/
-Diagnose-Entitäten (LEDs, Flags, Setpoints, Geräte-Batteriestände) werden
-automatisch ausgeblendet. Messgrößen (PV/Netz/Batterie/Leistung/Energie) sind
-standardmäßig einbezogen, steuerbare Kandidaten (Schalter/Lampen/Klima) nicht –
-diese per Haken aktivieren. Über das Rollen-Dropdown lässt sich eine
-Fehlklassifizierung korrigieren. Die Auswahl wird in `overrides.json`
-(neben der History-DB, i. d. R. `/data`) gespeichert und überlebt Neustarts.
+The UI shows the detected entities grouped by energy role. Config/diagnostic
+entities (LEDs, flags, setpoints, device battery levels) are hidden
+automatically. Measurements (PV/grid/battery/power/energy) are included by
+default, controllable candidates (switches/lights/climate) are not — enable
+those with the checkbox. Use the role dropdown to fix a misclassification.
+The selection is stored in `overrides.json` (next to the history DB, usually
+`/data`) and survives restarts.
 
-Umschalter „nur einbezogene / alle Kandidaten" blendet die noch nicht
-einbezogenen Vorschläge ein.
+The "included only / all candidates" toggle reveals the not-yet-included
+suggestions.
 
-## Testumgebung ohne echte PV/Batterie
+## Test environment without real PV/battery
 
-Wenn das Test-HA keine PV-/Speicher-Anlage kennt, simulieren die
-Template-Sensoren in [`examples/ha_sim_sensors.yaml`](examples/ha_sim_sensors.yaml)
-einen realistischen Tagesverlauf (PV, Hausverbrauch, Batterie-SoC/-Leistung,
-Netz). Einbindung: Datei-Kopf in `examples/ha_sim_sensors.yaml`.
+If the test HA has no PV/storage system, the template sensors in
+[`examples/ha_sim_sensors.yaml`](examples/ha_sim_sensors.yaml) simulate a
+realistic daily profile (PV, house load, battery SoC/power, grid). See the file
+header for how to include them.
 
-## Zwei Betriebsarten
+## Two run modes
 
-### A) Standalone-Container (für HA Container / Entwicklung)
+### A) Standalone container (for HA Container / development)
 
-Empfohlen, wenn HA selbst als Container läuft (kein Supervisor, keine Add-ons).
-Smart Energy Agent verbindet sich per Websocket + Long-Lived-Token.
+Recommended when HA itself runs as a container (no Supervisor, no add-ons).
+Smart Energy Agent connects via websocket + long-lived token.
 
 ```bash
-cp .env.example .env          # HA_URL und HA_TOKEN eintragen
+cp .env.example .env          # set HA_URL and HA_TOKEN
 docker compose up -d --build
 # UI: http://<host>:7790
 ```
 
-Token erzeugen: HA → Profil → „Long-lived access tokens" → „Create token".
+Create a token: HA → profile → "Long-lived access tokens" → "Create token".
 
-`HA_URL` je nach Setup:
-- gleiche Compose-/Docker-Netzwerk-Umgebung: `ws://homeassistant:8123/api/websocket`
-- HA auf dem Docker-Host: `ws://host.docker.internal:8123/api/websocket`
-- feste IP: `ws://192.168.178.144:8123/api/websocket`
+`HA_URL` depending on your setup:
+- same compose/docker network: `ws://homeassistant:8123/api/websocket`
+- HA on the docker host: `ws://host.docker.internal:8123/api/websocket`
+- fixed IP: `ws://192.168.178.144:8123/api/websocket`
 
-Läuft HA in einem anderen Compose-Projekt, den Smart Energy Agent an dessen
-Netzwerk hängen (siehe auskommentierte `networks:`-Abschnitte in `docker-compose.yml`).
+If HA runs in another compose project, attach Smart Energy Agent to its network
+(see the commented `networks:` sections in `docker-compose.yml`).
 
-### B) Home-Assistant-Add-on (für HA OS / Supervised)
+### B) Home Assistant App / add-on (for HA OS / Supervised)
 
-Repository-Ordner als lokales Add-on einbinden und über den Supervisor bauen.
-Nutzt Ingress (`config.yaml`, `Dockerfile`) und den `SUPERVISOR_TOKEN`
-automatisch – keine manuelle Token-/URL-Konfiguration nötig.
+Add the repository as an app repository and install via the Supervisor. Uses
+Ingress (`config.yaml`, `Dockerfile`) and the `SUPERVISOR_TOKEN` automatically —
+no manual token/URL configuration needed. Publishing is automated, see
+[`DEPLOYMENT.md`](DEPLOYMENT.md).
 
-## Lokaler Lauf ohne Docker (Entwicklung)
+## Local run without Docker (development)
 
 ```bash
 pip install -r requirements.txt
@@ -65,13 +66,13 @@ python -m smart_energy_agent.main
 # UI: http://localhost:7790
 ```
 
-## Konfiguration (Umgebungsvariablen)
+## Configuration (environment variables)
 
-| Variable | Default | Bedeutung |
+| Variable | Default | Meaning |
 |---|---|---|
-| `HA_URL` | `ws://localhost:8123/api/websocket` | HA-Websocket (Standalone) |
-| `HA_TOKEN` | – | Long-Lived-Token (Standalone) |
-| `SUPERVISOR_TOKEN` | – | automatisch im Add-on-Betrieb |
+| `HA_URL` | `ws://localhost:8123/api/websocket` | HA websocket (standalone) |
+| `HA_TOKEN` | – | long-lived token (standalone) |
+| `SUPERVISOR_TOKEN` | – | provided automatically when run as an app |
 | `SEA_LOG_LEVEL` | `info` | debug/info/warning/error |
-| `SEA_HISTORY_DB` | `/data/smart_energy_agent.db` | SQLite-Pfad (Volume) |
-| `SEA_HISTORY_DAYS` | `90` | Aufbewahrung Rohdaten (Tage) |
+| `SEA_HISTORY_DB` | `/data/smart_energy_agent.db` | SQLite path (volume) |
+| `SEA_HISTORY_DAYS` | `90` | raw history retention (days) |
