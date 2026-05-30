@@ -1,34 +1,50 @@
-name: Build & publish app
+name: Smart Energy Agent Release Manager
 
-# Builds multi-arch images with the current Home Assistant builder composite
-# actions, publishes a generic multi-arch manifest to GHCR, and pushes the app
-# metadata to the public install repository (SAE_App).
-# Docs: https://developers.home-assistant.io/docs/apps/publishing
+# Shows the chosen target in the Actions list.
+run-name: >-
+  Release: ${{ github.event_name == 'workflow_dispatch' && inputs.target
+  || (github.event_name == 'release' && 'Public' || 'Beta (auto)') }}
+
+# Public  -> branch main, slug smart_energy_agent,      image smart_energy_agent
+# Beta    -> branch beta, slug smart_energy_agent_beta, image smart_energy_agent_beta
 on:
+  push:
+    branches: [main]          # every commit -> Beta
   release:
-    types: [published]
+    types: [published]        # published release -> Public
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Build target"
+        required: true
+        default: "Beta"
+        type: choice
+        options:
+          - "Beta"
+          - "Public"
 
 permissions:
   contents: read
 
 env:
   APP_REPO: dneprojects/SAE_App
-  ADDON_SLUG: smart_energy_agent
+  ADDON_DIR: smart_energy_agent
 
 jobs:
   prepare:
-    name: Prepare
+    name: Prepare (${{ steps.channel.outputs.mode }})
     runs-on: ubuntu-latest
     outputs:
       architectures: ${{ steps.info.outputs.architectures }}
       build_matrix: ${{ steps.matrix.outputs.matrix }}
-      image_name: ${{ steps.normalize.outputs.image_name }}
       registry_prefix: ${{ steps.normalize.outputs.registry_prefix }}
-      version: ${{ steps.normalize.outputs.version }}
-      name: ${{ steps.normalize.outputs.name }}
       description: ${{ steps.normalize.outputs.description }}
       url: ${{ steps.normalize.outputs.url }}
+      version: ${{ steps.channel.outputs.version }}
+      branch: ${{ steps.channel.outputs.branch }}
+      slug: ${{ steps.channel.outputs.slug }}
+      appname: ${{ steps.channel.outputs.appname }}
+      image_name: ${{ steps.channel.outputs.image_name }}
     steps:
       - name: Check out the repository
         uses: actions/checkout@v4
@@ -43,14 +59,32 @@ jobs:
         id: normalize
         run: |
           image=${{ steps.info.outputs.image }}
-          echo "image_name=${image##*/}" >> "$GITHUB_OUTPUT"
           echo "registry_prefix=${image%/*}" >> "$GITHUB_OUTPUT"
-          echo "version=${{ steps.info.outputs.version }}" >> "$GITHUB_OUTPUT"
-          echo "name=${{ steps.info.outputs.name }}" >> "$GITHUB_OUTPUT"
           echo "description=${{ steps.info.outputs.description }}" >> "$GITHUB_OUTPUT"
           url=${{ steps.info.outputs.url }}
           if [[ -n "$url" && "$url" != "null" ]]; then
             echo "url=${url}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine channel (Public vs Beta)
+        id: channel
+        run: |
+          base="${{ steps.info.outputs.version }}"
+          name="${{ steps.info.outputs.name }}"
+          if [[ "${{ github.event_name }}" == "release" || "${{ inputs.target }}" == "Public" ]]; then
+            echo "mode=Public" >> "$GITHUB_OUTPUT"
+            echo "version=${base}" >> "$GITHUB_OUTPUT"
+            echo "branch=main" >> "$GITHUB_OUTPUT"
+            echo "slug=smart_energy_agent" >> "$GITHUB_OUTPUT"
+            echo "image_name=smart_energy_agent" >> "$GITHUB_OUTPUT"
+            echo "appname=${name}" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=Beta" >> "$GITHUB_OUTPUT"
+            echo "version=${base}-beta.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+            echo "branch=beta" >> "$GITHUB_OUTPUT"
+            echo "slug=smart_energy_agent_beta" >> "$GITHUB_OUTPUT"
+            echo "image_name=smart_energy_agent_beta" >> "$GITHUB_OUTPUT"
+            echo "appname=${name} (Beta)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Prepare build matrix
@@ -58,7 +92,7 @@ jobs:
         uses: home-assistant/builder/actions/prepare-multi-arch-matrix@2026.03.2
         with:
           architectures: ${{ steps.info.outputs.architectures }}
-          image-name: ${{ steps.normalize.outputs.image_name }}
+          image-name: ${{ steps.channel.outputs.image_name }}
           registry-prefix: ${{ steps.normalize.outputs.registry_prefix }}
 
   build:
@@ -90,7 +124,7 @@ jobs:
             latest
           labels: |
             io.hass.type=app
-            io.hass.name=${{ needs.prepare.outputs.name }}
+            io.hass.name=${{ needs.prepare.outputs.appname }}
             io.hass.description=${{ needs.prepare.outputs.description }}
             ${{ needs.prepare.outputs.url && format('io.hass.url={0}', needs.prepare.outputs.url) || '' }}
           push: true
@@ -116,9 +150,15 @@ jobs:
           registry-prefix: ${{ needs.prepare.outputs.registry_prefix }}
 
   publish-metadata:
-    name: Publish metadata to SAE_App
-    needs: manifest
+    name: Publish to SAE_App (${{ needs.prepare.outputs.branch }})
+    needs: [prepare, manifest]
     runs-on: ubuntu-latest
+    env:
+      BRANCH: ${{ needs.prepare.outputs.branch }}
+      SLUG: ${{ needs.prepare.outputs.slug }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      APPNAME: ${{ needs.prepare.outputs.appname }}
+      IMAGE_REF: ${{ needs.prepare.outputs.registry_prefix }}/${{ needs.prepare.outputs.image_name }}
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -132,12 +172,17 @@ jobs:
           token: ${{ secrets.APP_REPO_TOKEN }}
           path: app
 
+      - name: Switch to target branch
+        run: |
+          cd app
+          git fetch origin "${BRANCH}" || true
+          git switch "${BRANCH}" 2>/dev/null || git switch -c "${BRANCH}"
+
       - name: Assemble app metadata
         run: |
           set -e
-          dest="app/${ADDON_SLUG}"
+          dest="app/${ADDON_DIR}"
           mkdir -p "$dest"
-          # Install repo only needs metadata (image is prebuilt) - no source/Dockerfile.
           cp src/config.yaml "$dest/config.yaml"
           cp src/README.md "$dest/README.md" 2>/dev/null || true
           cp src/CHANGELOG.md "$dest/CHANGELOG.md" 2>/dev/null || true
@@ -146,14 +191,19 @@ jobs:
           rm -rf "$dest/translations"
           cp -r src/translations "$dest/translations" 2>/dev/null || true
           cp src/repository.yaml app/repository.yaml
+          # Stamp channel-specific image, slug, name and version into config.yaml.
+          sed -i -E "s#^image:.*#image: \"${IMAGE_REF}\"#" "$dest/config.yaml"
+          sed -i -E "s/^slug:.*/slug: ${SLUG}/" "$dest/config.yaml"
+          sed -i -E "s/^name:.*/name: ${APPNAME}/" "$dest/config.yaml"
+          sed -i -E "s/^version:.*/version: \"${VERSION}\"/" "$dest/config.yaml"
 
       - name: Commit & push
         run: |
           cd app
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "SmartEnergyAgent Bot"
+          git config user.email "bot@smartenergyagent.local"
           git add -A
-          git commit -m "Publish ${ADDON_SLUG} $(date -u +%Y-%m-%dT%H:%M:%SZ)" || {
+          git commit -m "Release ${{ needs.prepare.outputs.slug }} ${VERSION} (${BRANCH})" || {
             echo "No changes to publish"; exit 0;
           }
-          git push
+          git push origin "${BRANCH}"

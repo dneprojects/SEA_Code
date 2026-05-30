@@ -4,4 +4,4 @@ build_from:
   amd64: ghcr.io/home-assistant/amd64-base:3.19
 labels:
   org.opencontainers.image.title: Smart Energy Agent
-  org.opencontainers.image.source: https://github.com/dneprojects/SAE_code
+  org.opencontainers.image.source: https://github.com/dneprojects/SAE_Code
