@@ -32,7 +32,7 @@ env:
 
 jobs:
   prepare:
-    name: Prepare (${{ steps.channel.outputs.mode }})
+    name: Prepare
     runs-on: ubuntu-latest
     outputs:
       architectures: ${{ steps.info.outputs.architectures }}
@@ -150,7 +150,7 @@ jobs:
           registry-prefix: ${{ needs.prepare.outputs.registry_prefix }}
 
   publish-metadata:
-    name: Publish to SAE_App (${{ needs.prepare.outputs.branch }})
+    name: Publish to SAE_App
     needs: [prepare, manifest]
     runs-on: ubuntu-latest
     env:
