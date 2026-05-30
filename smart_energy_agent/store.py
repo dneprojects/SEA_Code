@@ -22,6 +22,7 @@ from .models import (
     EnergyEntity, EnergyRole, ROLE_LABELS, ROLE_ORDER,
     CONSUMER_ROLES, DEFAULT_CONSUMER, CONSUMER_FIELD_TYPES,
     Device, DeviceType, DEVICE_TYPE_LABELS, DEVICE_TYPE_ORDER,
+    DEFAULT_STRATEGY, STRATEGY_VALUES,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class Store:
             "battery_invert": False,
             "retention_days": None,   # None -> use env/default
             "control_enabled": False,  # master switch for PV-surplus control (safety: off)
+            "strategy": DEFAULT_STRATEGY,  # optimization strategy (selection only for now)
             # Electricity tariff: purchase price + feed-in compensation.
             "tariff": {
                 "mode": "static",          # static | ht_nt | dynamic
@@ -155,6 +157,8 @@ class Store:
                 self._settings["retention_days"] = int(rd) if rd not in (None, "") else None
             except (TypeError, ValueError):
                 pass
+        if patch.get("strategy") in STRATEGY_VALUES:
+            self._settings["strategy"] = patch["strategy"]
         if isinstance(patch.get("tariff"), dict):
             t = self._settings.setdefault("tariff", {})
             tp = patch["tariff"]

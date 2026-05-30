@@ -249,6 +249,9 @@
       <!-- Grundeinstellungen -->
       <section id="view-basic" hidden>
         <div class="panel-title">Grundeinstellungen</div>
+        <div class="setrow"><label>Optimierungsstrategie</label>
+          <select id="set-strategy" onchange="strategyChanged()"></select></div>
+        <div class="setrow"><span class="sub" id="set-strategy-desc"></span></div>
         <div class="setrow"><label>Netz-Vorzeichen invertieren</label>
           <input type="checkbox" id="set-grid"> <span class="sub">+ soll Bezug bedeuten</span></div>
         <div class="setrow"><label>Batterie-Vorzeichen invertieren</label>
@@ -614,9 +617,19 @@
     }
 
     // ---------- Einstellungen ----------
+    let strategiesList = [];
+    function strategyChanged() {
+      const v = document.getElementById("set-strategy").value;
+      const x = strategiesList.find(o => o.value === v);
+      document.getElementById("set-strategy-desc").textContent = x ? x.desc : "";
+    }
     async function loadSettings() {
       let s = {};
       try { s = await fetch(api("/api/settings")).then(r=>r.json()); } catch(e) {}
+      strategiesList = s.strategies || [];
+      document.getElementById("set-strategy").innerHTML = strategiesList.map(x =>
+        `<option value="${x.value}"${x.value===s.strategy?" selected":""}>${x.label}</option>`).join("");
+      strategyChanged();
       document.getElementById("set-grid").checked = !!s.grid_invert;
       document.getElementById("set-batt").checked = !!s.battery_invert;
       document.getElementById("set-ret").value = (s.retention_days==null?"":s.retention_days);
@@ -632,6 +645,7 @@
     }
     async function saveSettings() {
       const body = {
+        strategy: document.getElementById("set-strategy").value,
         grid_invert: document.getElementById("set-grid").checked,
         battery_invert: document.getElementById("set-batt").checked,
         retention_days: document.getElementById("set-ret").value || null,

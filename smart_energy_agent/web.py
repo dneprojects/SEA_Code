@@ -16,6 +16,7 @@ from . import const
 from .models import (
     ROLE_LABELS, ROLE_ORDER, CONSUMER_TYPES, CONTROL_MODES, COMBINE_MODES,
     DEVICE_TYPE_LABELS, DEVICE_TYPE_ORDER, SUBROLE_LABELS, SUBROLE_ORDER,
+    STRATEGIES,
 )
 from .store import Store
 
@@ -137,6 +138,7 @@ class WebServer:
             "total": s["total"],
             "included": s["included"],
             "current_price_ct": self._store.current_price_ct(),
+            "strategies": STRATEGIES,
         })
         return web.json_response(data)
 

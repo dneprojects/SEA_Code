@@ -231,3 +231,18 @@ class Device:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+# --- optimization strategies (global) ----------------------------------------
+STRATEGIES: list[dict[str, str]] = [
+    {"value": "hybrid", "label": "Hybrid / saisonadaptiv (empfohlen)",
+     "desc": "Mischt Eigenverbrauch und Tarifoptimierung je nach Saison und PV-Prognose automatisch."},
+    {"value": "self_consumption", "label": "Eigenverbrauch maximieren",
+     "desc": "PV-Überschuss zuerst in Batterie/thermische Lasten, Einspeisung zuletzt. Sommer-typisch."},
+    {"value": "cost", "label": "Kosten minimieren (dynamischer Tarif)",
+     "desc": "Lasten und Batterieladung in günstige Preisfenster legen, teure Stunden meiden. Winter-typisch."},
+    {"value": "autarky", "label": "Autarkie / CO₂",
+     "desc": "Wie Eigenverbrauch, aber Zielgröße ist Autarkiequote bzw. CO₂ statt Kosten."},
+]
+DEFAULT_STRATEGY = "hybrid"
+STRATEGY_VALUES = {s["value"] for s in STRATEGIES}
