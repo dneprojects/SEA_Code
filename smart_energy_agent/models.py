@@ -151,7 +151,9 @@ class DeviceType(str, Enum):
     WASHING_MACHINE = "washing_machine"
     DRYER = "dryer"
     DISHWASHER = "dishwasher"
-    EV_CHARGER = "ev_charger"      # wallbox / EV
+    EV_CHARGER = "ev_charger"      # wallbox / charging station
+    VEHICLE = "vehicle"            # electric car (has its own state of charge)
+    THERMOSTAT = "thermostat"      # room thermostat (e.g. setback when away)
     CONSUMER = "consumer"          # other controllable load
     OTHER = "other"
 
@@ -165,22 +167,25 @@ DEVICE_TYPE_LABELS: dict[str, str] = {
     DeviceType.WASHING_MACHINE: "Waschmaschine",
     DeviceType.DRYER: "Wäschetrockner",
     DeviceType.DISHWASHER: "Geschirrspüler",
-    DeviceType.EV_CHARGER: "Wallbox / E-Auto",
+    DeviceType.EV_CHARGER: "Wallbox / Ladestation",
+    DeviceType.VEHICLE: "Elektrofahrzeug",
+    DeviceType.THERMOSTAT: "Raumthermostat",
     DeviceType.CONSUMER: "Sonstiger Verbraucher",
     DeviceType.OTHER: "Sonstiges Gerät",
 }
 
 DEVICE_TYPE_ORDER: list[str] = [
     DeviceType.PV, DeviceType.BATTERY, DeviceType.GRID, DeviceType.HEAT_PUMP,
-    DeviceType.WATER_HEATER, DeviceType.EV_CHARGER, DeviceType.WASHING_MACHINE,
-    DeviceType.DRYER, DeviceType.DISHWASHER, DeviceType.CONSUMER, DeviceType.OTHER,
+    DeviceType.WATER_HEATER, DeviceType.EV_CHARGER, DeviceType.VEHICLE,
+    DeviceType.WASHING_MACHINE, DeviceType.DRYER, DeviceType.DISHWASHER,
+    DeviceType.THERMOSTAT, DeviceType.CONSUMER, DeviceType.OTHER,
 ]
 
 # Device types that are included in the energy model by default.
 DEVICE_DEFAULT_INCLUDE = {
     DeviceType.PV, DeviceType.BATTERY, DeviceType.GRID, DeviceType.HEAT_PUMP,
-    DeviceType.WATER_HEATER, DeviceType.EV_CHARGER, DeviceType.WASHING_MACHINE,
-    DeviceType.DRYER, DeviceType.DISHWASHER,
+    DeviceType.WATER_HEATER, DeviceType.EV_CHARGER, DeviceType.VEHICLE,
+    DeviceType.WASHING_MACHINE, DeviceType.DRYER, DeviceType.DISHWASHER,
 }
 
 

@@ -236,7 +236,14 @@ HEATPUMP_HINTS = ("heat pump", "heatpump", "wärmepump", "waermepump", "aquarea"
 WATERHEATER_HINTS = ("heizstab", "boiler", "warmwasser", "water heater", "dhw",
                      "immersion", "elwa")
 EV_HINTS = ("wallbox", "wall box", "charger", "evse", "go-e", "goe", "keba",
-            "easee", "wallbe", "e-auto", "ev charge", "openevse")
+            "easee", "wallbe", "ev charge", "openevse", "ladestation")
+# Identifiers for the *vehicle* itself (reports its own state of charge), as
+# opposed to the wallbox/charger. Used together with an SoC sub-role.
+VEHICLE_HINTS = ("vehicle", "fahrzeug", "kfz", "e-auto", "elektroauto", "car battery",
+                 "tesla", "polestar", "ioniq", "enyaq", "renault zoe", " zoe",
+                 "leaf", "model 3", "model y", "model s", "model x",
+                 "id.3", "id.4", "id.5", "id.7", "bev", "kona electric",
+                 "e-up", "mg4", "smart car", "we connect", "myskoda")
 PV_HINTS_DEV = ("pv", "solar", "photovolt", "inverter", "wechselrichter",
                 "fronius", "solaredge", "kostal", "huawei", "growatt")
 GRID_HINTS_DEV = ("grid", "netz", "smartmeter", "smart meter", "powermeter",
@@ -302,12 +309,22 @@ def classify_device(meta: dict[str, Any], ents: list[dict[str, Any]]) -> tuple[s
         return DeviceType.DRYER, 0.8, "Namensmuster Trockner"
     if m(DISH_HINTS):
         return DeviceType.DISHWASHER, 0.8, "Namensmuster Geschirrspüler"
+    # Electric vehicle: its own state of charge + a vehicle identifier. Checked
+    # before the home battery so a car's SoC is not mistaken for a stationary
+    # storage. A charger without SoC stays an EV charger (below).
+    if has_soc and m(VEHICLE_HINTS):
+        return DeviceType.VEHICLE, 0.85, "Fahrzeug mit Ladezustand"
     if has_soc and (has_power or m(BATTERY_HINTS_DEV)):
         return DeviceType.BATTERY, 0.85, "Ladezustand + Leistung"
     if m(BATTERY_HINTS_DEV) and (has_power or has_soc):
         return DeviceType.BATTERY, 0.75, "Namensmuster Batterie"
-    if m(HEATPUMP_HINTS) or (has_climate and has_temp):
-        return DeviceType.HEAT_PUMP, 0.8 if m(HEATPUMP_HINTS) else 0.6, "Wärmepumpe (Klima + Temperatur)"
+    # Heat pump: a name hint, OR climate/temperature combined with a real
+    # electrical load (power/energy). Climate+temperature *without* power is a
+    # room thermostat (radiator/floor valve), handled separately below.
+    if m(HEATPUMP_HINTS):
+        return DeviceType.HEAT_PUMP, 0.8, "Namensmuster Wärmepumpe"
+    if has_climate and has_temp and (has_power or has_energy):
+        return DeviceType.HEAT_PUMP, 0.6, "Klima + Temperatur + Leistung"
     if m(WATERHEATER_HINTS) or (has_temp and has_switch):
         return DeviceType.WATER_HEATER, 0.8 if m(WATERHEATER_HINTS) else 0.55, "Heizstab/Warmwasser"
     if m(EV_HINTS):
@@ -316,6 +333,10 @@ def classify_device(meta: dict[str, Any], ents: list[dict[str, Any]]) -> tuple[s
         return DeviceType.PV, 0.8, "PV-Namensmuster + Leistung"
     if m(GRID_HINTS_DEV) and has_power:
         return DeviceType.GRID, 0.75, "Netz-Namensmuster + Leistung"
+    # Room thermostat: a climate entity (or temperature setpoint) with no
+    # electrical load. Useful for absence setback, but not a heat pump/battery.
+    if has_climate or (has_temp and has_number and not has_power):
+        return DeviceType.THERMOSTAT, 0.6, "Raumthermostat (Klima ohne Last)"
     if has_switch or has_number:
         return DeviceType.CONSUMER, 0.5, "Schalt-/regelbares Gerät"
     return DeviceType.OTHER, 0.3, "nicht eindeutig"
