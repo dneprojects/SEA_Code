@@ -201,8 +201,8 @@ jobs:
           cp src/config.yaml "$dest/config.yaml"
           cp src/README.md "$dest/README.md" 2>/dev/null || true
           cp src/CHANGELOG.md "$dest/CHANGELOG.md" 2>/dev/null || true
-          cp src/icon.png "$dest/icon.png" 2>/dev/null || true
-          cp src/logo.png "$dest/logo.png" 2>/dev/null || true
+          cp src/web/icon.png "$dest/icon.png" 2>/dev/null || true
+          cp src/web/logo.png "$dest/logo.png" 2>/dev/null || true
           rm -rf "$dest/translations"
           cp -r src/translations "$dest/translations" 2>/dev/null || true
           cp src/repository.yaml app/repository.yaml
