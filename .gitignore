@@ -1,4 +1,22 @@
+# Python
 __pycache__/
 *.pyc
+*.pyo
+.venv/
+venv/
+
+# Runtime data written by the app (do not commit / do not ship in the image)
 *.db
+dev_history.db
+overrides.json
+settings.json
+consumers.json
 /data/
+
+# Local dev / env
+.env
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db

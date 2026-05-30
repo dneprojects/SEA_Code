@@ -47,7 +47,7 @@ jobs:
       image_name: ${{ steps.channel.outputs.image_name }}
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Get app information
         id: info
@@ -62,6 +62,11 @@ jobs:
           DESCRIPTION: ${{ steps.info.outputs.description }}
           URL: ${{ steps.info.outputs.url }}
         run: |
+          # info outputs may be wrapped in quotes -> strip surrounding quotes.
+          strip() { local v="$1"; v="${v%\"}"; v="${v#\"}"; printf '%s' "$v"; }
+          IMAGE="$(strip "$IMAGE")"
+          DESCRIPTION="$(strip "$DESCRIPTION")"
+          URL="$(strip "$URL")"
           echo "registry_prefix=${IMAGE%/*}" >> "$GITHUB_OUTPUT"
           echo "description=${DESCRIPTION}" >> "$GITHUB_OUTPUT"
           if [[ -n "$URL" && "$URL" != "null" ]]; then
@@ -77,6 +82,10 @@ jobs:
           TARGET: ${{ inputs.target }}
           RUN: ${{ github.run_number }}
         run: |
+          # info outputs may be wrapped in quotes -> strip surrounding quotes.
+          strip() { local v="$1"; v="${v%\"}"; v="${v#\"}"; printf '%s' "$v"; }
+          BASE="$(strip "$BASE")"
+          NAME="$(strip "$NAME")"
           if [[ "$EVENT" == "release" || "$TARGET" == "Public" ]]; then
             echo "mode=Public" >> "$GITHUB_OUTPUT"
             echo "version=${BASE}" >> "$GITHUB_OUTPUT"
@@ -114,7 +123,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.build_matrix) }}
     steps:
       - name: Check out the repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           persist-credentials: false
 
@@ -167,12 +176,12 @@ jobs:
       IMAGE_REF: ${{ needs.prepare.outputs.registry_prefix }}/${{ needs.prepare.outputs.image_name }}
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: src
 
       - name: Check out install repo (SAE_App)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ env.APP_REPO }}
           token: ${{ secrets.APP_REPO_TOKEN }}
