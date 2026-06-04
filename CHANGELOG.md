@@ -20,6 +20,9 @@
   — so power slots get pre-selected even when only energy entities are set up.
 - Entity selection moved into a **popup dialog** (search + ranked list) opened by
   an "Ändern/Wählen" button, keeping the setup page clean.
+- Suggestions now include **diagnostic/config entities** (heat-pump powers are
+  often diagnostic) — previously hidden, so search couldn't find them; they rank
+  slightly below primary entities. Same for device-based power derivation.
 - Wizard: **free, user-named consumers** ("Weitere Verbraucher", e.g. "Allgemein",
   "Wohnungen") — each with its own power/energy entity (multi). They appear as
   extra nodes in the power-flow diagram and as groups in the device view.

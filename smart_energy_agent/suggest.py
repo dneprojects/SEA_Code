@@ -74,8 +74,6 @@ def rank_for_slot(
         meta = meta_by.get(eid, {})
         if meta.get("disabled_by") or meta.get("hidden_by"):
             continue
-        if meta.get("entity_category") in discovery.SKIP_CATEGORIES:
-            continue
         attrs = st.get("attributes", {}) or {}
         domain = _domain(eid)
         device_class = attrs.get("device_class")
@@ -103,6 +101,12 @@ def rank_for_slot(
             score += DEVICE_HINT_BONUS
         if q:
             score += QUERY_BONUS
+        # Diagnostic/config entities are kept (heat-pump power is often a
+        # diagnostic sensor) but ranked slightly lower than primary ones.
+        ecat = meta.get("entity_category")
+        if ecat in ("diagnostic", "config"):
+            score -= 2.0
+            reasons.append("Diagnose" if ecat == "diagnostic" else "Konfig")
 
         out.append({
             "entity_id": eid,
@@ -245,8 +249,6 @@ def derive_on_device(
             continue
         m = meta_by.get(eid, {})
         if m.get("device_id") != did or m.get("disabled_by") or m.get("hidden_by"):
-            continue
-        if m.get("entity_category") in discovery.SKIP_CATEGORIES:
             continue
         attrs = st.get("attributes", {}) or {}
         if not _matches_unit_group(_domain(eid), attrs.get("device_class"),

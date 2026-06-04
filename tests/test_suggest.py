@@ -67,6 +67,17 @@ def test_prefs_entity_boosted_to_top() -> None:
     assert "Energy-Dashboard" in cands[0]["reason"]
 
 
+def test_diagnostic_entities_are_included() -> None:
+    # Heat-pump powers are often diagnostic entities — they must still appear.
+    state = {"entity_id": "sensor.wp1_power", "state": "500",
+             "attributes": {"friendly_name": "WP1 Leistung", "device_class": "power",
+                            "unit_of_measurement": "W"}}
+    meta = {"entity_id": "sensor.wp1_power", "device_id": "d", "entity_category": "diagnostic"}
+    cands = rank_for_slot([state], [meta], [], [], slot=POWER, query="wp1")
+    assert [c["entity_id"] for c in cands] == ["sensor.wp1_power"]
+    assert "Diagnose" in cands[0]["reason"]
+
+
 def test_query_filters_by_name() -> None:
     states, ent_reg, dev_reg, area_reg = _build()
     cands = rank_for_slot(states, ent_reg, dev_reg, area_reg, slot=POWER, query="shelly")
