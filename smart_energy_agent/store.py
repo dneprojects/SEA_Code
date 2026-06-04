@@ -204,6 +204,43 @@ class Store:
     def tariff(self) -> dict[str, Any]:
         return dict(self._settings.get("tariff", {}))
 
+    def has_energy_prefs(self) -> bool:
+        return bool(self._energy_prefs.get("energy_sources"))
+
+    def tariff_prefill(self) -> dict[str, Any]:
+        """Tariff defaults from the HA Energy dashboard (grid source prices).
+
+        The dashboard stores prices per kWh in the configured currency
+        (e.g. 0.30); convert to ct/kWh (×100).
+        """
+        out: dict[str, Any] = {}
+
+        def ct(value: Any) -> Optional[float]:
+            try:
+                return round(float(value) * 100.0, 2)
+            except (TypeError, ValueError):
+                return None
+
+        for s in (self._energy_prefs.get("energy_sources") or []):
+            if not isinstance(s, dict) or s.get("type") != "grid":
+                continue
+            if s.get("entity_energy_price"):
+                out.setdefault("price_entity", s["entity_energy_price"])
+            if s.get("number_energy_price") is not None and ct(s["number_energy_price"]) is not None:
+                out.setdefault("price_ct", ct(s["number_energy_price"]))
+            if s.get("number_energy_price_export") is not None and ct(s["number_energy_price_export"]) is not None:
+                out.setdefault("feed_in_ct", ct(s["number_energy_price_export"]))
+            for f0 in (s.get("flow_from") or []):
+                if isinstance(f0, dict):
+                    if f0.get("entity_energy_price"):
+                        out.setdefault("price_entity", f0["entity_energy_price"])
+                    if f0.get("number_energy_price") is not None and ct(f0["number_energy_price"]) is not None:
+                        out.setdefault("price_ct", ct(f0["number_energy_price"]))
+            for t0 in (s.get("flow_to") or []):
+                if isinstance(t0, dict) and t0.get("number_energy_price") is not None and ct(t0["number_energy_price"]) is not None:
+                    out.setdefault("feed_in_ct", ct(t0["number_energy_price"]))
+        return out
+
     def feed_in_ct(self) -> Optional[float]:
         return self._settings.get("tariff", {}).get("feed_in_ct")
 

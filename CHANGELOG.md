@@ -2,6 +2,11 @@
 
 ## 0.2.0
 
+- UI cleanup: removed the "Auswahl der Entitäten" view; **Einrichtung** moved
+  under **Einstellungen** (Einstellungen → Grundeinstellungen / Einrichtung).
+  Tariffs merged into Grundeinstellungen and **pre-filled from the Energy
+  dashboard** (price / feed-in / dynamic price entity) when not yet entered.
+  Removed the global sign-invert checkboxes (per-instance invert is in the wizard).
 - Wizard redesigned to a uniform **instance pattern**: setup starts empty with
   "… hinzufügen" buttons; every genus (PV, battery, heat pump, heating rod,
   wallbox, consumer) is an addable, renameable, removable instance — only the

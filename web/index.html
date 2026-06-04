@@ -148,16 +148,14 @@
   <div class="layout">
     <nav class="sidebar">
       <a href="#" data-view="dashboard" class="active" onclick="showView('dashboard');return false;">Dashboard</a>
-      <a href="#" data-view="setup" onclick="showView('setup');return false;">Einrichtung</a>
       <a href="#" data-view="devices" onclick="showView('devices');return false;">Geräte</a>
       <a href="#" data-view="history" onclick="showView('history');return false;">Verlauf</a>
       <a href="#" data-view="forecast" onclick="showView('forecast');return false;">Prognose</a>
       <a href="#" data-view="savings" onclick="showView('savings');return false;">Einsparung</a>
       <a href="#" data-view="consumers" onclick="showView('consumers');return false;">Verbraucher</a>
-      <a href="#" class="parent" onclick="showView('settings');return false;">Einstellungen</a>
+      <a href="#" class="parent" onclick="showView('basic');return false;">Einstellungen</a>
       <a href="#" class="sub" data-view="basic" onclick="showView('basic');return false;">Grundeinstellungen</a>
-      <a href="#" class="sub" data-view="tariff" onclick="showView('tariff');return false;">Tarife</a>
-      <a href="#" class="sub" data-view="entities" onclick="showView('entities');return false;">Auswahl der Entitäten</a>
+      <a href="#" class="sub" data-view="setup" onclick="showView('setup');return false;">Einrichtung</a>
     </nav>
 
     <div class="content">
@@ -254,24 +252,12 @@
         <div id="consumers"></div>
       </section>
 
-      <!-- Einstellungen -->
-      <section id="view-settings" hidden>
-        <div class="panel-title">Einstellungen</div>
-        <p class="sub" style="margin:0 0 8px">Links ein Unterthema wählen — Grundeinstellungen oder Auswahl der Entitäten.</p>
-        <div class="panel-title">Status</div>
-        <table class="info-tbl"><tbody id="info-body"></tbody></table>
-      </section>
-
-      <!-- Grundeinstellungen -->
+      <!-- Grundeinstellungen (inkl. Tarife) -->
       <section id="view-basic" hidden>
         <div class="panel-title">Grundeinstellungen</div>
         <div class="setrow"><label>Optimierungsstrategie</label>
           <select id="set-strategy" onchange="strategyChanged()"></select></div>
         <div class="setrow"><span class="sub" id="set-strategy-desc"></span></div>
-        <div class="setrow"><label>Netz-Vorzeichen invertieren</label>
-          <input type="checkbox" id="set-grid"> <span class="sub">+ soll Bezug bedeuten</span></div>
-        <div class="setrow"><label>Batterie-Vorzeichen invertieren</label>
-          <input type="checkbox" id="set-batt"> <span class="sub">+ soll Laden bedeuten</span></div>
         <div class="setrow"><label>Aufbewahrung Historie (Tage)</label>
           <input type="number" id="set-ret" min="1" max="3650"> <span class="sub">leer = Standard</span></div>
         <div class="setrow"><label>PV-Prognose-Entität</label>
@@ -279,18 +265,15 @@
           <span class="sub">nur für Solcast/sonstige — Forecast.Solar wird automatisch erkannt</span></div>
         <div class="setrow"><button class="btn" onclick="saveSettings()">Speichern</button>
           <span id="set-msg" class="sub"></span></div>
-      </section>
 
-      <!-- Tarife -->
-      <section id="view-tariff" hidden>
         <div class="panel-title">Tarife — Bezugspreis &amp; Einspeisevergütung</div>
+        <p class="sub" id="t-prefill-hint" style="margin:0 0 6px"></p>
         <div class="setrow"><label>Tarifmodell</label>
           <select id="t-mode" onchange="tariffModeChanged()">
             <option value="static">Statisch (fester Preis)</option>
             <option value="ht_nt">HT/NT (Hoch-/Niedertarif)</option>
             <option value="dynamic">Dynamisch (HA-Entität)</option>
           </select></div>
-
         <div id="t-static">
           <div class="setrow"><label>Bezugspreis (ct/kWh)</label>
             <input type="number" id="t-price" step="0.1"></div>
@@ -309,29 +292,14 @@
             <input type="text" id="t-entity" placeholder="sensor.strompreis" style="width:240px"></div>
           <div class="setrow"><span class="sub">Aktueller Wert wird laufend aus dieser HA-Entität gelesen.</span></div>
         </div>
-
         <div class="setrow"><label>Einspeisevergütung (ct/kWh)</label>
           <input type="number" id="t-feedin" step="0.1"></div>
         <div class="setrow"><button class="btn" onclick="saveTariff()">Speichern</button>
           <span id="t-msg" class="sub"></span></div>
-
-        <div class="panel-title">Aktuell</div>
         <table class="info-tbl"><tbody id="t-info"></tbody></table>
-      </section>
 
-      <!-- Auswahl der Entitäten -->
-      <section id="view-entities" hidden>
-        <div class="panel-title">Auswahl der Entitäten</div>
-        <p class="sub" style="margin:0 0 8px">Haken = in Energiemodell einbeziehen; Rolle per Auswahl korrigieren. Auswahl wird gespeichert.</p>
-        <div class="controls">
-          <span>Anzeige:</span>
-          <span class="seg">
-            <button id="scope-included" class="active" onclick="setScope('included')">nur einbezogene</button>
-            <button id="scope-all" onclick="setScope('all')">alle Kandidaten</button>
-          </span>
-          <span id="scope-hint"></span>
-        </div>
-        <div id="groups"></div>
+        <div class="panel-title">Status</div>
+        <table class="info-tbl"><tbody id="info-body"></tbody></table>
       </section>
     </div>
   </div>
@@ -353,8 +321,6 @@
 
   <script>
     const api = (p) => p.replace(/^\//, "");
-    let scope = "included";
-    let roles = [];
     let view = "dashboard";
     let chartRange = "24h";
     let chartData = [];
@@ -382,12 +348,12 @@
 
     function showView(name) {
       view = name;
-      ["dashboard","setup","devices","history","forecast","savings","consumers","settings","basic","tariff","entities"].forEach(v => {
+      ["dashboard","setup","devices","history","forecast","savings","consumers","basic"].forEach(v => {
         document.getElementById("view-"+v).hidden = (v !== name);
       });
       document.querySelectorAll(".sidebar a").forEach(a =>
         a.classList.toggle("active", a.dataset.view === name));
-      const inSettings = ["settings","basic","tariff","entities"].includes(name);
+      const inSettings = ["basic","setup"].includes(name);
       const parent = document.querySelector(".sidebar a.parent");
       if (parent) parent.classList.toggle("active", inSettings);
       document.querySelectorAll(".sidebar a.sub").forEach(a =>
@@ -398,30 +364,10 @@
       if (name === "forecast") loadForecast();
       if (name === "savings") loadSavings();
       if (name === "consumers") loadConsumers();
-      if (name === "settings" || name === "basic") loadSettings();
-      if (name === "tariff") loadTariff();
-      if (name === "entities") refresh();
+      if (name === "basic") { loadSettings(); loadTariff(); }
     }
 
     // ---------- Dashboard ----------
-    async function loadRoles() {
-      try { roles = (await fetch(api("/api/roles")).then(r=>r.json())).roles || []; }
-      catch(e) { roles = []; }
-    }
-    function setScope(s) {
-      scope = s;
-      document.getElementById("scope-included").classList.toggle("active", s==="included");
-      document.getElementById("scope-all").classList.toggle("active", s==="all");
-      refresh();
-    }
-    async function sendOverride(entity_id, patch) {
-      try {
-        await fetch(api("/api/override"), { method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify(Object.assign({entity_id}, patch)) });
-      } catch(e) {}
-      refresh();
-    }
     function flowGridLabel(w) { if (w==null) return "–";
       return w>0 ? "→ "+fmtW(w) : (w<0 ? "← "+fmtW(-w) : "0 W"); }
     function flowBattLabel(w) { if (w==null) return "–";
@@ -500,46 +446,21 @@
       const dot = document.getElementById("ha-dot"), txt = document.getElementById("ha-text");
       dot.className = "dot "+(s.ha_connected?"ok":"bad");
       txt.textContent = s.ha_connected ? "verbunden mit HA "+(s.ha_version||"") : "nicht verbunden";
-      document.getElementById("scope-hint").textContent = s.included+" von "+s.total+" einbezogen";
       const ct = (x) => x!=null ? x+" ct" : "–";
       const metrics = [
-        { v:s.included+" / "+s.total, l:"einbezogen / erkannt" },
         { v:fmtW(s.pv_w), l:"PV-Erzeugung" }, { v:fmtW(s.grid_w), l:"Netz" }, { v:fmtW(s.battery_w), l:"Batterie" },
         { v:ct(s.current_price_ct), l:"Bezugspreis /kWh" }, { v:ct(s.feed_in_ct), l:"Einspeisung /kWh" },
       ];
       document.getElementById("summary").innerHTML = metrics.map(m =>
         `<div class="card"><div class="v">${m.v}</div><div class="l">${m.l}</div></div>`).join("");
     }
-    function roleSelect(en) {
-      const opts = roles.map(r => `<option value="${r.value}"${r.value===en.role?" selected":""}>${r.label}</option>`).join("");
-      return `<select onchange="sendOverride('${en.entity_id}', {role:this.value})">${opts}</select>`;
-    }
-    function renderGroups(groups) {
-      if (!groups.length) { document.getElementById("groups").innerHTML =
-        "<p style='color:var(--muted)'>Keine Entitäten in dieser Ansicht.</p>"; return; }
-      document.getElementById("groups").innerHTML = groups.map(g => `
-        <div class="panel-title">${g.label} <span class="count">${g.count}</span></div>
-        <table><thead><tr><th style="width:34px">✓</th><th>Name</th><th>Bereich</th>
-          <th class="num">Leistung</th><th class="num">Zustand</th><th>Rolle</th><th>Erkennung</th></tr></thead>
-          <tbody>${g.entities.map(en => `
-            <tr class="${en.include?"":"excluded"}">
-              <td><input type="checkbox" ${en.include?"checked":""} onchange="sendOverride('${en.entity_id}', {include:this.checked})"></td>
-              <td>${en.friendly_name}<div class="eid">${en.entity_id}</div></td>
-              <td>${en.area||"–"}</td>
-              <td class="num">${en.power_w!=null?fmtW(en.power_w):"–"}</td>
-              <td class="num">${fmtState(en.state, en.unit)}</td>
-              <td>${roleSelect(en)}</td>
-              <td class="conf">${en.reason} (${Math.round((en.confidence||0)*100)}%)${en.overridden?'<span class="ov">• angepasst</span>':''}</td>
-            </tr>`).join("")}</tbody></table>`).join("");
-    }
     async function refresh() {
       try {
-        const [s,f,e] = await Promise.all([
+        const [s,f] = await Promise.all([
           fetch(api("/api/summary")).then(r=>r.json()),
           fetch(api("/api/flow")).then(r=>r.json()),
-          fetch(api("/api/entities")+"?scope="+scope).then(r=>r.json()),
         ]);
-        renderSummary(s); renderFlow(f); renderGroups(e.groups||[]);
+        renderSummary(s); renderFlow(f);
         document.getElementById("app-version").textContent = s.version ? "v"+s.version : "";
         document.getElementById("updated").textContent = "Stand: "+new Date().toLocaleTimeString("de-DE");
       } catch(err) { document.getElementById("ha-text").textContent = "Fehler beim Laden"; }
@@ -932,8 +853,6 @@
       document.getElementById("set-strategy").innerHTML = strategiesList.map(x =>
         `<option value="${x.value}"${x.value===s.strategy?" selected":""}>${x.label}</option>`).join("");
       strategyChanged();
-      document.getElementById("set-grid").checked = !!s.grid_invert;
-      document.getElementById("set-batt").checked = !!s.battery_invert;
       document.getElementById("set-ret").value = (s.retention_days==null?"":s.retention_days);
       document.getElementById("set-pvfc").value = s.pv_forecast_entity||"";
       const info = [
@@ -949,8 +868,6 @@
     async function saveSettings() {
       const body = {
         strategy: document.getElementById("set-strategy").value,
-        grid_invert: document.getElementById("set-grid").checked,
-        battery_invert: document.getElementById("set-batt").checked,
         retention_days: document.getElementById("set-ret").value || null,
         pv_forecast_entity: document.getElementById("set-pvfc").value,
       };
@@ -973,15 +890,22 @@
     async function loadTariff() {
       let s = {};
       try { s = await fetch(api("/api/settings")).then(r=>r.json()); } catch(e) {}
-      const t = s.tariff || {};
-      document.getElementById("t-mode").value = t.mode || "static";
-      document.getElementById("t-price").value = t.price_ct!=null?t.price_ct:"";
+      const t = s.tariff || {}, pf = s.tariff_prefill || {};
+      // Pre-fill from the Energy dashboard where the user has not entered a value.
+      const price = (t.price_ct!=null && t.price_ct!=="") ? t.price_ct : (pf.price_ct!=null?pf.price_ct:"");
+      const feedin = (t.feed_in_ct!=null && t.feed_in_ct!=="") ? t.feed_in_ct : (pf.feed_in_ct!=null?pf.feed_in_ct:"");
+      const entity = t.price_entity || pf.price_entity || "";
+      document.getElementById("t-mode").value = t.mode || (pf.price_entity ? "dynamic" : "static");
+      document.getElementById("t-price").value = price;
       document.getElementById("t-ht").value = t.ht_price_ct!=null?t.ht_price_ct:"";
       document.getElementById("t-nt").value = t.nt_price_ct!=null?t.nt_price_ct:"";
       document.getElementById("t-nt-start").value = t.nt_start||"22:00";
       document.getElementById("t-nt-end").value = t.nt_end||"06:00";
-      document.getElementById("t-entity").value = t.price_entity||"";
-      document.getElementById("t-feedin").value = t.feed_in_ct!=null?t.feed_in_ct:"";
+      document.getElementById("t-entity").value = entity;
+      document.getElementById("t-feedin").value = feedin;
+      const ph = document.getElementById("t-prefill-hint");
+      ph.textContent = (s.has_prefs && (pf.price_ct!=null || pf.feed_in_ct!=null || pf.price_entity))
+        ? "Vorgaben aus dem Energy-Dashboard übernommen (anpassbar)." : "";
       tariffModeChanged();
       const cur = s.current_price_ct;
       document.getElementById("t-info").innerHTML =
@@ -1095,7 +1019,7 @@
       } catch(e) { msg.textContent = " Fehler beim Speichern"; }
     }
 
-    (async () => { await loadRoles(); refresh(); setInterval(refresh, 5000); })();
+    (async () => { refresh(); setInterval(refresh, 5000); })();
   </script>
 </body>
 </html>

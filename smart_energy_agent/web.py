@@ -182,6 +182,8 @@ class WebServer:
             "included": s["included"],
             "current_price_ct": self._store.current_price_ct(),
             "strategies": STRATEGIES,
+            "tariff_prefill": self._store.tariff_prefill(),
+            "has_prefs": self._store.has_energy_prefs(),
         })
         return web.json_response(data)
 
