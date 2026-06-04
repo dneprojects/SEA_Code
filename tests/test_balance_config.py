@@ -90,6 +90,17 @@ def test_named_consumers_as_loads() -> None:
     assert loads["Wohnungen"] == 247.0
 
 
+def test_unavailable_load_still_listed() -> None:
+    # Heat-pump power entity configured but no live value (e.g. unavailable):
+    # the load must still appear so the diagram keeps the device.
+    config = {"heat_pump": [{"id": "h1", "name": "WP", "powers": _pw("s.hp")}]}
+    bal = balance_from_config(config, {})  # no live data
+    load = next(x for x in bal["loads"] if x["name"] == "WP")
+    assert load["configured"] is True
+    assert load["power_w"] is None
+    assert load["parts"][0]["power_w"] is None
+
+
 def test_missing_live_values_are_safe() -> None:
     config = {"pv": [{"id": "p", "name": "PV", "powers": _pw("s.pv")}],
               "grid": {"power": "s.grid"}}

@@ -112,12 +112,17 @@ def balance_from_config(
             parts = []
             total = 0.0
             have = False
+            n_cfg = 0
             for p in inst.get("powers") or []:
-                if not isinstance(p, dict):
+                if not isinstance(p, dict) or not p.get("entity"):
                     continue
+                n_cfg += 1
                 v = val(p.get("entity"))
+                # Keep the part even if currently unavailable (power_w None), so
+                # the device still shows in the diagram while values are missing.
+                parts.append({"name": p.get("name", "Leistung"),
+                              "power_w": round(v, 1) if v is not None else None})
                 if v is not None:
-                    parts.append({"name": p.get("name", "Leistung"), "power_w": round(v, 1)})
                     total += v
                     have = True
             loads.append({
@@ -125,6 +130,7 @@ def balance_from_config(
                 "name": inst.get("name", kind),
                 "kind": kind,
                 "power_w": round(total, 1) if have else None,
+                "configured": n_cfg > 0,
                 "parts": parts,
             })
 

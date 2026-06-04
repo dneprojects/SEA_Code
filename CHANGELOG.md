@@ -2,6 +2,11 @@
 
 ## 0.2.0
 
+- Power-flow diagram keeps a **configured device visible even when its entities
+  are temporarily unavailable** (shows "–" instead of dropping the node);
+  `balance` marks loads `configured` and reports unavailable parts as None.
+- Tooltips on the setup buttons (Wählen/Ändern, clear ×, remove −, add, Entfernen,
+  expand +/−, close).
 - Setup page made compact: each device is now a **collapsible panel** (summary
   shows name + entity count), rows are tight and single-line where possible, and
   named powers/energies/circuits render as inline chips.

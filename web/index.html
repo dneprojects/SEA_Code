@@ -330,7 +330,7 @@
     <div style="background:#fff;border:1px solid var(--border);box-shadow:2px 2px 10px rgba(0,0,0,.3);width:min(560px,94vw);max-height:82vh;display:flex;flex-direction:column;padding:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
         <b id="picker-title">Entität wählen</b>
-        <button class="btn" onclick="closePicker()">×</button>
+        <button class="btn" title="Schließen" onclick="closePicker()">×</button>
       </div>
       <input id="picker-search" type="text" placeholder="suchen…" autocomplete="off"
              style="width:100%;margin:8px 0;box-sizing:border-box" oninput="pickerSearch(this.value)">
@@ -399,7 +399,7 @@
     function renderFlow(f) {
       lastFlow = f;
       const el = document.getElementById("flow");
-      const loads = (f && f.loads || []).filter(l => l.power_w != null);
+      const loads = (f && f.loads || []).filter(l => l.configured);
       const anyVal = f && ((f.pv_w||0)!==0 || (f.grid_w||0)!==0 || (f.battery_w||0)!==0
         || (f.house_load_w||0)!==0 || loads.length);
       if (!anyVal) {
@@ -444,15 +444,16 @@
       nodes += node(...anchors.battery, R, "#d97a2b", "🔋", flowBattLabel(f.battery_w), "Batterie",
         f.battery_soc!=null?("SoC "+f.battery_soc+" %"):"");
       nodes += node(...anchors.house, R+6, "#2f5f8f", "🏠", fmtW(f.house_load_w), "Haus", "", true);
-      // loads (right column) + expandable parts
+      // loads (right column) + expandable parts; configured loads stay shown
+      // even when their entities are temporarily unavailable (value "–").
       loads.forEach(ld => {
-        const [a,b,c,d]=trim(hx,hy,ld.x,ld.y,R+6,R); lines+=line(a,b,c,d,ld.color,ld.power_w);
+        if (ld.power_w) { const [a,b,c,d]=trim(hx,hy,ld.x,ld.y,R+6,R); lines+=line(a,b,c,d,ld.color,ld.power_w); }
         nodes += node(ld.x, ld.y, R, ld.color, ld.icon, fmtW(ld.power_w), ld.name);
         if ((ld.parts||[]).length>1) {
           const exp = flowExpanded.has(ld.key);
-          nodes += `<text x="${ld.x+R-4}" y="${ld.y-R+12}" font-size="16" font-weight="bold" fill="${ld.color}" style="cursor:pointer" onclick="toggleFlow('${ld.key}')">${exp?"−":"+"}</text>`;
+          nodes += `<text x="${ld.x+R-4}" y="${ld.y-R+12}" font-size="16" font-weight="bold" fill="${ld.color}" style="cursor:pointer" onclick="toggleFlow('${ld.key}')">${exp?"−":"+"}<title>Einzelleistungen ein-/ausblenden</title></text>`;
           if (exp) ld.parts.forEach((pt,j) => { const px=600, py=ld.y + (j-(ld.parts.length-1)/2)*52;
-            const [a2,b2,c2,d2]=trim(ld.x,ld.y,px,py,R,28); lines+=line(a2,b2,c2,d2,ld.color,pt.power_w);
+            if (pt.power_w) { const [a2,b2,c2,d2]=trim(ld.x,ld.y,px,py,R,28); lines+=line(a2,b2,c2,d2,ld.color,pt.power_w); }
             nodes += node(px,py,28,ld.color,"",fmtW(pt.power_w),pt.name); });
         }
       });
@@ -532,16 +533,16 @@
     function entCells(labelHtml, path, ug, kind, lastCell) {
       const val = getByPath(path);
       const summ = val ? `<span class="eid">${val}</span>` : '<span class="sub">—</span>';
-      const change = `<button class="btn" onclick="openPicker('${path}','${ug}','${kind}')">${val?'Ändern':'Wählen'}</button>`;
+      const change = `<button class="btn" title="Entität ${val?'ändern':'wählen'}" onclick="openPicker('${path}','${ug}','${kind}')">${val?'Ändern':'Wählen'}</button>`;
       const last = lastCell !== undefined ? lastCell
-        : (val ? `<button class="btn" onclick="clearField('${path}')">×</button>` : "");
+        : (val ? `<button class="btn" title="Auswahl entfernen" onclick="clearField('${path}')">×</button>` : "");
       return cell(labelHtml) + cell(summ, "swsum") + cell(change) + cell(last);
     }
     function entInline(path, ug, kind) {
       const val = getByPath(path);
       const summ = val ? `<span class="eid">${val}</span>` : '<span class="sub">—</span>';
-      return `${summ} <button class="btn" onclick="openPicker('${path}','${ug}','${kind}')">${val?'Ändern':'Wählen'}</button>`
-        + (val ? ` <button class="btn" onclick="clearField('${path}')">×</button>` : '');
+      return `${summ} <button class="btn" title="Entität ${val?'ändern':'wählen'}" onclick="openPicker('${path}','${ug}','${kind}')">${val?'Ändern':'Wählen'}</button>`
+        + (val ? ` <button class="btn" title="Auswahl entfernen" onclick="clearField('${path}')">×</button>` : '');
     }
     // --- render ---
     function renderSetup() {
@@ -551,7 +552,7 @@
         const list = setupData.config[kind.key] || [];
         html += `<div class="panel-title">${kind.label}</div>`
           + list.map((inst,idx) => deviceDetails(kind, inst, idx)).join("")
-          + `<button class="btn" onclick="addInstance('${kind.key}')">+ ${kind.add_label||(kind.label+' hinzufügen')}</button>`;
+          + `<button class="btn" title="${kind.add_label||(kind.label+' hinzufügen')}" onclick="addInstance('${kind.key}')">+ ${kind.add_label||(kind.label+' hinzufügen')}</button>`;
       });
       el.innerHTML = html;
     }
@@ -583,7 +584,7 @@
       if (kind.control) body += controlHtml(base, inst, kind.key);
       return `<details class="swdev"${open?' open':''} ontoggle="onToggleDev('${inst.id}',this.open)">
         <summary><b class="swname">${esc(inst.name)}</b> <span class="sub">${deviceInfo(kind,inst)}</span>
-          <button class="btn swdel" onclick="event.stopPropagation();removeInstance('${kind.key}',${idx})">Entfernen</button></summary>
+          <button class="btn swdel" title="Gerät entfernen" onclick="event.stopPropagation();removeInstance('${kind.key}',${idx})">Entfernen</button></summary>
         <div class="swbody"><div class="swgrid">${body}</div></div></details>`;
     }
     function fieldHtml(path, f, kindKey) {
@@ -605,9 +606,9 @@
         const nameIn = `<input type="text" value="${esc(it.name)}" placeholder="${f.item_label}"
             onchange="setVal('${ip}/name',this.value)" class="swnamein">`;
         return entCells(nameIn, ip+'/entity', f.unit_group, kindKey,
-          `<button class="btn" onclick="removeAt('${listPath}',${i})">−</button>`);
+          `<button class="btn" title="Eintrag entfernen" onclick="removeAt('${listPath}',${i})">−</button>`);
       }).join("");
-      return h + cell(`<button class="btn" onclick="addItem('${listPath}','${f.item_label}')">+ ${f.item_label}</button>`, "swfull");
+      return h + cell(`<button class="btn" title="${f.item_label} hinzufügen" onclick="addItem('${listPath}','${f.item_label}')">+ ${f.item_label}</button>`, "swfull");
     }
     function circuitsList(listPath, f, kindKey) {
       const list = getByPath(listPath) || [];
@@ -620,17 +621,17 @@
             onchange="setVal('${ip}/name',this.value)" style="width:96px">
           <span class="sub">Temp</span> ${entInline(ip+'/temp', ug('temp'), kindKey)}
           <span class="sub">Soll</span> ${entInline(ip+'/setpoint', ug('setpoint'), kindKey)}
-          <button class="btn" onclick="removeAt('${listPath}',${i})">−</button>`;
+          <button class="btn" title="Heizkreis entfernen" onclick="removeAt('${listPath}',${i})">−</button>`;
         return cell(inner, "swfull swcirc");
       }).join("");
-      return h + cell(`<button class="btn" onclick="addCircuit('${listPath}')">+ Heizkreis</button>`, "swfull");
+      return h + cell(`<button class="btn" title="Heizkreis hinzufügen" onclick="addCircuit('${listPath}')">+ Heizkreis</button>`, "swfull");
     }
     function controlHtml(base, inst, kindKey) {
       const m = (inst.control||{}).mode || '';
       const rn = "ctl_"+base.replace(/\W/g,'_');
       let inner = `<label class="swinline"><input type="radio" name="${rn}" ${m==='switch'?'checked':''} onchange="setVal('${base}/control/mode','switch')"> schalten</label>
         <label class="swinline"><input type="radio" name="${rn}" ${m==='setpoint'?'checked':''} onchange="setVal('${base}/control/mode','setpoint')"> Sollwert</label>`
-        + (m ? ` <button class="btn" onclick="setVal('${base}/control/mode','')">keine</button>` : '');
+        + (m ? ` <button class="btn" title="Keine Steuerung" onclick="setVal('${base}/control/mode','')">keine</button>` : '');
       if (m==='switch') inner += ' ' + entInline(base+'/control/switch', 'switch', kindKey);
       if (m==='setpoint') inner += ' ' + entInline(base+'/control/setpoint', 'setpoint', kindKey);
       return spanRow("Steuerung", inner);
