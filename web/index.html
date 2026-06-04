@@ -116,6 +116,10 @@
 
     footer { background:var(--brand-dark); border-top:1px solid #611611; color:#f0d9d7;
              font-size:11px; padding:12px 22px; margin-top:26px; }
+    #view-consumers .stratbox { border:1px solid var(--border); background:#fff; margin-bottom:6px; }
+    #view-consumers .stratbox > summary { padding:6px 10px; cursor:pointer; display:flex; align-items:center; gap:10px; }
+    #view-consumers .stratbody { padding:6px 10px; border-top:1px solid var(--alt); }
+    .badge { color:#fff; padding:1px 8px; border-radius:8px; font-size:11px; }
     @media (max-width:760px) {
       .menu-btn { display:block; }
       .sidebar { position:fixed; left:0; top:0; height:100%; width:230px; z-index:40;
@@ -275,19 +279,11 @@
       <!-- Verbraucher -->
       <section id="view-consumers" hidden>
         <div class="panel-title">Strategien</div>
-        <p class="sub" style="margin:0 0 6px">Verfügbare Strategien werden automatisch aus den konfigurierten Entitäten ermittelt.</p>
-        <div id="strategies"></div>
-        <div class="panel-title">Optimierungsstrategie</div>
-        <div class="setrow"><label>Modus</label>
+        <div class="setrow"><label>Optimierungsstrategie</label>
           <select id="set-strategy" onchange="strategyChanged();saveStrategy()"></select></div>
         <div class="setrow"><span class="sub" id="set-strategy-desc"></span></div>
-        <div style="background:#fff;border:1px solid var(--border);box-shadow:1px 1px 4px rgba(120,120,120,.18);padding:10px 14px;margin:12px 0">
-          <label style="font-weight:bold;color:var(--fg)"><input type="checkbox" id="ctrl-master" onchange="toggleControl()"> PV-Überschusssteuerung aktiv</label>
-          <span class="sub" id="ctrl-status" style="margin-left:8px"></span>
-          <div class="sub" style="margin-top:4px">Schaltet nur Verbraucher im Modus „Automatisch“ und nur schaltbare Geräte (Schalter/Lampe). Solange aus, wird nichts geschaltet.</div>
-        </div>
-        <div class="panel-title">Verbraucher-Steuerung</div>
-        <div id="consumers"></div>
+        <p class="sub" style="margin:8px 0 6px">Verfügbare Strategien werden automatisch aus den konfigurierten Entitäten ermittelt. Box aufklappen für die Einstellungen.</p>
+        <div id="strategies"></div>
       </section>
 
       <!-- Grundeinstellungen (inkl. Tarife) -->
@@ -324,7 +320,10 @@
         </div>
         <div id="t-dynamic">
           <div class="setrow"><label>Preis-Entität (ct/kWh)</label>
-            <input type="text" id="t-entity" placeholder="sensor.strompreis" style="width:240px"></div>
+            <span id="t-entity-disp"><span class="sub">— nicht gewählt —</span></span>
+            <button class="btn" onclick="pickPriceEntity()">Wählen</button>
+            <button class="btn" onclick="clearPriceEntity()" title="Auswahl entfernen">×</button>
+            <input type="hidden" id="t-entity"></div>
           <div class="setrow"><span class="sub">Aktueller Wert wird laufend aus dieser HA-Entität gelesen.</span></div>
         </div>
         <div class="setrow"><label>Einspeisevergütung (ct/kWh)</label>
@@ -985,6 +984,7 @@
       document.getElementById("t-nt-start").value = t.nt_start||"22:00";
       document.getElementById("t-nt-end").value = t.nt_end||"06:00";
       document.getElementById("t-entity").value = entity;
+      renderPriceEntity();
       document.getElementById("t-feedin").value = feedin;
       const ph = document.getElementById("t-prefill-hint");
       ph.textContent = (s.has_prefs && (pf.price_ct!=null || pf.feed_in_ct!=null || pf.price_entity))
@@ -1015,6 +1015,19 @@
       } catch(e) { msg.textContent = "Fehler beim Speichern"; }
     }
 
+    function renderPriceEntity() {
+      const v = document.getElementById("t-entity").value;
+      document.getElementById("t-entity-disp").innerHTML = v
+        ? `<span class="eid">${v}</span>` : '<span class="sub">— nicht gewählt —</span>';
+    }
+    function pickPriceEntity() {
+      openPickerCb("price", "price", document.getElementById("t-entity").value || "",
+        eid => { document.getElementById("t-entity").value = eid; renderPriceEntity(); saveTariff(); });
+    }
+    function clearPriceEntity() {
+      document.getElementById("t-entity").value = ""; renderPriceEntity(); saveTariff();
+    }
+
     // ---------- Verbraucher ----------
     let consumerMeta = { types:[], modes:[], combine:[] };
     function sid(eid) { return eid.replace(/[^a-z0-9]/gi, "_"); }
@@ -1025,43 +1038,79 @@
       return `<div style="display:flex;flex-direction:column;gap:3px">
         <label style="font-size:11px;color:var(--muted)">${label}</label>${inner}</div>`;
     }
+    let consumerList = [];
+    let stratList = [];
+    let ctrlEnabled = false;
+    const stratOpen = new Set(["self_consumption"]);
+    function onStratToggle(key, open) { if (open) stratOpen.add(key); else stratOpen.delete(key); }
     async function loadConsumers() {
       let data = { consumers:[], types:[], modes:[], combine:[] };
       try { data = await fetch(api("/api/consumers")).then(r=>r.json()); } catch(e) {}
       consumerMeta = { types:data.types||[], modes:data.modes||[], combine:data.combine||[] };
+      consumerList = data.consumers || [];
       try {
         const s = await fetch(api("/api/settings")).then(r=>r.json());
-        document.getElementById("ctrl-master").checked = !!s.control_enabled;
-        document.getElementById("ctrl-status").textContent = s.control_enabled ? "aktiv" : "aus";
+        ctrlEnabled = !!s.control_enabled;
         fillStrategy(s);
       } catch(e) {}
-      loadStrategies();
-      renderConsumers(data.consumers||[]);
+      try { stratList = (await fetch(api("/api/strategies")).then(r=>r.json())).strategies || []; } catch(e) {}
+      renderStrategies();
     }
-    async function loadStrategies() {
-      let list = [];
-      try { list = (await fetch(api("/api/strategies")).then(r=>r.json())).strategies || []; } catch(e) {}
-      const badge = (st) => st.active
-        ? '<span style="color:#fff;background:#3f9b2f;padding:1px 7px;border-radius:8px;font-size:11px">aktiv</span>'
-        : st.available
-          ? (st.engine_ready
-              ? '<span style="color:#fff;background:#2f5f8f;padding:1px 7px;border-radius:8px;font-size:11px">verfügbar</span>'
-              : '<span style="color:#fff;background:#9aa0a6;padding:1px 7px;border-radius:8px;font-size:11px">verfügbar (folgt)</span>')
-          : '<span style="color:#fff;background:#c9bcae;padding:1px 7px;border-radius:8px;font-size:11px">nicht verfügbar</span>';
-      document.getElementById("strategies").innerHTML = list.map(st => `
-        <div style="border:1px solid var(--border);background:#fff;padding:6px 10px;margin-bottom:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-          <b style="color:var(--fg)">${st.name}</b> ${badge(st)}
-          <span class="sub">${st.desc||''}</span>
-          ${st.missing&&st.missing.length ? `<span class="sub" style="flex-basis:100%;color:#9c3a2f">Fehlt: ${st.missing.join(", ")}</span>` : ''}
-        </div>`).join("");
+    function stratBadge(st) {
+      if (st.active) return '<span class="badge" style="background:#3f9b2f">aktiv</span>';
+      if (st.available) return st.engine_ready
+        ? '<span class="badge" style="background:#2f5f8f">verfügbar</span>'
+        : '<span class="badge" style="background:#9aa0a6">verfügbar (folgt)</span>';
+      return '<span class="badge" style="background:#c9bcae">nicht verfügbar</span>';
+    }
+    function stratBody(st) {
+      const miss = st.missing && st.missing.length
+        ? `<div class="sub" style="color:#9c3a2f;margin-top:4px">Fehlt: ${st.missing.join(", ")}</div>` : '';
+      if (st.key === "self_consumption") {
+        return `<label style="font-weight:bold;color:var(--fg)">
+            <input type="checkbox" id="ctrl-master" onchange="toggleControl()"> PV-Überschusssteuerung aktiv</label>
+          <span class="sub" id="ctrl-status" style="margin-left:8px"></span>
+          <div class="sub" style="margin:4px 0">Schaltet nur Verbraucher im Modus „Automatisch“ und nur schaltbare Geräte. Solange aus, wird nichts geschaltet.</div>
+          ${miss}
+          <div class="panel-title" style="margin:10px 0 6px">Verbraucher-Steuerung</div>
+          <div id="consumers"></div>`;
+      }
+      if (st.key === "setback") {
+        return `<label style="font-weight:bold;color:var(--fg)">
+            <input type="checkbox" ${st.active?"checked":""} onchange="toggleSetbackStrategy(this.checked)"> Absenkung aktiv</label>
+          <div class="sub" style="margin:4px 0">${st.desc||''}</div>${miss}
+          <button class="btn" onclick="showView('thermostats')">Gruppen / Räume konfigurieren →</button>`;
+      }
+      return `<div class="sub">${st.desc||''}</div>${miss}
+        <div class="sub" style="margin-top:4px">${st.available?'Die Umsetzung dieser Strategie folgt.':''}</div>`;
+    }
+    function renderStrategies() {
+      document.getElementById("strategies").innerHTML = stratList.map(st => `
+        <details class="stratbox"${stratOpen.has(st.key)?' open':''} ontoggle="onStratToggle('${st.key}',this.open)">
+          <summary><b style="color:var(--fg)">${st.name}</b> ${stratBadge(st)}</summary>
+          <div class="stratbody">${stratBody(st)}</div>
+        </details>`).join("");
+      const cm = document.getElementById("ctrl-master");
+      if (cm) { cm.checked = ctrlEnabled;
+        document.getElementById("ctrl-status").textContent = ctrlEnabled ? "aktiv" : "aus"; }
+      if (document.getElementById("consumers")) renderConsumers(consumerList);
     }
     async function toggleControl() {
       const on = document.getElementById("ctrl-master").checked;
-      document.getElementById("ctrl-status").textContent = on ? "aktiv" : "aus";
       try {
         await fetch(api("/api/settings"), { method:"POST",
           headers:{"Content-Type":"application/json"}, body:JSON.stringify({control_enabled:on}) });
       } catch(e) {}
+      loadConsumers();  // refresh status badge (verfügbar <-> aktiv)
+    }
+    async function toggleSetbackStrategy(on) {
+      try {
+        const r = await fetch(api("/api/thermostats")).then(r=>r.json());
+        const sb = r.setback || {}; sb.enabled = on;
+        await fetch(api("/api/thermostats"), { method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({setback:sb}) });
+      } catch(e) {}
+      loadConsumers();
     }
     function renderConsumers(list) {
       const el = document.getElementById("consumers");

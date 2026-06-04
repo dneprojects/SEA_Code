@@ -2,6 +2,13 @@
 
 ## 0.2.0
 
+- Strategien page: each strategy is now an **expandable box** with its settings
+  inside (PV-surplus self-consumption holds the master switch + consumer control;
+  setback holds its enable + link). Toggling an activation updates the box status
+  (verfügbar ↔ aktiv) live.
+- Tariff: the dynamic price entity now uses the same **entity picker popup**
+  (new 'price' unit group).
+
 - Strategies are now **auto-detected from the configured entities** and listed on
   the Strategien page with status (aktiv / verfügbar / verfügbar (folgt) / nicht
   verfügbar) and what's still missing — PV-surplus self-consumption, wallbox

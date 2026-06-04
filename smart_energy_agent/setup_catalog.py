@@ -38,7 +38,14 @@ UNIT_GROUPS: dict[str, dict[str, set[str]]] = {
     "presence": {"device_classes": {"occupancy", "presence", "motion"},
                  "units": set(),
                  "domains": {"person", "device_tracker", "zone", "input_boolean", "binary_sensor", "group"}},
+    # Electricity price sensor (ct/kWh or currency/kWh).
+    "price": {"device_classes": {"monetary"},
+              "units": {"ct/kWh", "Cent/kWh", "EUR/kWh", "€/kWh", "ct", "EUR"},
+              "domains": {"input_number"}},
 }
+
+# Name hints for price entities (used by the price picker ranking).
+PRICE_HINTS = ["preis", "price", "tarif", "strompreis", "epex", "spot", "tibber", "awattar"]
 
 # Single, fixed grid section (not an instance list).
 GRID = {
@@ -111,5 +118,7 @@ def find_kind(key: str) -> Optional[dict[str, Any]]:
 def kind_hints(key: str) -> list[str]:
     if key == "grid":
         return GRID["hints"]
+    if key == "price":
+        return PRICE_HINTS
     k = find_kind(key)
     return k.get("hints", []) if k else []
