@@ -353,6 +353,38 @@ Der Live-Aggregator vergleicht Plan und Realität. Bei Wolken (PV-Einbruch), une
 - **Konflikt mit anderen Automationen / SmartHub**: Vor dem Schalten prüft der Guard den letzten Auslöser des State-Wechsels; fremdgesteuerte Geräte werden nicht überschrieben. Empfehlung, dass dieselbe physische Last nicht gleichzeitig von SmartHub-Automationen und Smart Energy Agent aktiv geregelt wird (UI-Warnung bei Überschneidung).
 - **Fail-safe**: Bei Verbindungsverlust zu HA oder fehlenden Prognosedaten geht der Agent in einen sicheren Default (keine ungewollten Schaltvorgänge; laufende kritische Lasten bleiben unangetastet).
 
+### 6.6 Lernfähige Temperaturabsenkung bei Abwesenheit (Raumthermostate)
+
+Raumthermostate werden als eigener Gerätetyp erkannt (siehe Kapitel 4) und sind energetisch interessant, weil eine **Absenkung der Solltemperatur bei Abwesenheit** Energie spart, ohne den Komfort zu beeinträchtigen – vorausgesetzt, die Räume sind bei Rückkehr **rechtzeitig wieder warm**. Das eigentliche Problem ist also nicht das Absenken, sondern der **vorausschauende Wiederaufheiz-Zeitpunkt**. Genau dafür ist eine lernfähige Heuristik vorgesehen.
+
+**Grundidee.** Der Agent senkt die Solltemperatur ab, sobald Abwesenheit erkannt wird, und beginnt das Wiederaufheizen so früh, dass die Komforttemperatur **genau zum prognostizierten Rückkehrzeitpunkt** erreicht ist. Die nötige Vorlaufzeit ist keine feste Konstante, sondern hängt von der **thermischen Trägheit des Raums**, der angestrebten Temperaturdifferenz und der **Außentemperatur** ab – und wird laufend aus Messdaten gelernt.
+
+**Eingangsgrößen.**
+
+- Anwesenheit/Abwesenheit (HA `person`/`device_tracker`/`zone`, optionale Kalender-/Routine-Hinweise).
+- Ist-Raumtemperatur und Solltemperatur je Thermostat (`climate`-Entität, Temperatur-Sub-Rolle).
+- Außentemperatur (Wetterintegration aus der Prognose, Kapitel 5a).
+- Heizsignal/Heizphasen (z. B. `hvac_action`, ggf. Leistung), um Aufheizraten zu messen.
+
+**Lernmodell (bewusst einfach und transparent).** Pro Raum wird eine **Aufheizrate** geschätzt: wie viele Minuten pro Grad Temperaturerhöhung benötigt werden, in Abhängigkeit von der Außentemperatur. Aus beobachteten Aufheizvorgängen wird ein gleitend aktualisierter Kennwert gebildet, z. B.
+
+```
+benötigte_Vorlaufzeit ≈ (T_komfort − T_aktuell) × k_aufheiz(T_außen)
+```
+
+`k_aufheiz` (min/K) wird als gleitender Mittelwert/lineare Regression über die Außentemperatur gelernt (Online-Update nach jedem realen Aufheizvorgang, EWMA gegen Ausreißer). Das ist ein leichtgewichtiges, erklärbares Modell, das **ohne Trainingsdaten startfähig** ist: Es beginnt mit einem konservativen Default je Heizungstyp und konvergiert mit den ersten Aufheizzyklen. Optional kann später ein **Auskühl-Kennwert** (Temperaturverlust pro Stunde bei abgesenktem Sollwert in Abhängigkeit von der Außentemperatur) ergänzt werden, um die Absenktiefe zu optimieren.
+
+**Ablauf.**
+
+1. Abwesenheit erkannt → Solltemperatur auf konfigurierte Absenkstufe (Eco) setzen.
+2. Rückkehrzeitpunkt schätzen (geplante Zeit, Routine, manuell „komme um …", oder bei Unsicherheit konservativ).
+3. Vorlaufzeit aus Aufheizrate × Differenz × Außentemperatur berechnen → Wiederaufheizen rechtzeitig starten, sodass die Komforttemperatur **zum Rückkehrzeitpunkt** anliegt.
+4. Nach jedem Aufheizvorgang Ist-Dauer messen und `k_aufheiz` aktualisieren (Lernen).
+
+**Synergie mit PV-Eigenverbrauch.** Liegt im Vorlauffenster PV-Überschuss vor, kann der Wiederaufheizvorgang **vorgezogen** werden (Vorheizen mit Solarstrom als thermischer Speicher); ohne Überschuss wird der späteste komfortwahrende Startzeitpunkt gewählt. So greift die Absenkungs-Heuristik in dieselbe Eigenverbrauchs-/Tarif-Priorisierung wie die übrigen Geräte (Kapitel 6.2/6.3).
+
+**Sicherheit.** Frostschutz-Untergrenze nie unterschreiten; manuelle Eingriffe haben Vorrang (`manual_override`); bei unsicherer Anwesenheitsprognose konservativ früher aufheizen. Funktion standardmäßig **opt-in** je Thermostat (das Gerät wird nicht automatisch in das Energiemodell aufgenommen).
+
 ---
 
 ## 7. Dialogsteuerung über Home Assistant
