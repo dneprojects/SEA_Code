@@ -45,6 +45,8 @@ class Store:
             "retention_days": None,   # None -> use env/default
             "control_enabled": False,  # master switch for PV-surplus control (safety: off)
             "strategy": DEFAULT_STRATEGY,  # optimization strategy (selection only for now)
+            "pv_forecast_entity": "",  # HA entity providing a PV power/energy forecast
+
             # Electricity tariff: purchase price + feed-in compensation.
             "tariff": {
                 "mode": "static",          # static | ht_nt | dynamic
@@ -60,6 +62,8 @@ class Store:
         self._load_settings()
         # Last seen value of the dynamic price entity (ct/kWh), if used.
         self._dynamic_price: Optional[float] = None
+        # Last seen full state of the PV-forecast entity (with attributes).
+        self._pv_forecast_state: Optional[dict[str, Any]] = None
         # Per-consumer control configuration, keyed by control entity_id.
         self._consumers: dict[str, dict[str, Any]] = {}
         self._load_consumers()
@@ -159,6 +163,8 @@ class Store:
                 pass
         if patch.get("strategy") in STRATEGY_VALUES:
             self._settings["strategy"] = patch["strategy"]
+        if "pv_forecast_entity" in patch:
+            self._settings["pv_forecast_entity"] = str(patch["pv_forecast_entity"] or "")
         if isinstance(patch.get("tariff"), dict):
             t = self._settings.setdefault("tariff", {})
             tp = patch["tariff"]
@@ -213,13 +219,20 @@ class Store:
         return t.get("price_ct")
 
     def observe_external(self, entity_id: str, new_state: dict[str, Any]) -> None:
-        """Capture the dynamic price entity's value (not a classified entity)."""
+        """Capture external (non-classified) entities: dynamic price + PV forecast."""
+        if not new_state:
+            return
         t = self._settings.get("tariff", {})
-        if t.get("mode") == "dynamic" and entity_id == t.get("price_entity") and new_state:
+        if t.get("mode") == "dynamic" and entity_id == t.get("price_entity"):
             try:
                 self._dynamic_price = float(new_state.get("state"))
             except (TypeError, ValueError):
                 pass
+        if entity_id and entity_id == self._settings.get("pv_forecast_entity"):
+            self._pv_forecast_state = new_state
+
+    def pv_forecast_entity(self) -> str:
+        return self._settings.get("pv_forecast_entity", "") or ""
 
     # --- control runtime state ----------------------------------------------
     def _runtime_for(self, entity_id: str) -> dict[str, Any]:
@@ -738,6 +751,18 @@ class Store:
         out = forecast.forecast_consumption(series, hours=hours)
         out["accuracy"] = forecast.profile_backtest(series)
         return out
+
+    async def forecast_bundle(self, hours: int = 24) -> dict[str, Any]:
+        """Consumption forecast + PV forecast + the resulting PV-surplus forecast."""
+        consumption = await self.consumption_forecast(hours=hours)
+        pv_points = forecast.parse_pv_forecast(self._pv_forecast_state)
+        surplus = forecast.build_surplus_forecast(consumption, pv_points)
+        return {
+            "consumption": consumption,
+            "surplus": surplus,
+            "pv_entity": self.pv_forecast_entity(),
+            "pv_points": len(pv_points),
+        }
 
     async def close_db(self) -> None:
         if self._db is not None:

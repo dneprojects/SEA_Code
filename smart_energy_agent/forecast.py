@@ -22,6 +22,7 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Iterable, Optional
 
 SECONDS_PER_DAY = 86400
@@ -153,6 +154,143 @@ def forecast_consumption(
         "samples": profile.samples,
         "span_days": profile.span_days,
         "coverage": round(covered / hours, 2) if hours else 0.0,
+    }
+
+
+# --- PV / weather forecast (concept ch. 5a.1) --------------------------------
+
+def _to_float(v: Any) -> Optional[float]:
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_iso(s: Any) -> Optional[float]:
+    """Parse an ISO-8601 timestamp (HA forecast keys) to epoch seconds."""
+    if isinstance(s, (int, float)):
+        return float(s)
+    if not isinstance(s, str):
+        return None
+    text = s.strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        return datetime.fromisoformat(text).timestamp()
+    except ValueError:
+        return None
+
+
+def parse_pv_forecast(state: Optional[dict[str, Any]]) -> list[tuple[float, float]]:
+    """Extract a PV power forecast [(ts, watt)] from an HA entity's state dict.
+
+    Source-agnostic: auto-detects the common shapes so the user only has to
+    point at one entity (concept ch. 12 leaves the exact source open):
+
+      * Forecast.Solar  – attribute ``watts`` = {iso_ts: watts}
+      * Solcast         – attribute ``detailedForecast``/``detailedHourly`` =
+        [{period_start, pv_estimate (kW)}]
+      * generic         – attribute ``forecast`` = [{datetime, power/pv_estimate}]
+
+    Returns points sorted by timestamp; empty list if nothing is parseable.
+    """
+    if not state:
+        return []
+    attrs = state.get("attributes") or {}
+    points: list[tuple[float, float]] = []
+
+    # Forecast.Solar: instantaneous power forecast keyed by ISO timestamp.
+    watts = attrs.get("watts")
+    if isinstance(watts, dict):
+        for k, v in watts.items():
+            ts, w = _parse_iso(k), _to_float(v)
+            if ts is not None and w is not None:
+                points.append((ts, w))
+        if points:
+            return sorted(points)
+
+    # Solcast: per-period PV estimate in kW.
+    for key in ("detailedForecast", "detailedHourly"):
+        lst = attrs.get(key)
+        if isinstance(lst, list):
+            for it in lst:
+                if not isinstance(it, dict):
+                    continue
+                ts = _parse_iso(it.get("period_start") or it.get("datetime"))
+                w = _to_float(it.get("pv_estimate"))
+                if ts is not None and w is not None:
+                    points.append((ts, w * 1000.0))  # kW -> W
+            if points:
+                return sorted(points)
+
+    # Generic forecast list with some power-ish field.
+    lst = attrs.get("forecast")
+    if isinstance(lst, list):
+        for it in lst:
+            if not isinstance(it, dict):
+                continue
+            ts = _parse_iso(it.get("datetime") or it.get("period_start"))
+            val: Optional[float] = None
+            for k in ("pv_estimate", "pv_power", "power", "watts"):
+                if k in it:
+                    val = _to_float(it[k])
+                    if k == "pv_estimate" and val is not None:
+                        val *= 1000.0
+                    break
+            if ts is not None and val is not None:
+                points.append((ts, val))
+        if points:
+            return sorted(points)
+
+    return []
+
+
+def _pv_in_hour(pv_points: list[tuple[float, float]], ts: int) -> Optional[float]:
+    """Average PV forecast (W) over the hour starting at ``ts``."""
+    vals = [w for (t, w) in pv_points if ts <= t < ts + 3600]
+    return sum(vals) / len(vals) if vals else None
+
+
+def build_surplus_forecast(
+    consumption: dict[str, Any],
+    pv_points: list[tuple[float, float]],
+) -> dict[str, Any]:
+    """Combine the consumption forecast with a PV forecast into a PV-surplus
+    forecast (concept ch. 5a.3): surplus = PV - load, hour by hour."""
+    pts = consumption.get("points") or []
+    pv_points = sorted(pv_points or [])
+    out: list[dict[str, Any]] = []
+    pv_wh = load_wh = surplus_wh = 0.0
+    pv_covered = 0
+    for p in pts:
+        ts = p["ts"]
+        load = p.get("watt")
+        pv = _pv_in_hour(pv_points, ts)
+        surplus = None
+        if pv is not None:
+            pv_wh += pv
+            pv_covered += 1
+            if load is not None:
+                surplus = pv - load
+                surplus_wh += surplus
+        if load is not None:
+            load_wh += load
+        out.append(
+            {
+                "ts": ts,
+                "load_w": load,
+                "pv_w": round(pv, 1) if pv is not None else None,
+                "surplus_w": round(surplus, 1) if surplus is not None else None,
+            }
+        )
+    n = len(pts)
+    return {
+        "points": out,
+        "pv_kwh": round(pv_wh / 1000.0, 2),
+        "load_kwh": round(load_wh / 1000.0, 2),
+        "surplus_kwh": round(surplus_wh / 1000.0, 2),
+        "pv_available": pv_covered > 0,
+        "pv_coverage": round(pv_covered / n, 2) if n else 0.0,
     }
 
 

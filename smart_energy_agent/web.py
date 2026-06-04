@@ -131,9 +131,8 @@ class WebServer:
         except ValueError:
             hours = 24
         hours = max(1, min(hours, 168))
-        consumption = await self._store.consumption_forecast(hours=hours)
-        # PV/surplus forecast (concept ch. 5a.1/5a.3) is added in a later slice.
-        return web.json_response({"consumption": consumption})
+        data = await self._store.forecast_bundle(hours=hours)
+        return web.json_response(data)
 
     async def _api_settings_get(self, _request: web.Request) -> web.Response:
         from . import __version__

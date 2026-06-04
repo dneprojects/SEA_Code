@@ -148,6 +148,7 @@
       <a href="#" data-view="dashboard" class="active" onclick="showView('dashboard');return false;">Dashboard</a>
       <a href="#" data-view="devices" onclick="showView('devices');return false;">Geräte</a>
       <a href="#" data-view="history" onclick="showView('history');return false;">Verlauf</a>
+      <a href="#" data-view="forecast" onclick="showView('forecast');return false;">Prognose</a>
       <a href="#" data-view="savings" onclick="showView('savings');return false;">Einsparung</a>
       <a href="#" data-view="consumers" onclick="showView('consumers');return false;">Verbraucher</a>
       <a href="#" class="parent" onclick="showView('settings');return false;">Einstellungen</a>
@@ -193,6 +194,15 @@
         </div>
         <div class="legend" id="chart-legend"></div>
         <div class="chart-wrap"><div id="chart"></div></div>
+      </section>
+
+      <!-- Prognose -->
+      <section id="view-forecast" hidden>
+        <div class="panel-title">Prognose (nächste 24 h)</div>
+        <div class="cards" id="fc-cards"></div>
+        <div class="legend" id="fc-legend"></div>
+        <div class="chart-wrap"><div id="fc-chart"></div></div>
+        <p class="sub" id="fc-hint" style="margin-top:8px"></p>
       </section>
 
       <!-- Einsparung -->
@@ -258,6 +268,9 @@
           <input type="checkbox" id="set-batt"> <span class="sub">+ soll Laden bedeuten</span></div>
         <div class="setrow"><label>Aufbewahrung Historie (Tage)</label>
           <input type="number" id="set-ret" min="1" max="3650"> <span class="sub">leer = Standard</span></div>
+        <div class="setrow"><label>PV-Prognose-Entität</label>
+          <input type="text" id="set-pvfc" placeholder="sensor.energy_production_today" style="width:260px">
+          <span class="sub">Forecast.Solar / Solcast / Wetter-Forecast</span></div>
         <div class="setrow"><button class="btn" onclick="saveSettings()">Speichern</button>
           <span id="set-msg" class="sub"></span></div>
       </section>
@@ -349,7 +362,7 @@
 
     function showView(name) {
       view = name;
-      ["dashboard","devices","history","savings","consumers","settings","basic","tariff","entities"].forEach(v => {
+      ["dashboard","devices","history","forecast","savings","consumers","settings","basic","tariff","entities"].forEach(v => {
         document.getElementById("view-"+v).hidden = (v !== name);
       });
       document.querySelectorAll(".sidebar a").forEach(a =>
@@ -361,6 +374,7 @@
         a.style.display = inSettings ? "block" : "none");
       if (name === "devices") loadDevices();
       if (name === "history") loadHistory();
+      if (name === "forecast") loadForecast();
       if (name === "savings") loadSavings();
       if (name === "consumers") loadConsumers();
       if (name === "settings" || name === "basic") loadSettings();
@@ -578,6 +592,78 @@
       el.innerHTML = svg;
     }
 
+    // ---------- Prognose ----------
+    const FC_SERIES = [
+      { key:"pv_w", label:"PV-Prognose", color:"#c0372d" },
+      { key:"load_w", label:"Verbrauch (Prognose)", color:"#5f6b76" },
+      { key:"surplus_w", label:"Überschuss (Prognose)", color:"#3f9b2f" },
+    ];
+    let fcData = [];
+    async function loadForecast() {
+      let d = {};
+      try { d = await fetch(api("/api/forecast")+"?hours=24").then(r=>r.json()); } catch(e) {}
+      const cons = d.consumption || {}, sur = d.surplus || {};
+      fcData = sur.points || cons.points || [];
+      const kwh = (x) => x!=null ? x.toFixed(1).replace(".",",")+" kWh" : "–";
+      const acc = cons.accuracy || {};
+      const cards = [
+        { v:kwh(cons.kwh), l:"Verbrauch (24 h)" },
+        { v:sur.pv_available?kwh(sur.pv_kwh):"–", l:"PV-Ertrag (24 h)", cls:"pv" },
+        { v:sur.pv_available?kwh(sur.surplus_kwh):"–", l:"PV-Überschuss (24 h)", cls:"surplus" },
+        { v:(acc.mape_pct!=null?acc.mape_pct.toFixed(0).replace(".",",")+" %":"–"), l:"Prognosefehler (MAPE)" },
+      ];
+      document.getElementById("fc-cards").innerHTML = cards.map(c =>
+        `<div class="card ${c.cls||''}"><div class="v">${c.v}</div><div class="l">${c.l}</div></div>`).join("");
+      const hasPv = sur.pv_available;
+      document.getElementById("fc-legend").innerHTML = FC_SERIES
+        .filter(s => hasPv || s.key==="load_w")
+        .map(s => `<span><span class="sw" style="background:${s.color}"></span>${s.label}</span>`).join("");
+      renderForecastChart(hasPv);
+      const hint = document.getElementById("fc-hint");
+      if (!cons.samples) {
+        hint.textContent = "Noch keine Verbrauchshistorie — die Prognose lernt aus den aufgezeichneten Daten (erste Ergebnisse nach 1–2 Tagen).";
+      } else if (!hasPv) {
+        hint.textContent = d.pv_entity
+          ? "PV-Prognose-Entität \""+d.pv_entity+"\" liefert noch keine Vorhersagewerte."
+          : "Für die PV-/Überschussprognose unter Einstellungen → Grundeinstellungen eine PV-Prognose-Entität (z. B. Forecast.Solar/Solcast) hinterlegen.";
+      } else {
+        hint.textContent = "Verbrauch aus der Historie (Stundenprofil, "+(cons.span_days||0).toFixed(0)+" Tage); PV aus \""+(d.pv_entity||"")+"\".";
+      }
+    }
+    function renderForecastChart(hasPv) {
+      const el = document.getElementById("fc-chart");
+      const data = fcData;
+      if (!data.length) { el.innerHTML = "<p style='color:var(--muted);padding:20px'>Keine Prognosedaten.</p>"; return; }
+      const series = FC_SERIES.filter(s => hasPv || s.key==="load_w");
+      const W=900,H=300, L=58,R=14,T=14,B=30;
+      const x0=L, x1=W-R, y0=T, y1=H-B;
+      const keys = series.map(s=>s.key);
+      let vmin=0, vmax=0;
+      data.forEach(d => keys.forEach(k => { const v=d[k]; if (v!=null){ if(v<vmin)vmin=v; if(v>vmax)vmax=v; } }));
+      if (vmax===vmin) vmax = vmin+1;
+      const n = data.length;
+      const X = i => x0 + (x1-x0)*(n<=1?0.5:i/(n-1));
+      const Y = v => y1 - (v-vmin)/(vmax-vmin)*(y1-y0);
+      const yz = Y(0);
+      const fmtY = v => Math.abs(v)>=1000 ? (v/1000).toFixed(1)+"kW" : Math.round(v)+"W";
+      const hh = ts => new Date(ts*1000).toLocaleTimeString("de-DE",{hour:"2-digit"})+" Uhr";
+      let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">`;
+      svg += `<line x1="${x0}" y1="${yz}" x2="${x1}" y2="${yz}" stroke="#cfcfcf" stroke-width="1"/>`;
+      svg += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="#e2e2e2" stroke-width="1"/>`;
+      [vmax,0,vmin].forEach(v => { const yy=Y(v);
+        svg += `<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="#6b6c6e">${fmtY(v)}</text>`; });
+      svg += `<text x="${x0}" y="${H-8}" font-size="10" fill="#6b6c6e">${hh(data[0].ts)}</text>`;
+      svg += `<text x="${x1}" y="${H-8}" text-anchor="end" font-size="10" fill="#6b6c6e">${hh(data[n-1].ts)}</text>`;
+      series.forEach(s => {
+        let pts="", started=false;
+        data.forEach((d,i) => { const v=d[s.key]; if (v==null){started=false;return;}
+          pts += (started?" L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1); started=true; });
+        svg += `<path d="${pts}" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linejoin="round"/>`;
+      });
+      svg += `</svg>`;
+      el.innerHTML = svg;
+    }
+
     // ---------- Einsparung ----------
     let savRange = "day";
     function setSavRange(r) {
@@ -633,6 +719,7 @@
       document.getElementById("set-grid").checked = !!s.grid_invert;
       document.getElementById("set-batt").checked = !!s.battery_invert;
       document.getElementById("set-ret").value = (s.retention_days==null?"":s.retention_days);
+      document.getElementById("set-pvfc").value = s.pv_forecast_entity||"";
       const info = [
         ["Version", s.version||"–"],
         ["HA-Verbindung", s.ha_connected ? ("verbunden ("+(s.ha_version||"")+")") : "nicht verbunden"],
@@ -649,6 +736,7 @@
         grid_invert: document.getElementById("set-grid").checked,
         battery_invert: document.getElementById("set-batt").checked,
         retention_days: document.getElementById("set-ret").value || null,
+        pv_forecast_entity: document.getElementById("set-pvfc").value,
       };
       const msg = document.getElementById("set-msg");
       try {

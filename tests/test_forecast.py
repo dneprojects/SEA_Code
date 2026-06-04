@@ -14,7 +14,9 @@ import pytest
 
 from smart_energy_agent.forecast import (
     build_load_profile,
+    build_surplus_forecast,
     forecast_consumption,
+    parse_pv_forecast,
     profile_backtest,
 )
 
@@ -101,3 +103,67 @@ def test_none_and_invalid_values_are_skipped() -> None:
     profile = build_load_profile(rows, now=NOW)
     assert profile.samples == 1
     assert profile.overall_w == 500.0
+
+
+# --- PV / surplus forecast ---------------------------------------------------
+
+def test_parse_pv_forecast_solar_watts_dict() -> None:
+    state = {
+        "state": "5.0",
+        "attributes": {
+            "watts": {
+                "2023-11-15T10:00:00+00:00": 3000,
+                "2023-11-15T09:00:00+00:00": 1500,  # out of order on purpose
+            }
+        },
+    }
+    pts = parse_pv_forecast(state)
+    assert [w for _ts, w in pts] == [1500.0, 3000.0]  # sorted by timestamp
+
+
+def test_parse_pv_forecast_solcast_kw_to_w() -> None:
+    state = {
+        "attributes": {
+            "detailedForecast": [
+                {"period_start": "2023-11-15T09:00:00+00:00", "pv_estimate": 1.5},
+                {"period_start": "2023-11-15T10:00:00+00:00", "pv_estimate": 3.0},
+            ]
+        }
+    }
+    pts = parse_pv_forecast(state)
+    assert [w for _ts, w in pts] == [1500.0, 3000.0]  # kW -> W
+
+
+def test_parse_pv_forecast_generic_and_empty() -> None:
+    state = {"attributes": {"forecast": [
+        {"datetime": "2023-11-15T09:00:00Z", "power": 800},
+    ]}}
+    assert [w for _ts, w in parse_pv_forecast(state)] == [800.0]
+    assert parse_pv_forecast(None) == []
+    assert parse_pv_forecast({}) == []
+
+
+def test_build_surplus_forecast_combines_pv_and_load() -> None:
+    t0 = (NOW // 3600 + 1) * 3600
+    consumption = {"points": [
+        {"ts": t0, "watt": 300.0},
+        {"ts": t0 + 3600, "watt": 500.0},
+    ]}
+    pv_points = [(t0, 1000.0), (t0 + 3600, 200.0)]
+    sur = build_surplus_forecast(consumption, pv_points)
+    assert [p["surplus_w"] for p in sur["points"]] == [700.0, -300.0]
+    assert sur["pv_available"] is True
+    assert sur["pv_coverage"] == 1.0
+    assert sur["pv_kwh"] == 1.2
+    assert sur["load_kwh"] == 0.8
+    assert sur["surplus_kwh"] == 0.4
+
+
+def test_build_surplus_forecast_without_pv() -> None:
+    t0 = (NOW // 3600 + 1) * 3600
+    consumption = {"points": [{"ts": t0, "watt": 300.0}]}
+    sur = build_surplus_forecast(consumption, [])
+    assert sur["pv_available"] is False
+    assert sur["pv_coverage"] == 0.0
+    assert sur["points"][0]["pv_w"] is None
+    assert sur["points"][0]["surplus_w"] is None
