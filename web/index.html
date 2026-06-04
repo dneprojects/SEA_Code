@@ -466,7 +466,7 @@
         if ((ld.parts||[]).length>1) {
           const exp = flowExpanded.has(ld.key);
           nodes += `<text x="${ld.x+R-4}" y="${ld.y-R+12}" font-size="16" font-weight="bold" fill="${ld.color}" style="cursor:pointer" onclick="toggleFlow('${ld.key}')">${exp?"−":"+"}<title>Einzelleistungen ein-/ausblenden</title></text>`;
-          if (exp) ld.parts.forEach((pt,j) => { const px=640, py=ld.y + (j-(ld.parts.length-1)/2)*54;
+          if (exp) ld.parts.forEach((pt,j) => { const px=640, py=ld.y + (j-(ld.parts.length-1)/2)*74;
             if (pt.power_w) { const [a2,b2,c2,d2]=trim(ld.x,ld.y,px,py,R,28); lines+=line(a2,b2,c2,d2,ld.color,pt.power_w); }
             nodes += node(px,py,28,ld.color,"",fmtW(pt.power_w),pt.name); });
         }
@@ -767,12 +767,14 @@
       if (!winTo) { const now = Math.floor(Date.now()/1000); winFrom = now-86400; winTo = now+FC_HORIZON; }
       try { histData = (await fetch(api("/api/history")+"?from="+winFrom+"&to="+winTo).then(r=>r.json())).series || []; }
       catch(e) { histData = []; }
+      const clampSurplus = v => (v!=null ? Math.max(0, v) : v);   // surplus never negative
+      histData.forEach(d => { d.surplus_w = clampSurplus(d.surplus_w); });
       fcData = [];
       if (winTo > Math.floor(Date.now()/1000)) {
         try { const d = await fetch(api("/api/forecast")+"?hours=24").then(r=>r.json());
           const pts = (d.surplus&&d.surplus.points) || (d.consumption&&d.consumption.points) || [];
           fcData = pts.map(p => ({ ts:p.ts, pv_w:p.pv_w,
-            house_load_w: (p.load_w!=null?p.load_w:p.watt), surplus_w:p.surplus_w })); }
+            house_load_w: (p.load_w!=null?p.load_w:p.watt), surplus_w:clampSurplus(p.surplus_w) })); }
         catch(e) {}
       }
       document.getElementById("hist-from").value = fmtLocalInput(winFrom);
