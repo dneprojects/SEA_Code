@@ -113,9 +113,16 @@ class WebServer:
         return web.json_response({"ok": True})
 
     async def _api_history(self, request: web.Request) -> web.Response:
-        rng = request.query.get("range", "24h")
-        range_s = _RANGES.get(rng, 86400)
-        series = await self._store.history(range_s)
+        q = request.query
+        try:
+            frm, to = int(q["from"]), int(q["to"])
+        except (KeyError, ValueError):
+            frm = to = None
+        if frm is not None and to is not None and to > frm:
+            series = await self._store.history(start=frm, end=to)
+            return web.json_response({"from": frm, "to": to, "series": series})
+        rng = q.get("range", "24h")
+        series = await self._store.history(_RANGES.get(rng, 86400))
         return web.json_response({"range": rng, "series": series})
 
     async def _api_savings(self, request: web.Request) -> web.Response:

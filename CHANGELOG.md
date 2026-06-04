@@ -2,6 +2,12 @@
 
 ## 0.2.0
 
+- Merged the forecast into the **Verlauf** view (removed the separate "Prognose"
+  menu item): the forecast is drawn as **dashed lines in the same colours** as
+  the history; chart colours now match the dashboard. Added **pan ◀/▶** buttons
+  and a **free from/to** datetime selection (alternative to 24 h / 7 d / 30 d).
+  The history API accepts an explicit `from`/`to` window; a time-based x-axis
+  with a "now" marker aligns history and forecast.
 - PV surplus is now clamped to **≥ 0** (no negative "surplus" when importing) —
   in the live balance, the recorded history and the forecast.
 - History and forecast charts: shared renderer with **nice y-axis ticks, subtle

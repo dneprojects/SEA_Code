@@ -1070,23 +1070,30 @@ class Store:
         except Exception:  # noqa: BLE001
             return 0
 
-    async def history(self, range_s: int, points: int = 240) -> list[dict[str, Any]]:
-        """Return downsampled energy-state series for the last `range_s` seconds.
+    async def history(
+        self, range_s: Optional[int] = None, points: int = 240,
+        start: Optional[int] = None, end: Optional[int] = None,
+    ) -> list[dict[str, Any]]:
+        """Return downsampled energy-state series for a time window.
 
-        Buckets rows into ~`points` time slots and averages each metric, so the
-        chart stays light regardless of how much raw history exists.
+        Either pass ``range_s`` (last N seconds up to now) or an explicit
+        ``start``/``end`` epoch window (for free selection / panning). Buckets
+        rows into ~`points` slots and averages each metric.
         """
         if self._db is None:
             return []
-        bucket = max(1, range_s // max(1, points))
-        cutoff = int(time.time()) - range_s
+        now = int(time.time())
+        if start is None or end is None:
+            rs = range_s or 86400
+            start, end = now - rs, now
+        bucket = max(1, (end - start) // max(1, points))
         try:
             cur = await self._db.execute(
                 "SELECT (ts/?)*? AS b, "
                 "AVG(pv_w), AVG(grid_w), AVG(battery_w), "
                 "AVG(house_load_w), AVG(surplus_w), AVG(battery_soc) "
-                "FROM energy_state WHERE ts >= ? GROUP BY b ORDER BY b",
-                (bucket, bucket, cutoff),
+                "FROM energy_state WHERE ts >= ? AND ts <= ? GROUP BY b ORDER BY b",
+                (bucket, bucket, start, end),
             )
             rows = await cur.fetchall()
         except Exception as err:  # noqa: BLE001
