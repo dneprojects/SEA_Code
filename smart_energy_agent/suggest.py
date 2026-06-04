@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Optional
 
 from . import discovery
-from .setup_catalog import UNIT_GROUPS
+from .setup_catalog import UNIT_GROUPS, find_slot
 
 PREFS_BONUS = 100.0
 HINT_BONUS = 10.0
@@ -160,34 +160,37 @@ def prefill_from_prefs(prefs: Optional[dict[str, Any]]) -> dict[str, dict[str, A
     if not isinstance(prefs, dict):
         return out
 
-    sources = prefs.get("energy_sources") or []
-    pv_rates: list[str] = []
-    for s in sources:
+    def assign(category: str, slot: str, value: Any) -> None:
+        """Set a slot value, appending for multi slots (e.g. several pumps)."""
+        if not value:
+            return
+        spec = find_slot(category, slot)
+        if spec and spec.get("multi"):
+            lst = out[category].setdefault(slot, [])
+            if value not in lst:
+                lst.append(value)
+        else:
+            out[category].setdefault(slot, value)
+
+    for s in prefs.get("energy_sources") or []:
         if not isinstance(s, dict):
             continue
         stype = s.get("type")
         if stype == "solar":
-            if s.get("stat_rate"):
-                pv_rates.append(s["stat_rate"])
-            if s.get("stat_energy_from"):
-                out["pv"].setdefault("energy_today", s["stat_energy_from"])
+            assign("pv", "power", s.get("stat_rate"))
+            assign("pv", "energy_today", s.get("stat_energy_from"))
         elif stype == "battery":
-            if s.get("stat_rate"):
-                out["battery"]["power"] = s["stat_rate"]
-            if s.get("stat_soc"):
-                out["battery"]["soc"] = s["stat_soc"]
+            assign("battery", "power", s.get("stat_rate"))
+            assign("battery", "soc", s.get("stat_soc"))
         elif stype == "grid":
             gf = _grid_fields(s)
-            if gf.get("power"):
-                out["grid"]["power"] = gf["power"]
+            assign("grid", "power", gf.get("power"))
             if gf.get("import_energy"):
                 out["grid"]["import_energy"] = gf["import_energy"]
             if gf.get("export_energy"):
                 out["grid"]["export_energy"] = gf["export_energy"]
             if gf.get("price_entity"):
                 out["tariff"]["price_entity"] = gf["price_entity"]
-    if pv_rates:
-        out["pv"]["power"] = pv_rates
 
     # Map named device consumption to the matching category (heat pump, wallbox).
     consumption_map = (
@@ -200,10 +203,8 @@ def prefill_from_prefs(prefs: Optional[dict[str, Any]]) -> dict[str, dict[str, A
         name = (dc.get("name") or "").lower()
         for category, hints in consumption_map:
             if any(h in name for h in hints):
-                if dc.get("stat_rate"):
-                    out[category]["power"] = dc["stat_rate"]
-                if dc.get("stat_consumption"):
-                    out[category].setdefault("energy", dc["stat_consumption"])
+                assign(category, "power", dc.get("stat_rate"))
+                assign(category, "energy", dc.get("stat_consumption"))
                 break
     return out
 

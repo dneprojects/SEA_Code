@@ -90,7 +90,11 @@ def balance_from_config(
     surplus_w = pv_w - house_load_w
 
     hp_cfg = config.get("heat_pump") or {}
-    hp_w = val(hp_cfg.get("power")) if hp_cfg.get("power") else None
+    hp_list = hp_cfg.get("power") or []
+    if isinstance(hp_list, str):
+        hp_list = [hp_list]
+    hp_vals = [v for v in (val(e) for e in hp_list) if v is not None]
+    hp_w = sum(hp_vals) if hp_vals else None
 
     has_grid = bool(grid_cfg.get("power") or grid_cfg.get("import_power") or grid_cfg.get("export_power"))
     return {

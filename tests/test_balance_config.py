@@ -51,6 +51,14 @@ def test_battery_charge_reduces_surplus() -> None:
     assert bal["sources"]["battery"] == 1
 
 
+def test_heat_pump_multi_power_summed() -> None:
+    config = {"pv": {"power": ["s.pv"]}, "grid": {"power": "s.grid"},
+              "heat_pump": {"power": ["s.hp1", "s.hp2"]}}
+    live = {"s.pv": _p(0), "s.grid": _p(0), "s.hp1": _p(300), "s.hp2": _p(200)}
+    bal = balance_from_config(config, live)
+    assert bal["heat_pump_w"] == 500.0
+
+
 def test_grid_invert_flag() -> None:
     config = {"pv": {"power": ["s.pv"]}, "grid": {"power": "s.grid", "invert": True}}
     live = {"s.pv": _p(1000), "s.grid": _p(-500)}

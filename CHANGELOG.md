@@ -10,6 +10,11 @@
 - Wizard: added the **wallbox / EV charger** category (charging power + energy +
   control actuators: charge-current setpoint and on/off), prefilled from the
   Energy dashboard's named device consumption.
+- Heat pump now supports **multiple entities per quantity**: several power and
+  energy meters (e.g. two pumps, summed), plus multi temperature sensors
+  (heating circuits, DHW/buffer tanks — shown in the device view) and multiple
+  control actuators (climate entities / setpoints per circuit). Energy-dashboard
+  prefill accumulates several matching device-consumption entries into a list.
 
 - Guided setup wizard ("Einrichtung"): instead of unreliable auto-classification,
   the user assigns the entities the agent really needs per logical category

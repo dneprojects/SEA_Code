@@ -101,12 +101,22 @@ def test_prefill_from_prefs_maps_all_slots() -> None:
     assert out["pv"]["energy_today"] == "sensor.pv_today"
     assert out["grid"]["power"] == "sensor.grid_power"
     assert out["tariff"]["price_entity"] == "sensor.price"
-    assert out["heat_pump"]["power"] == "sensor.hp_power"
-    assert out["heat_pump"]["energy"] == "sensor.hp_energy"
+    assert out["heat_pump"]["power"] == ["sensor.hp_power"]  # multi -> list
+    assert out["heat_pump"]["energy"] == ["sensor.hp_energy"]
     assert out["battery"]["power"] == "sensor.batt_power"
     assert out["battery"]["soc"] == "sensor.batt_soc"
     assert out["ev_charger"]["power"] == "sensor.wb_power"
     assert out["ev_charger"]["energy"] == "sensor.wb_energy"
+
+
+def test_prefill_heatpump_multi_accumulates() -> None:
+    prefs = {"device_consumption": [
+        {"name": "Wärmepumpe 1", "stat_rate": "sensor.hp1_p", "stat_consumption": "sensor.hp1_e"},
+        {"name": "Wärmepumpe 2", "stat_rate": "sensor.hp2_p", "stat_consumption": "sensor.hp2_e"},
+    ]}
+    out = prefill_from_prefs(prefs)
+    assert out["heat_pump"]["power"] == ["sensor.hp1_p", "sensor.hp2_p"]
+    assert out["heat_pump"]["energy"] == ["sensor.hp1_e", "sensor.hp2_e"]
 
 
 def test_prefill_legacy_flow_grid() -> None:
