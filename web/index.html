@@ -395,7 +395,7 @@
     const FLOW_PALETTE = ["#80b8ff","#caa0ff","#ffc080","#a0d0a0","#e0a0c0","#80e0ff"];
     let lastFlow = null;
     const flowExpanded = new Set();
-    function toggleFlow(key){ if(flowExpanded.has(key)) flowExpanded.delete(key); else flowExpanded.add(key); renderFlow(lastFlow); }
+    function toggleFlow(key){ const was=flowExpanded.has(key); flowExpanded.clear(); if(!was) flowExpanded.add(key); renderFlow(lastFlow); }
     function renderFlow(f) {
       lastFlow = f;
       const el = document.getElementById("flow");
@@ -406,15 +406,17 @@
         el.innerHTML = "<div class='sub' style='padding:20px'>Noch keine Energiedaten. Unter „Einrichtung“ PV/Netz/Batterie zuordnen.</div>";
         return;
       }
-      const W=700, H=440, R=40;
+      const W=780, R=40, step=100, topPad=70;
       const hx=300, hy=220;
       const anchors = {
         pv:[300,64], grid:[78,220], house:[hx,hy], battery:[300,376],
       };
+      // Each load gets a full slot (circle + readable label below) so names never overlap.
       loads.forEach((ld,i) => { ld.color = ld.kind==="consumers" ? FLOW_PALETTE[i%FLOW_PALETTE.length]
           : ({heat_pump:"#ff8080", water_heater:"#e0902b", ev_charger:"#008080"}[ld.kind]||"#80b8ff");
         ld.icon = KIND_ICON[ld.kind] || "🔌";
-        ld.x = 470; ld.y = loads.length<=1 ? hy : 70 + (340-70)*i/(loads.length-1); });
+        ld.x = 480; ld.y = loads.length<=1 ? hy : topPad + i*step; });
+      const H = Math.max(440, topPad + (loads.length>1 ? (loads.length-1)*step : 0) + 96);
       const allP = [Math.abs(f.pv_w||0), Math.abs(f.grid_w||0), Math.abs(f.battery_w||0)]
         .concat(loads.map(l=>Math.abs(l.power_w||0)));
       const maxP = Math.max(1, ...allP);
@@ -444,6 +446,11 @@
       nodes += node(...anchors.battery, R, "#d97a2b", "🔋", flowBattLabel(f.battery_w), "Batterie",
         f.battery_soc!=null?("SoC "+f.battery_soc+" %"):"");
       nodes += node(...anchors.house, R+6, "#2f5f8f", "🏠", fmtW(f.house_load_w), "Haus", "", true);
+      // PV surplus, left of the PV circle
+      if (f.surplus_w!=null) { const [sx,sy]=anchors.pv;
+        nodes += `<text x="${sx-R-12}" y="${sy-3}" text-anchor="end" font-size="11" fill="#6b6c6e">PV-Überschuss</text>`
+          + `<text x="${sx-R-12}" y="${sy+14}" text-anchor="end" font-size="13" font-weight="bold" fill="#3f9b2f">${fmtW(f.surplus_w)}</text>`;
+      }
       // loads (right column) + expandable parts; configured loads stay shown
       // even when their entities are temporarily unavailable (value "–").
       loads.forEach(ld => {
@@ -452,15 +459,12 @@
         if ((ld.parts||[]).length>1) {
           const exp = flowExpanded.has(ld.key);
           nodes += `<text x="${ld.x+R-4}" y="${ld.y-R+12}" font-size="16" font-weight="bold" fill="${ld.color}" style="cursor:pointer" onclick="toggleFlow('${ld.key}')">${exp?"−":"+"}<title>Einzelleistungen ein-/ausblenden</title></text>`;
-          if (exp) ld.parts.forEach((pt,j) => { const px=600, py=ld.y + (j-(ld.parts.length-1)/2)*52;
+          if (exp) ld.parts.forEach((pt,j) => { const px=640, py=ld.y + (j-(ld.parts.length-1)/2)*54;
             if (pt.power_w) { const [a2,b2,c2,d2]=trim(ld.x,ld.y,px,py,R,28); lines+=line(a2,b2,c2,d2,ld.color,pt.power_w); }
             nodes += node(px,py,28,ld.color,"",fmtW(pt.power_w),pt.name); });
         }
       });
-      const svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:760px;margin:auto">${lines}${nodes}</svg>`;
-      const sur = f.surplus_w!=null
-        ? `<div class="sub" style="text-align:center;margin-top:4px">PV-Überschuss: <b style="color:#3f9b2f">${fmtW(f.surplus_w)}</b></div>` : "";
-      el.innerHTML = svg + sur;
+      el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:840px;margin:auto">${lines}${nodes}</svg>`;
     }
     function renderSummary(s) {
       const dot = document.getElementById("ha-dot"), txt = document.getElementById("ha-text");
