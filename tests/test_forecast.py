@@ -17,6 +17,7 @@ from smart_energy_agent.forecast import (
     build_surplus_forecast,
     forecast_consumption,
     parse_pv_forecast,
+    parse_solar_forecast,
     profile_backtest,
 )
 
@@ -141,6 +142,29 @@ def test_parse_pv_forecast_generic_and_empty() -> None:
     assert [w for _ts, w in parse_pv_forecast(state)] == [800.0]
     assert parse_pv_forecast(None) == []
     assert parse_pv_forecast({}) == []
+
+
+def test_parse_solar_forecast_sums_entries_wh_to_w() -> None:
+    # Two config entries (roof planes); same hour values add up. wh over 1h == W.
+    data = {
+        "entry_a": {"wh_hours": {
+            "2023-11-15T09:00:00+00:00": 1000,
+            "2023-11-15T10:00:00+00:00": 2000,
+        }},
+        "entry_b": {"wh_hours": {
+            "2023-11-15T09:00:00+00:00": 500,
+        }},
+    }
+    pts = parse_solar_forecast(data)
+    assert pts[0][1] == 1500.0  # 1000 + 500 at 09:00
+    assert pts[1][1] == 2000.0  # 10:00, only entry_a
+    assert pts[0][0] < pts[1][0]  # sorted by timestamp
+
+
+def test_parse_solar_forecast_empty_inputs() -> None:
+    assert parse_solar_forecast(None) == []
+    assert parse_solar_forecast({}) == []
+    assert parse_solar_forecast({"e": {"no_wh": {}}}) == []
 
 
 def test_build_surplus_forecast_combines_pv_and_load() -> None:

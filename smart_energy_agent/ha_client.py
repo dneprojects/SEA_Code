@@ -218,6 +218,15 @@ class HAClient:
     async def get_area_registry(self) -> list[dict[str, Any]]:
         return await self._command("config/area_registry/list") or []
 
+    async def get_solar_forecast(self) -> dict[str, Any]:
+        """Energy-dashboard solar forecast (e.g. Forecast.Solar).
+
+        Returns ``{config_entry_id: {"wh_hours": {iso: wh}}}`` from HA's cache
+        (no upstream API call); empty dict if no solar-forecast integration is
+        configured in the Energy dashboard.
+        """
+        return await self._command("energy/solar_forecast") or {}
+
     async def call_service(
         self, domain: str, service: str, entity_id: str
     ) -> Any:

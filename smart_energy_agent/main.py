@@ -60,6 +60,14 @@ class SmartEnergyAgent:
             discovery.discover_devices(states, ent_reg, dev_reg, area_reg)
         )
         await self.client.subscribe_state_changes()
+        await self._refresh_solar_forecast()
+
+    async def _refresh_solar_forecast(self) -> None:
+        """Pull the Energy-dashboard solar forecast (Forecast.Solar) into the store."""
+        try:
+            self.store.set_solar_forecast(await self.client.get_solar_forecast())
+        except Exception as err:  # noqa: BLE001
+            logging.getLogger(__name__).debug("Solar forecast fetch failed: %s", err)
 
     def _on_state_changed(self, data: dict[str, Any]) -> None:
         entity_id = data.get("entity_id")
@@ -100,12 +108,20 @@ class SmartEnergyAgent:
             except Exception as err:  # noqa: BLE001
                 logging.getLogger(__name__).warning("Control loop error: %s", err)
 
+    async def _solar_forecast(self) -> None:
+        """Periodically refresh the solar forecast (initial pull is on connect)."""
+        while True:
+            await asyncio.sleep(const.SOLAR_FORECAST_INTERVAL)
+            if self.client.connected:
+                await self._refresh_solar_forecast()
+
     async def run(self) -> None:
         await self.store.open_db()
         await self.web.start()
         client_task = asyncio.create_task(self.client.run_forever())
         recorder_task = asyncio.create_task(self._recorder())
         control_task = asyncio.create_task(self._control())
+        forecast_task = asyncio.create_task(self._solar_forecast())
 
         # Keep ha_status in sync with the live connection flag.
         async def _status_sync() -> None:
@@ -121,6 +137,7 @@ class SmartEnergyAgent:
             status_task.cancel()
             recorder_task.cancel()
             control_task.cancel()
+            forecast_task.cancel()
             await self.client.stop()
             await self.web.stop()
             await self.store.close_db()

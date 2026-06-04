@@ -181,6 +181,35 @@ def _parse_iso(s: Any) -> Optional[float]:
         return None
 
 
+def parse_solar_forecast(data: Optional[dict[str, Any]]) -> list[tuple[float, float]]:
+    """Parse the HA ``energy/solar_forecast`` result into [(ts, watt)].
+
+    This is the supported source for Forecast.Solar (and any Energy-dashboard
+    solar-forecast integration): HA returns its cached forecast, so polling it
+    does not hit the upstream API. Shape::
+
+        {config_entry_id: {"wh_hours": {iso_ts: wh}}}
+
+    Multiple config entries (e.g. several roof planes) are summed per timestamp.
+    Each value is watt-hours over a one-hour period, i.e. numerically the
+    average power in watts for that hour.
+    """
+    if not isinstance(data, dict):
+        return []
+    by_ts: dict[float, float] = {}
+    for entry in data.values():
+        if not isinstance(entry, dict):
+            continue
+        wh_hours = entry.get("wh_hours")
+        if not isinstance(wh_hours, dict):
+            continue
+        for k, v in wh_hours.items():
+            ts, w = _parse_iso(k), _to_float(v)
+            if ts is not None and w is not None:
+                by_ts[ts] = by_ts.get(ts, 0.0) + w  # Wh over 1 h == W
+    return sorted(by_ts.items())
+
+
 def parse_pv_forecast(state: Optional[dict[str, Any]]) -> list[tuple[float, float]]:
     """Extract a PV power forecast [(ts, watt)] from an HA entity's state dict.
 

@@ -64,6 +64,8 @@ class Store:
         self._dynamic_price: Optional[float] = None
         # Last seen full state of the PV-forecast entity (with attributes).
         self._pv_forecast_state: Optional[dict[str, Any]] = None
+        # Latest HA energy/solar_forecast result (Forecast.Solar etc.).
+        self._solar_forecast: Optional[dict[str, Any]] = None
         # Per-consumer control configuration, keyed by control entity_id.
         self._consumers: dict[str, dict[str, Any]] = {}
         self._load_consumers()
@@ -233,6 +235,10 @@ class Store:
 
     def pv_forecast_entity(self) -> str:
         return self._settings.get("pv_forecast_entity", "") or ""
+
+    def set_solar_forecast(self, data: Optional[dict[str, Any]]) -> None:
+        """Store the latest HA energy/solar_forecast result (e.g. Forecast.Solar)."""
+        self._solar_forecast = data if isinstance(data, dict) else None
 
     # --- control runtime state ----------------------------------------------
     def _runtime_for(self, entity_id: str) -> dict[str, Any]:
@@ -753,13 +759,24 @@ class Store:
         return out
 
     async def forecast_bundle(self, hours: int = 24) -> dict[str, Any]:
-        """Consumption forecast + PV forecast + the resulting PV-surplus forecast."""
+        """Consumption forecast + PV forecast + the resulting PV-surplus forecast.
+
+        PV source priority: the HA energy/solar_forecast (Forecast.Solar, needs
+        no entity config) first, then a user-configured PV-forecast entity
+        (Solcast / generic) as a fallback.
+        """
         consumption = await self.consumption_forecast(hours=hours)
-        pv_points = forecast.parse_pv_forecast(self._pv_forecast_state)
+        pv_points = forecast.parse_solar_forecast(self._solar_forecast)
+        pv_source = "forecast_solar" if pv_points else "none"
+        if not pv_points:
+            pv_points = forecast.parse_pv_forecast(self._pv_forecast_state)
+            if pv_points:
+                pv_source = "entity"
         surplus = forecast.build_surplus_forecast(consumption, pv_points)
         return {
             "consumption": consumption,
             "surplus": surplus,
+            "pv_source": pv_source,
             "pv_entity": self.pv_forecast_entity(),
             "pv_points": len(pv_points),
         }
