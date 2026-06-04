@@ -2,6 +2,17 @@
 
 ## 0.2.0
 
+- Strategies now reference the **configured devices** (from Erzeuger/Verbraucher),
+  not raw entities: pick which devices take part in PV-surplus self-consumption
+  (and tariff shifting) per device, with priority/threshold/runtime. Multiple
+  devices supported.
+- **Modulating (regelbare) loads** (e.g. heating rod, wallbox) now absorb the
+  **remaining surplus**: the control engine sets their power setpoint (number)
+  to drive the grid toward zero, allocated by priority across all modulating
+  loads, clamped to a max power, with a W-per-unit factor (e.g. wallbox amps).
+  Switchable loads keep on/off control. The engine now uses the signed grid
+  signal (fixes shedding after the surplus≥0 clamp).
+
 - Strategien page: each strategy is now an **expandable box** with its settings
   inside (PV-surplus self-consumption holds the master switch + consumer control;
   setback holds its enable + link). Toggling an activation updates the box status

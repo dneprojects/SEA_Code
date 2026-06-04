@@ -67,6 +67,10 @@ class Store:
                 "frost_c": 7.0,            # never set below this
                 "groups": [],
             },
+            # Per controllable device (from the wizard) strategy participation,
+            # keyed by "kind:instanceId" -> {self_consumption, tariff_shift,
+            # priority, pv_threshold_w, min_runtime_min, min_off_min, max_starts_per_day}
+            "strategy_loads": {},
         }
         self._load_settings()
         # Last seen value of the dynamic price entity (ct/kWh), if used.
@@ -338,6 +342,71 @@ class Store:
     def strategies_overview(self) -> list[dict[str, Any]]:
         """Which energy-saving strategies are possible from the current config."""
         return strategies.overview(self._config, self._settings, self.groups())
+
+    # --- controllable devices (from the wizard) participating in strategies --
+    def controllable_devices(self) -> list[dict[str, Any]]:
+        """Configured load instances that have a control actuator (switch/setpoint)."""
+        out: list[dict[str, Any]] = []
+        for kind in ("heat_pump", "water_heater", "ev_charger", "consumers"):
+            spec = setup_catalog.find_kind(kind)
+            klabel = spec["label"] if spec else kind
+            for inst in self._config.get(kind) or []:
+                if not isinstance(inst, dict):
+                    continue
+                c = inst.get("control") or {}
+                mode = "switch" if c.get("switch") else ("setpoint" if c.get("setpoint") else "")
+                if not mode:
+                    continue
+                pw, have = 0.0, False
+                for p in inst.get("powers") or []:
+                    v = _state_power_w(self.live_state(p.get("entity"))) if p.get("entity") else None
+                    if v is not None:
+                        pw += v
+                        have = True
+                out.append({
+                    "key": f"{kind}:{inst.get('id')}", "kind": kind, "kind_label": klabel,
+                    "name": inst.get("name", klabel), "control_mode": mode,
+                    "switch": c.get("switch", ""), "setpoint": c.get("setpoint", ""),
+                    "power_w": round(pw, 1) if have else None,
+                })
+        return out
+
+    def strategy_loads(self) -> dict[str, Any]:
+        return dict(self._settings.get("strategy_loads", {}))
+
+    def set_strategy_load(self, key: str, patch: dict[str, Any]) -> bool:
+        if not key:
+            return False
+        cfg = self._settings.setdefault("strategy_loads", {}).setdefault(key, {})
+        for f in ("self_consumption", "tariff_shift"):
+            if f in patch:
+                cfg[f] = bool(patch[f])
+        for f in ("priority", "pv_threshold_w", "min_runtime_min", "min_off_min", "max_starts_per_day"):
+            if f in patch:
+                try:
+                    cfg[f] = int(patch[f] or 0)
+                except (TypeError, ValueError):
+                    pass
+        for f in ("min_w", "max_w", "w_per_unit"):  # modulating (regelbare) loads
+            if f in patch:
+                try:
+                    cfg[f] = float(patch[f] or 0)
+                except (TypeError, ValueError):
+                    pass
+        self._save_settings()
+        return True
+
+    def strategy_devices(self) -> list[dict[str, Any]]:
+        """Controllable devices merged with their strategy participation config."""
+        sl = self.strategy_loads()
+        out = []
+        for d in self.controllable_devices():
+            cfg = {"self_consumption": False, "tariff_shift": False, "priority": 5,
+                   "pv_threshold_w": 0, "min_runtime_min": 0, "min_off_min": 0,
+                   "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1}
+            cfg.update(sl.get(d["key"], {}))
+            out.append({**d, "cfg": cfg})
+        return out
 
     def group_present(self, group: dict[str, Any]) -> Optional[bool]:
         """Group presence: present if ANY person home; away only if ALL away;

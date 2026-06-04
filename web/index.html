@@ -1038,23 +1038,47 @@
       return `<div style="display:flex;flex-direction:column;gap:3px">
         <label style="font-size:11px;color:var(--muted)">${label}</label>${inner}</div>`;
     }
-    let consumerList = [];
     let stratList = [];
+    let stratDevices = [];
     let ctrlEnabled = false;
     const stratOpen = new Set(["self_consumption"]);
     function onStratToggle(key, open) { if (open) stratOpen.add(key); else stratOpen.delete(key); }
     async function loadConsumers() {
-      let data = { consumers:[], types:[], modes:[], combine:[] };
-      try { data = await fetch(api("/api/consumers")).then(r=>r.json()); } catch(e) {}
-      consumerMeta = { types:data.types||[], modes:data.modes||[], combine:data.combine||[] };
-      consumerList = data.consumers || [];
       try {
         const s = await fetch(api("/api/settings")).then(r=>r.json());
         ctrlEnabled = !!s.control_enabled;
         fillStrategy(s);
       } catch(e) {}
       try { stratList = (await fetch(api("/api/strategies")).then(r=>r.json())).strategies || []; } catch(e) {}
+      try { stratDevices = (await fetch(api("/api/strategy-loads")).then(r=>r.json())).devices || []; } catch(e) {}
       renderStrategies();
+    }
+    function deviceRows(mode) {
+      if (!stratDevices.length)
+        return "<p class='sub'>Keine steuerbaren Geräte. Lege unter „Erzeuger/Verbraucher“ Geräte mit Steuerung (Schalt-/Sollwert-Entität) an.</p>";
+      return stratDevices.map(d => {
+        const cfg = d.cfg, on = mode==='self_consumption' ? cfg.self_consumption : cfg.tariff_shift;
+        const sw = d.control_mode==='switch';
+        const ni = (lbl,f,w) => `<span class="sub">${lbl}</span><input type="number" style="width:${w||56}px" value="${cfg[f]}" onchange="setLoad('${d.key}','${f}',this.value)">`;
+        let extra = "";
+        if (mode==='self_consumption' && on) {
+          extra = sw
+            ? ni("Prio","priority",48)+ni("PV-Schwelle W","pv_threshold_w",70)+ni("min. Laufzeit","min_runtime_min",52)
+            : ni("Prio","priority",48)+ni("max. Leistung W","max_w",72)+ni("W/Einheit","w_per_unit",60);
+        }
+        const tag = sw ? '<span class="sub">schaltbar</span>' : '<span class="sub">regelbar</span>';
+        return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--alt);padding:3px 0">
+          <label><input type="checkbox" ${on?'checked':''} onchange="setLoad('${d.key}','${mode}',this.checked)"> ${d.name}</label>
+          <span class="sub">${d.kind_label} · ${tag}${d.power_w!=null?' · '+fmtW(d.power_w):''}</span>
+          ${extra}</div>`;
+      }).join("");
+    }
+    async function setLoad(key, field, val) {
+      try {
+        await fetch(api("/api/strategy-loads"), { method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({key, patch:{[field]:val}}) });
+      } catch(e) {}
+      loadConsumers();
     }
     function stratBadge(st) {
       if (st.active) return '<span class="badge" style="background:#3f9b2f">aktiv</span>';
@@ -1070,10 +1094,16 @@
         return `<label style="font-weight:bold;color:var(--fg)">
             <input type="checkbox" id="ctrl-master" onchange="toggleControl()"> PV-Überschusssteuerung aktiv</label>
           <span class="sub" id="ctrl-status" style="margin-left:8px"></span>
-          <div class="sub" style="margin:4px 0">Schaltet nur Verbraucher im Modus „Automatisch“ und nur schaltbare Geräte. Solange aus, wird nichts geschaltet.</div>
+          <div class="sub" style="margin:4px 0">Schaltbare Geräte werden bei PV-Überschuss zu-/abgeschaltet. Solange aus, wird nichts geschaltet.</div>
           ${miss}
-          <div class="panel-title" style="margin:10px 0 6px">Verbraucher-Steuerung</div>
-          <div id="consumers"></div>`;
+          <div class="panel-title" style="margin:10px 0 6px">Geräte im PV-Überschuss</div>
+          ${deviceRows('self_consumption')}`;
+      }
+      if (st.key === "tariff_shift") {
+        return `<div class="sub" style="margin-bottom:4px">${st.desc||''}</div>${miss}
+          <div class="panel-title" style="margin:8px 0 6px">Verschiebbare Geräte</div>
+          ${deviceRows('tariff_shift')}
+          <div class="sub" style="margin-top:4px">Die automatische Verschiebung in günstige Stunden folgt.</div>`;
       }
       if (st.key === "setback") {
         return `<label style="font-weight:bold;color:var(--fg)">
@@ -1093,7 +1123,6 @@
       const cm = document.getElementById("ctrl-master");
       if (cm) { cm.checked = ctrlEnabled;
         document.getElementById("ctrl-status").textContent = ctrlEnabled ? "aktiv" : "aus"; }
-      if (document.getElementById("consumers")) renderConsumers(consumerList);
     }
     async function toggleControl() {
       const on = document.getElementById("ctrl-master").checked;

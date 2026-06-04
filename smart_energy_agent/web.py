@@ -43,6 +43,8 @@ class WebServer:
         self._app.router.add_get("/api/settings", self._api_settings_get)
         self._app.router.add_post("/api/settings", self._api_settings_post)
         self._app.router.add_get("/api/strategies", self._api_strategies)
+        self._app.router.add_get("/api/strategy-loads", self._api_strategy_loads_get)
+        self._app.router.add_post("/api/strategy-loads", self._api_strategy_loads_post)
         self._app.router.add_get("/api/consumers", self._api_consumers_get)
         self._app.router.add_post("/api/consumers", self._api_consumers_post)
         self._app.router.add_get("/api/devices", self._api_devices_get)
@@ -225,6 +227,18 @@ class WebServer:
 
     async def _api_strategies(self, _request: web.Request) -> web.Response:
         return web.json_response({"strategies": self._store.strategies_overview()})
+
+    async def _api_strategy_loads_get(self, _request: web.Request) -> web.Response:
+        return web.json_response({"devices": self._store.strategy_devices()})
+
+    async def _api_strategy_loads_post(self, request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "invalid json"}, status=400)
+        if not self._store.set_strategy_load(body.get("key"), body.get("patch", {})):
+            return web.json_response({"error": "key required"}, status=400)
+        return web.json_response({"ok": True, "devices": self._store.strategy_devices()})
 
     async def _api_consumers_get(self, _request: web.Request) -> web.Response:
         return web.json_response({
