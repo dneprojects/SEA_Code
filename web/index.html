@@ -1053,10 +1053,11 @@
       try { stratDevices = (await fetch(api("/api/strategy-loads")).then(r=>r.json())).devices || []; } catch(e) {}
       renderStrategies();
     }
-    function deviceRows(mode) {
-      if (!stratDevices.length)
-        return "<p class='sub'>Keine steuerbaren Geräte. Lege unter „Erzeuger/Verbraucher“ Geräte mit Steuerung (Schalt-/Sollwert-Entität) an.</p>";
-      return stratDevices.map(d => {
+    function deviceRows(mode, kindOnly) {
+      let devs = stratDevices.filter(d => kindOnly ? d.kind===kindOnly : d.kind!=='battery');
+      if (!devs.length)
+        return "<p class='sub'>Keine passenden Geräte. Lege unter „Erzeuger/Verbraucher“ Geräte mit Steuerung an.</p>";
+      return devs.map(d => {
         const cfg = d.cfg, on = mode==='self_consumption' ? cfg.self_consumption : cfg.tariff_shift;
         const sw = d.control_mode==='switch';
         const ni = (lbl,f,w) => `<span class="sub">${lbl}</span><input type="number" style="width:${w||56}px" value="${cfg[f]}" onchange="setLoad('${d.key}','${f}',this.value)">`;
@@ -1065,13 +1066,21 @@
           extra = sw
             ? ni("Prio","priority",48)+ni("PV-Schwelle W","pv_threshold_w",70)+ni("min. Laufzeit","min_runtime_min",52)
             : ni("Prio","priority",48)+ni("max. Leistung W","max_w",72)+ni("W/Einheit","w_per_unit",60);
+          // Stop condition (e.g. vehicle SoC / temperature reached)
+          const lim = cfg.limit_entity
+            ? `<span class="eid">${cfg.limit_entity}</span> ≥ <input type="number" style="width:60px" value="${cfg.limit_max}" onchange="setLoad('${d.key}','limit_max',this.value)"> <button class="btn" title="Stopp entfernen" onclick="setLoad('${d.key}','limit_entity','')">×</button>`
+            : `<button class="btn" onclick="pickLimit('${d.key}')">Stopp-Bedingung</button>`;
+          extra += ` <span style="flex-basis:100%"></span><span class="sub">Stopp bei:</span> ${lim}`;
         }
         const tag = sw ? '<span class="sub">schaltbar</span>' : '<span class="sub">regelbar</span>';
         return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--alt);padding:3px 0">
           <label><input type="checkbox" ${on?'checked':''} onchange="setLoad('${d.key}','${mode}',this.checked)"> ${d.name}</label>
-          <span class="sub">${d.kind_label} · ${tag}${d.power_w!=null?' · '+fmtW(d.power_w):''}</span>
+          <span class="sub">${d.kind_label} · ${tag}${d.power_w!=null?' · '+fmtW(d.power_w):''}${d.satisfied?' · <b style=\"color:#3f9b2f\">Ziel erreicht</b>':''}</span>
           ${extra}</div>`;
       }).join("");
+    }
+    function pickLimit(key) {
+      openPickerCb("value", "", "", eid => { if (eid) setLoad(key, 'limit_entity', eid); });
     }
     async function setLoad(key, field, val) {
       try {
@@ -1098,6 +1107,10 @@
           ${miss}
           <div class="panel-title" style="margin:10px 0 6px">Geräte im PV-Überschuss</div>
           ${deviceRows('self_consumption')}`;
+      }
+      if (st.key === "battery_opt") {
+        return `<div class="sub" style="margin-bottom:4px">${st.desc||''} Benötigt aktive PV-Überschusssteuerung.</div>${miss}
+          ${deviceRows('self_consumption','battery')}`;
       }
       if (st.key === "tariff_shift") {
         return `<div class="sub" style="margin-bottom:4px">${st.desc||''}</div>${miss}

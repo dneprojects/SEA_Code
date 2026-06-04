@@ -75,9 +75,11 @@ def overview(config: dict[str, Any], settings: dict[str, Any],
     add("tariff_shift", "Dynamischer Tarif – Lastverschiebung", miss, False, False,
         "Verschiebbare Lasten in die günstigsten Stunden legen.")
 
-    add("battery_opt", "Batterie-Optimierung",
-        ["steuerbare Batterie-Entität (Lademodus/Ziel-SoC) – noch nicht konfigurierbar"],
-        False, False, "Batterieladung an PV/Tarif ausrichten.")
+    batt_ctrl = any(isinstance(b, dict) and b.get("charge_power") for b in (config.get("battery") or []))
+    miss = [] if batt_ctrl else ["steuerbaren Ladeleistungs-Sollwert der Batterie konfigurieren"]
+    add("battery_opt", "Batterie-Optimierung", miss, batt_ctrl,
+        settings.get("control_enabled") and batt_ctrl,
+        "Batterie nimmt PV-Überschuss als regelbare Last auf (Priorität gegenüber anderen Lasten einstellbar).")
 
     miss = [] if has_thermo else ["Thermostat-Gruppe mit Personen + Räumen anlegen"]
     add("setback", "Temperaturabsenkung bei Abwesenheit", miss, True,

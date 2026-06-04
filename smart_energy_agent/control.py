@@ -38,6 +38,7 @@ class ConsumerDecision:
     max_starts: int
     min_runtime_s: int
     min_off_s: int
+    satisfied: bool = False
 
 
 def decide_action(
@@ -47,10 +48,18 @@ def decide_action(
     on_margin = const.CONTROL_ON_MARGIN_W
     off_margin = const.CONTROL_OFF_MARGIN_W
 
+    # A satisfied load (target reached, e.g. vehicle SoC / temperature) is shed
+    # first so the surplus is freed for other consumers.
+    done = [c for c in consumers
+            if c.is_on and c.satisfied and (now - c.last_on) >= c.min_runtime_s]
+    if done:
+        done.sort(key=lambda c: -c.nominal_power_w)
+        return (done[0].entity_id, "off", "Ziel erreicht")
+
     if surplus_w > on_margin:
         cands = [
             c for c in consumers
-            if not c.is_on
+            if not c.is_on and not c.satisfied
             and (now - c.last_off) >= c.min_off_s
             and (c.max_starts == 0 or c.starts_today < c.max_starts)
             and surplus_w >= max(c.pv_threshold_w, c.nominal_power_w, on_margin)
@@ -131,6 +140,7 @@ class ControlEngine:
                 max_starts=int(cfg.get("max_starts_per_day", 0) or 0),
                 min_runtime_s=int(cfg.get("min_runtime_min", 0) or 0) * 60,
                 min_off_s=int(cfg.get("min_off_min", 0) or 0) * 60,
+                satisfied=bool(d.get("satisfied")),
             ))
         return out
 
@@ -150,9 +160,12 @@ class ControlEngine:
             except (TypeError, ValueError):
                 cur_unit = 0.0
             wpu = float(cfg.get("w_per_unit", 1) or 1) or 1.0
+            # A satisfied modulating load (limit reached) is driven to 0 so the
+            # surplus is freed for the others.
+            eff_max = 0.0 if d.get("satisfied") else max_w
             out.append({"entity": eid, "domain": eid.split(".", 1)[0],
                         "cur_unit": cur_unit, "cur_w": cur_unit * wpu, "wpu": wpu,
-                        "min_w": float(cfg.get("min_w", 0) or 0), "max_w": max_w,
+                        "min_w": float(cfg.get("min_w", 0) or 0), "max_w": eff_max,
                         "priority": int(cfg.get("priority", 5))})
         return out
 

@@ -369,6 +369,17 @@ class Store:
                     "switch": c.get("switch", ""), "setpoint": c.get("setpoint", ""),
                     "power_w": round(pw, 1) if have else None,
                 })
+        # Battery with a controllable charge-power setpoint = a modulating load.
+        blabel = (setup_catalog.find_kind("battery") or {}).get("label", "Batterie")
+        for inst in self._config.get("battery") or []:
+            if not isinstance(inst, dict) or not inst.get("charge_power"):
+                continue
+            out.append({
+                "key": f"battery:{inst.get('id')}", "kind": "battery", "kind_label": blabel,
+                "name": inst.get("name", blabel), "control_mode": "setpoint",
+                "switch": "", "setpoint": inst.get("charge_power", ""),
+                "power_w": _state_power_w(self.live_state(inst.get("power"))) if inst.get("power") else None,
+            })
         return out
 
     def strategy_loads(self) -> dict[str, Any]:
@@ -387,14 +398,26 @@ class Store:
                     cfg[f] = int(patch[f] or 0)
                 except (TypeError, ValueError):
                     pass
-        for f in ("min_w", "max_w", "w_per_unit"):  # modulating (regelbare) loads
+        for f in ("min_w", "max_w", "w_per_unit", "limit_max"):  # modulating / stop limit
             if f in patch:
                 try:
                     cfg[f] = float(patch[f] or 0)
                 except (TypeError, ValueError):
                     pass
+        if "limit_entity" in patch:
+            cfg["limit_entity"] = str(patch["limit_entity"] or "")
         self._save_settings()
         return True
+
+    def _device_satisfied(self, cfg: dict[str, Any]) -> bool:
+        """True if a device reached its stop limit (e.g. vehicle SoC / temperature)."""
+        le = cfg.get("limit_entity")
+        if not le:
+            return False
+        try:
+            return float(self.live_state(le).get("state")) >= float(cfg.get("limit_max"))
+        except (TypeError, ValueError):
+            return False
 
     def strategy_devices(self) -> list[dict[str, Any]]:
         """Controllable devices merged with their strategy participation config."""
@@ -403,9 +426,10 @@ class Store:
         for d in self.controllable_devices():
             cfg = {"self_consumption": False, "tariff_shift": False, "priority": 5,
                    "pv_threshold_w": 0, "min_runtime_min": 0, "min_off_min": 0,
-                   "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1}
+                   "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1,
+                   "limit_entity": "", "limit_max": 0}
             cfg.update(sl.get(d["key"], {}))
-            out.append({**d, "cfg": cfg})
+            out.append({**d, "cfg": cfg, "satisfied": self._device_satisfied(cfg)})
         return out
 
     def group_present(self, group: dict[str, Any]) -> Optional[bool]:

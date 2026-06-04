@@ -38,6 +38,9 @@ UNIT_GROUPS: dict[str, dict[str, set[str]]] = {
     "presence": {"device_classes": {"occupancy", "presence", "motion"},
                  "units": set(),
                  "domains": {"person", "device_tracker", "zone", "input_boolean", "binary_sensor", "group"}},
+    # Broad numeric value (stop conditions: vehicle SoC, temperature, ...).
+    "value": {"device_classes": set(), "units": set(),
+              "domains": {"sensor", "number", "input_number"}},
     # Electricity price sensor (ct/kWh or currency/kWh).
     "price": {"device_classes": {"monetary"},
               "units": {"ct/kWh", "Cent/kWh", "EUR/kWh", "€/kWh", "ct", "EUR"},
@@ -81,6 +84,9 @@ INSTANCE_KINDS: list[dict[str, Any]] = [
           "label": "Lade-/Entladeleistung (+ Laden / − Entladen)"},
          {"key": "soc", "kind": "entity", "unit_group": "soc",
           "label": "Ladezustand (SoC)", "optional": True},
+         {"key": "charge_power", "kind": "entity", "unit_group": "number", "control": True,
+          "label": "Ladeleistungs-Sollwert (regelbar, optional)", "optional": True,
+          "help": "Zahlen-Entität für die Ladeleistung – Batterie nimmt PV-Überschuss auf."},
          {"key": "invert", "kind": "flag", "label": "Vorzeichen umkehren"},
      ]},
     {"key": "heat_pump", "label": "Wärmepumpe", "add_label": "Wärmepumpe hinzufügen",

@@ -3,6 +3,15 @@
 from __future__ import annotations
 
 from smart_energy_agent.control import ConsumerDecision, decide_action, decide_modulation
+from smart_energy_agent.store import Store
+
+
+def _cd(entity, **kw):
+    base = dict(domain=entity.split(".", 1)[0], priority=5, nominal_power_w=800,
+                pv_threshold_w=0, is_on=False, last_on=0, last_off=0, starts_today=0,
+                max_starts=0, min_runtime_s=0, min_off_s=0, satisfied=False)
+    base.update(kw)
+    return ConsumerDecision(entity, **base)
 
 
 def _mod(entity, cur_w=0.0, wpu=1.0, min_w=0.0, max_w=3000.0, priority=5):
@@ -45,3 +54,26 @@ def test_switch_decision_on_and_off():
                           starts_today=0, max_starts=0, min_runtime_s=0, min_off_s=0)
     off = decide_action(1000, -500, [c2])
     assert off and off[1] == "off"
+
+
+def test_satisfied_load_shed_first_and_not_turned_on():
+    on_sat = _cd("switch.wb", is_on=True, satisfied=True, nominal_power_w=2000)
+    out = decide_action(100, 3000, [on_sat])   # big surplus, but target reached -> off
+    assert out == ("switch.wb", "off", "Ziel erreicht")
+    off_sat = _cd("switch.wb", is_on=False, satisfied=True)
+    assert decide_action(0, 3000, [off_sat]) is None  # not turned on
+
+
+def test_modulating_battery_device_and_satisfied_limit():
+    s = Store()
+    s._config = {"battery": [{"id": "b1", "name": "Akku", "power": "sensor.bp",
+                              "charge_power": "number.bcharge"}]}
+    devs = {d["key"]: d for d in s.controllable_devices()}
+    assert "battery:b1" in devs
+    assert devs["battery:b1"]["control_mode"] == "setpoint"
+    assert devs["battery:b1"]["setpoint"] == "number.bcharge"
+    # stop limit: vehicle SoC >= 80
+    s._live_by_id = {"sensor.soc": {"state": "82"}}
+    assert s._device_satisfied({"limit_entity": "sensor.soc", "limit_max": 80}) is True
+    assert s._device_satisfied({"limit_entity": "sensor.soc", "limit_max": 90}) is False
+    assert s._device_satisfied({}) is False

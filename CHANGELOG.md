@@ -2,6 +2,15 @@
 
 ## 0.2.0
 
+- **Battery control**: the battery can take a charge-power setpoint (new wizard
+  field) and then participates in PV-surplus as a **modulating load** (priority
+  vs other loads configurable) — the Batterie-Optimierung strategy becomes
+  available/active accordingly.
+- **Consumer stop conditions**: per device an optional limit (e.g. vehicle SoC or
+  temperature ≥ value). When reached the device is "satisfied" — switchable loads
+  are switched off, modulating loads driven to 0 — so the **remaining surplus is
+  redistributed to the other consumers**.
+
 - Strategies now reference the **configured devices** (from Erzeuger/Verbraucher),
   not raw entities: pick which devices take part in PV-surplus self-consumption
   (and tariff shifting) per device, with priority/threshold/runtime. Multiple
