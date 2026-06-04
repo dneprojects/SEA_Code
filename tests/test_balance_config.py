@@ -57,7 +57,7 @@ def test_grid_invert_flag() -> None:
     bal = balance_from_config(config, live)
     assert bal["grid_w"] == 500.0
     assert bal["house_load_w"] == 1500.0
-    assert bal["surplus_w"] == -500.0
+    assert bal["surplus_w"] == 0.0   # surplus is clamped to >= 0
 
 
 def test_import_export_pair() -> None:

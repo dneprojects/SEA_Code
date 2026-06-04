@@ -104,7 +104,7 @@ def balance_from_config(
     grid_w = grid_w or 0.0
 
     house_load_w = pv_w + grid_w - batt_w
-    surplus_w = pv_w - house_load_w
+    surplus_w = max(0.0, pv_w - house_load_w)  # PV surplus only positive
 
     loads: list[dict[str, Any]] = []
     for kind in LOAD_KINDS:
@@ -199,7 +199,7 @@ def compute_balance(
         # Derive from balance: load = pv + grid_import - grid_export - batt_charge(+)
         house_load_w = pv_w + grid_w - batt_w
 
-    surplus_w = pv_w - house_load_w
+    surplus_w = max(0.0, pv_w - house_load_w)  # PV surplus only positive
 
     return {
         "pv_w": round(pv_w, 1),

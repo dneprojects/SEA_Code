@@ -760,38 +760,48 @@
            <span class="sw" style="background:${s.color}"></span>${s.label}</span>`).join("");
     }
     function toggleSeries(k) { visible[k] = !visible[k]; renderLegend(); renderChart(); }
-    function renderChart() {
-      const el = document.getElementById("chart");
-      const data = chartData;
-      if (!data.length) { el.innerHTML = "<p style='color:var(--muted);padding:20px'>Noch keine Verlaufsdaten — der Recorder zeichnet alle 30 s auf.</p>"; return; }
-      const W=900,H=300, L=58,R=14,T=14,B=30;
-      const x0=L, x1=W-R, y0=T, y1=H-B;
-      const keys = SERIES.filter(s=>visible[s.key]).map(s=>s.key);
+    function niceTicks(min, max, count) {
+      const span = (max - min) || 1;
+      const mag = Math.pow(10, Math.floor(Math.log10(span / count)));
+      const nn = (span / count) / mag;
+      const step = (nn < 1.5 ? 1 : nn < 3 ? 2 : nn < 7 ? 5 : 10) * mag;
+      const ticks = [];
+      for (let v = Math.ceil(min/step)*step; v <= max + 1e-9; v += step) ticks.push(v);
+      return ticks;
+    }
+    // Shared line chart with subtle grid + clean axis labels.
+    function svgLineChart(data, series, xfmt) {
+      if (!data.length) return "";
+      const W=900, H=300, L=58, Rm=16, T=12, B=28;
+      const x0=L, x1=W-Rm, y0=T, y1=H-B;
+      const keys = series.map(s=>s.key);
       let vmin=0, vmax=0;
       data.forEach(d => keys.forEach(k => { const v=d[k]; if (v!=null){ if(v<vmin)vmin=v; if(v>vmax)vmax=v; } }));
       if (vmax===vmin) vmax = vmin+1;
       const n = data.length;
       const X = i => x0 + (x1-x0)*(n<=1?0.5:i/(n-1));
       const Y = v => y1 - (v-vmin)/(vmax-vmin)*(y1-y0);
-      const yz = Y(0);
-      const fmtY = v => Math.abs(v)>=1000 ? (v/1000).toFixed(1)+"kW" : Math.round(v)+"W";
-      const t0 = new Date(data[0].ts*1000), tN = new Date(data[n-1].ts*1000);
-      const tlabel = d => d.toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+      const fmtY = v => Math.abs(v)>=1000 ? (v/1000).toFixed(1)+" kW" : Math.round(v)+" W";
       let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">`;
-      svg += `<line x1="${x0}" y1="${yz}" x2="${x1}" y2="${yz}" stroke="#cfcfcf" stroke-width="1"/>`;
-      svg += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="#e2e2e2" stroke-width="1"/>`;
-      [vmax,0,vmin].forEach(v => { const yy=Y(v);
-        svg += `<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="#6b6c6e">${fmtY(v)}</text>`; });
-      svg += `<text x="${x0}" y="${H-8}" font-size="10" fill="#6b6c6e">${tlabel(t0)}</text>`;
-      svg += `<text x="${x1}" y="${H-8}" text-anchor="end" font-size="10" fill="#6b6c6e">${tlabel(tN)}</text>`;
-      SERIES.filter(s=>visible[s.key]).forEach(s => {
-        let pts="", started=false;
+      niceTicks(vmin, vmax, 5).forEach(v => { const yy=Y(v);
+        svg += `<line x1="${x0}" y1="${yy}" x2="${x1}" y2="${yy}" stroke="${v===0?'#cfcfcf':'#eee'}" stroke-width="1"/>`
+          + `<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="#6b6c6e">${fmtY(v)}</text>`; });
+      const xt = Math.min(6, n);
+      for (let t=0; t<xt; t++) { const i = Math.round((n-1)*t/((xt-1)||1)); const xx=X(i);
+        svg += `<line x1="${xx}" y1="${y0}" x2="${xx}" y2="${y1}" stroke="#f2f2f2" stroke-width="1"/>`
+          + `<text x="${xx}" y="${H-8}" text-anchor="${t===0?'start':t===xt-1?'end':'middle'}" font-size="10" fill="#6b6c6e">${xfmt(data[i].ts)}</text>`; }
+      svg += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="#d6d6d6" stroke-width="1"/>`;
+      series.forEach(s => { let pts="", started=false;
         data.forEach((d,i) => { const v=d[s.key]; if (v==null){started=false;return;}
           pts += (started?" L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1); started=true; });
-        svg += `<path d="${pts}" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linejoin="round"/>`;
-      });
-      svg += `</svg>`;
-      el.innerHTML = svg;
+        svg += `<path d="${pts}" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linejoin="round"/>`; });
+      return svg + `</svg>`;
+    }
+    function renderChart() {
+      const xfmt = ts => new Date(ts*1000).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+      document.getElementById("chart").innerHTML = chartData.length
+        ? svgLineChart(chartData, SERIES.filter(s=>visible[s.key]), xfmt)
+        : "<p style='color:var(--muted);padding:20px'>Noch keine Verlaufsdaten — der Recorder zeichnet alle 30 s auf.</p>";
     }
 
     // ---------- Prognose ----------
@@ -835,37 +845,11 @@
       }
     }
     function renderForecastChart(hasPv) {
-      const el = document.getElementById("fc-chart");
-      const data = fcData;
-      if (!data.length) { el.innerHTML = "<p style='color:var(--muted);padding:20px'>Keine Prognosedaten.</p>"; return; }
       const series = FC_SERIES.filter(s => hasPv || s.key==="load_w");
-      const W=900,H=300, L=58,R=14,T=14,B=30;
-      const x0=L, x1=W-R, y0=T, y1=H-B;
-      const keys = series.map(s=>s.key);
-      let vmin=0, vmax=0;
-      data.forEach(d => keys.forEach(k => { const v=d[k]; if (v!=null){ if(v<vmin)vmin=v; if(v>vmax)vmax=v; } }));
-      if (vmax===vmin) vmax = vmin+1;
-      const n = data.length;
-      const X = i => x0 + (x1-x0)*(n<=1?0.5:i/(n-1));
-      const Y = v => y1 - (v-vmin)/(vmax-vmin)*(y1-y0);
-      const yz = Y(0);
-      const fmtY = v => Math.abs(v)>=1000 ? (v/1000).toFixed(1)+"kW" : Math.round(v)+"W";
-      const hh = ts => new Date(ts*1000).toLocaleTimeString("de-DE",{hour:"2-digit"})+" Uhr";
-      let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">`;
-      svg += `<line x1="${x0}" y1="${yz}" x2="${x1}" y2="${yz}" stroke="#cfcfcf" stroke-width="1"/>`;
-      svg += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="#e2e2e2" stroke-width="1"/>`;
-      [vmax,0,vmin].forEach(v => { const yy=Y(v);
-        svg += `<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="#6b6c6e">${fmtY(v)}</text>`; });
-      svg += `<text x="${x0}" y="${H-8}" font-size="10" fill="#6b6c6e">${hh(data[0].ts)}</text>`;
-      svg += `<text x="${x1}" y="${H-8}" text-anchor="end" font-size="10" fill="#6b6c6e">${hh(data[n-1].ts)}</text>`;
-      series.forEach(s => {
-        let pts="", started=false;
-        data.forEach((d,i) => { const v=d[s.key]; if (v==null){started=false;return;}
-          pts += (started?" L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1); started=true; });
-        svg += `<path d="${pts}" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linejoin="round"/>`;
-      });
-      svg += `</svg>`;
-      el.innerHTML = svg;
+      const xfmt = ts => new Date(ts*1000).toLocaleTimeString("de-DE",{hour:"2-digit"})+" Uhr";
+      document.getElementById("fc-chart").innerHTML = fcData.length
+        ? svgLineChart(fcData, series, xfmt)
+        : "<p style='color:var(--muted);padding:20px'>Keine Prognosedaten.</p>";
     }
 
     // ---------- Einsparung ----------

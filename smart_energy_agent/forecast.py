@@ -300,7 +300,7 @@ def build_surplus_forecast(
             pv_wh += pv
             pv_covered += 1
             if load is not None:
-                surplus = pv - load
+                surplus = max(0.0, pv - load)  # PV surplus only positive
                 surplus_wh += surplus
         if load is not None:
             load_wh += load

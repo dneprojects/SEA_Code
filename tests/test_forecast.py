@@ -175,12 +175,12 @@ def test_build_surplus_forecast_combines_pv_and_load() -> None:
     ]}
     pv_points = [(t0, 1000.0), (t0 + 3600, 200.0)]
     sur = build_surplus_forecast(consumption, pv_points)
-    assert [p["surplus_w"] for p in sur["points"]] == [700.0, -300.0]
+    assert [p["surplus_w"] for p in sur["points"]] == [700.0, 0.0]  # clamped >= 0
     assert sur["pv_available"] is True
     assert sur["pv_coverage"] == 1.0
     assert sur["pv_kwh"] == 1.2
     assert sur["load_kwh"] == 0.8
-    assert sur["surplus_kwh"] == 0.4
+    assert sur["surplus_kwh"] == 0.7
 
 
 def test_build_surplus_forecast_without_pv() -> None:

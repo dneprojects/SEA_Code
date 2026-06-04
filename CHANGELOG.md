@@ -2,6 +2,11 @@
 
 ## 0.2.0
 
+- PV surplus is now clamped to **≥ 0** (no negative "surplus" when importing) —
+  in the live balance, the recorded history and the forecast.
+- History and forecast charts: shared renderer with **nice y-axis ticks, subtle
+  horizontal/vertical grid lines and multiple x-axis time labels**.
+
 - Power-flow diagram keeps a **configured device visible even when its entities
   are temporarily unavailable** (shows "–" instead of dropping the node);
   `balance` marks loads `configured` and reports unavailable parts as None.
