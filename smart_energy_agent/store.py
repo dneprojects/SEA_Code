@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 import aiosqlite
 
-from . import const
+from . import const, forecast
 from .aggregator import compute_balance
 from .models import (
     EnergyEntity, EnergyRole, ROLE_LABELS, ROLE_ORDER,
@@ -707,6 +707,37 @@ class Store:
             "baseline": baseline,
             "samples": len(rows),
         }
+
+    async def consumption_forecast(
+        self, hours: int = 24, history_days: int = forecast.DEFAULT_HISTORY_DAYS
+    ) -> dict[str, Any]:
+        """History-based household consumption forecast for the next `hours`.
+
+        Reads the recorded ``house_load_w`` series and projects it via the
+        recency-weighted hour-of-day profile (forecast module). Includes a
+        backtest of the profile's accuracy on the most recent day.
+        """
+        empty = {
+            "horizon_h": hours, "start_ts": 0, "points": [], "kwh": 0.0,
+            "samples": 0, "span_days": 0.0, "coverage": 0.0,
+            "accuracy": {"samples": 0, "mae_w": None, "mape_pct": None},
+        }
+        if self._db is None:
+            return empty
+        cutoff = int(time.time()) - history_days * 86400
+        try:
+            cur = await self._db.execute(
+                "SELECT ts, house_load_w FROM energy_state WHERE ts >= ? ORDER BY ts",
+                (cutoff,),
+            )
+            rows = await cur.fetchall()
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Could not read history for forecast: %s", err)
+            return empty
+        series = [(int(r[0]), r[1]) for r in rows]
+        out = forecast.forecast_consumption(series, hours=hours)
+        out["accuracy"] = forecast.profile_backtest(series)
+        return out
 
     async def close_db(self) -> None:
         if self._db is not None:

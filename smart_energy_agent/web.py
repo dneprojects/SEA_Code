@@ -39,6 +39,7 @@ class WebServer:
         self._app.router.add_post("/api/override", self._api_override)
         self._app.router.add_get("/api/history", self._api_history)
         self._app.router.add_get("/api/savings", self._api_savings)
+        self._app.router.add_get("/api/forecast", self._api_forecast)
         self._app.router.add_get("/api/settings", self._api_settings_get)
         self._app.router.add_post("/api/settings", self._api_settings_post)
         self._app.router.add_get("/api/consumers", self._api_consumers_get)
@@ -123,6 +124,16 @@ class WebServer:
         data = await self._store.savings(range_s, baseline=baseline, sink_cap_w=cap)
         data["range"] = rng
         return web.json_response(data)
+
+    async def _api_forecast(self, request: web.Request) -> web.Response:
+        try:
+            hours = int(request.query.get("hours", "24"))
+        except ValueError:
+            hours = 24
+        hours = max(1, min(hours, 168))
+        consumption = await self._store.consumption_forecast(hours=hours)
+        # PV/surplus forecast (concept ch. 5a.1/5a.3) is added in a later slice.
+        return web.json_response({"consumption": consumption})
 
     async def _api_settings_get(self, _request: web.Request) -> web.Response:
         from . import __version__
