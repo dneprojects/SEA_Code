@@ -155,7 +155,7 @@ def prefill_from_prefs(prefs: Optional[dict[str, Any]]) -> dict[str, dict[str, A
     energy slots; ``device_consumption`` named like a heat pump fills heat_pump.
     """
     out: dict[str, dict[str, Any]] = {
-        "pv": {}, "battery": {}, "grid": {}, "heat_pump": {}, "tariff": {}
+        "pv": {}, "battery": {}, "grid": {}, "heat_pump": {}, "ev_charger": {}, "tariff": {}
     }
     if not isinstance(prefs, dict):
         return out
@@ -189,15 +189,22 @@ def prefill_from_prefs(prefs: Optional[dict[str, Any]]) -> dict[str, dict[str, A
     if pv_rates:
         out["pv"]["power"] = pv_rates
 
+    # Map named device consumption to the matching category (heat pump, wallbox).
+    consumption_map = (
+        ("heat_pump", discovery.HEATPUMP_HINTS),
+        ("ev_charger", discovery.EV_HINTS),
+    )
     for dc in prefs.get("device_consumption") or []:
         if not isinstance(dc, dict):
             continue
         name = (dc.get("name") or "").lower()
-        if any(h in name for h in discovery.HEATPUMP_HINTS):
-            if dc.get("stat_rate"):
-                out["heat_pump"]["power"] = dc["stat_rate"]
-            if dc.get("stat_consumption"):
-                out["heat_pump"].setdefault("energy", dc["stat_consumption"])
+        for category, hints in consumption_map:
+            if any(h in name for h in hints):
+                if dc.get("stat_rate"):
+                    out[category]["power"] = dc["stat_rate"]
+                if dc.get("stat_consumption"):
+                    out[category].setdefault("energy", dc["stat_consumption"])
+                break
     return out
 
 

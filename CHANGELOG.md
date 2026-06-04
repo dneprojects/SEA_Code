@@ -2,6 +2,15 @@
 
 ## 0.2.0
 
+- Wizard fixes: multi-select (PV) no longer accumulates silently — already
+  selected entities that the current search hides are now pinned (and can be
+  unchecked), and the list re-renders after each change. The invert flag
+  (grid / battery) is now also visible in the device view, which shows the
+  sign-adjusted live power.
+- Wizard: added the **wallbox / EV charger** category (charging power + energy +
+  control actuators: charge-current setpoint and on/off), prefilled from the
+  Energy dashboard's named device consumption.
+
 - Guided setup wizard ("Einrichtung"): instead of unreliable auto-classification,
   the user assigns the entities the agent really needs per logical category
   (v1: PV, heat pump, grid), choosing from HA-ranked suggestions — independent of

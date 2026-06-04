@@ -89,6 +89,8 @@ PREFS = {
     "device_consumption": [
         {"stat_consumption": "sensor.hp_energy", "stat_rate": "sensor.hp_power",
          "name": "Wärmepumpe EG"},
+        {"stat_consumption": "sensor.wb_energy", "stat_rate": "sensor.wb_power",
+         "name": "Wallbox Garage"},
     ],
 }
 
@@ -103,6 +105,8 @@ def test_prefill_from_prefs_maps_all_slots() -> None:
     assert out["heat_pump"]["energy"] == "sensor.hp_energy"
     assert out["battery"]["power"] == "sensor.batt_power"
     assert out["battery"]["soc"] == "sensor.batt_soc"
+    assert out["ev_charger"]["power"] == "sensor.wb_power"
+    assert out["ev_charger"]["energy"] == "sensor.wb_energy"
 
 
 def test_prefill_legacy_flow_grid() -> None:
@@ -123,4 +127,4 @@ def test_prefs_entity_set_collects_all() -> None:
 
 def test_prefill_empty() -> None:
     assert prefill_from_prefs(None) == {
-        "pv": {}, "battery": {}, "grid": {}, "heat_pump": {}, "tariff": {}}
+        "pv": {}, "battery": {}, "grid": {}, "heat_pump": {}, "ev_charger": {}, "tariff": {}}

@@ -476,6 +476,7 @@
     // ---------- Einrichtung (Wizard) ----------
     let setupData = null;
     const setupTimers = {};
+    const setupQuery = {};
     function flash(id, msg) {
       const e = document.getElementById(id); if (!e) return;
       e.textContent = msg; setTimeout(() => e.textContent = "", 2500);
@@ -524,12 +525,19 @@
       const valFmt = (c) => c.state!=null ? fmtState(c.state, c.unit) : "";
       const tag = (c) => c.reason ? ` <span class="ov">${c.reason}</span>` : "";
       if (spec.multi) {
-        const sel = new Set(Array.isArray(cur)?cur:(cur?[cur]:[]));
-        el.innerHTML = cands.length ? cands.map(c =>
+        const selArr = Array.isArray(cur)?cur:(cur?[cur]:[]);
+        const sel = new Set(selArr);
+        const shown = new Set(cands.map(c=>c.entity_id));
+        // Pin already-selected entities that the current search filtered out,
+        // so they stay visible and can be unchecked (no silent accumulation).
+        const pinned = selArr.filter(e=>!shown.has(e))
+          .map(e=>({entity_id:e, name:e, state:null, unit:null, reason:"ausgewählt"}));
+        const list = pinned.concat(cands);
+        const row = (c) =>
           `<label style="display:block;padding:1px 0"><input type="checkbox" ${sel.has(c.entity_id)?"checked":""}
              onchange="toggleMulti('${cat}','${slot}','${c.entity_id}',this.checked)">
-             ${c.name} <span class="eid">${c.entity_id}</span> <span class="num">${valFmt(c)}</span>${tag(c)}</label>`
-          ).join("") : "<span>keine Treffer</span>";
+             ${c.name} <span class="eid">${c.entity_id}</span> <span class="num">${valFmt(c)}</span>${tag(c)}</label>`;
+        el.innerHTML = list.length ? list.map(row).join("") : "<span>keine Treffer</span>";
       } else {
         let opts = [`<option value="">— nicht zugeordnet —</option>`].concat(cands.map(c =>
           `<option value="${c.entity_id}" ${cur===c.entity_id?"selected":""}>${c.name} — ${c.entity_id}${c.reason?" ("+c.reason+")":""}</option>`));
@@ -542,6 +550,7 @@
       }
     }
     function searchSlot(cat, slot, q) {
+      setupQuery[cat+slot] = q;
       clearTimeout(setupTimers[cat+slot]);
       setupTimers[cat+slot] = setTimeout(() => loadSlot(cat, slot, q), 250);
     }
@@ -560,6 +569,7 @@
       const set = new Set(Array.isArray(cur)?cur:(cur?[cur]:[]));
       if (on) set.add(eid); else set.delete(eid);
       await postConfig(cat, slot, Array.from(set));
+      loadSlot(cat, slot, setupQuery[cat+slot] || "");  // re-render to reflect removal/pin
     }
     async function importPrefs() {
       try {
@@ -587,7 +597,7 @@
         ${g.count ? g.entities.map(e => `
           <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:1px solid var(--alt);background:#fff">
             <span><b>${e.slot_label}</b>: ${e.name} <span class="eid">${e.entity_id}</span></span>
-            <span class="num">${fmtState(e.state, e.unit)}</span></div>`).join("")
+            <span class="num">${e.power_w!=null ? fmtW(e.power_w) : fmtState(e.state, e.unit)}</span></div>`).join("")
           : "<p class='sub' style='padding:4px 8px'>Keine Entitäten zugeordnet.</p>"}`).join("");
     }
 

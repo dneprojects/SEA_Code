@@ -89,6 +89,24 @@ CATEGORIES: list[dict[str, Any]] = [
              "multi": False, "required": False, "help": "Gegenstück zur Bezugsleistung."},
         ],
     },
+    {
+        "key": "ev_charger",
+        "label": "Wallbox / Ladestation",
+        "hints": list(discovery.EV_HINTS),
+        "slots": [
+            {"key": "power", "label": "Ladeleistung", "unit_group": "power",
+             "multi": False, "required": True,
+             "help": "Aktuelle Ladeleistung (ggf. von einem separaten Messgeraet)."},
+            {"key": "energy", "label": "Geladene Energie", "unit_group": "energy",
+             "multi": False, "required": False, "help": "kWh-Zaehler der Wallbox (optional)."},
+            {"key": "current_setpoint", "label": "Ladestrom-Sollwert (Zahlen-Entitaet)",
+             "unit_group": "number", "multi": False, "required": False, "control": True,
+             "help": "Stellgroesse: max. Ladestrom (A)."},
+            {"key": "switch", "label": "Laden an/aus", "unit_group": "switch",
+             "multi": False, "required": False, "control": True,
+             "help": "Stellgroesse: Ladevorgang schalten."},
+        ],
+    },
 ]
 
 CATEGORY_KEYS = {c["key"] for c in CATEGORIES}

@@ -17,7 +17,7 @@ from typing import Any, Optional
 import aiosqlite
 
 from . import const, forecast, setup_catalog, suggest
-from .aggregator import compute_balance, balance_from_config
+from .aggregator import compute_balance, balance_from_config, _state_power_w
 from .models import (
     EnergyEntity, EnergyRole, ROLE_LABELS, ROLE_ORDER,
     CONSUMER_ROLES, DEFAULT_CONSUMER, CONSUMER_FIELD_TYPES,
@@ -706,6 +706,15 @@ class Store:
                 for eid in eids:
                     st = self._live_by_id.get(eid) or state_by_id.get(eid) or {}
                     attrs = st.get("attributes", {}) or {}
+                    # For power entities show the sign-adjusted value, so the
+                    # invert flag is visible here too (grid/battery).
+                    power_w = None
+                    if slot.get("unit_group") == "power":
+                        power_w = _state_power_w(st)
+                        if (power_w is not None and cfg.get("invert")
+                                and cat["key"] in ("grid", "battery")
+                                and slot["key"] == "power"):
+                            power_w = -power_w
                     items.append({
                         "slot": slot["key"],
                         "slot_label": slot["label"],
@@ -713,6 +722,7 @@ class Store:
                         "name": attrs.get("friendly_name", eid),
                         "state": st.get("state"),
                         "unit": attrs.get("unit_of_measurement"),
+                        "power_w": round(power_w, 1) if power_w is not None else None,
                     })
             groups.append({
                 "key": cat["key"], "label": cat["label"],
