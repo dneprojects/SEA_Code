@@ -58,6 +58,14 @@ class Store:
                 "price_entity": "",        # HA sensor (ct/kWh) for dynamic mode
                 "feed_in_ct": 8.0,         # feed-in compensation (ct/kWh)
             },
+            # Absence temperature setback for room thermostats (concept 6.6).
+            "setback": {
+                "enabled": False,          # master switch (safety: off)
+                "presence_entity": "",     # person/device_tracker/zone/... (home = present)
+                "frost_c": 7.0,            # never set below this
+            },
+            # Room thermostats: [{id, name, climate, comfort_c, eco_c}]
+            "thermostats": [],
         }
         self._load_settings()
         # Last seen value of the dynamic price entity (ct/kWh), if used.
@@ -243,6 +251,93 @@ class Store:
 
     def feed_in_ct(self) -> Optional[float]:
         return self._settings.get("tariff", {}).get("feed_in_ct")
+
+    # --- absence setback + room thermostats (concept 6.6) -------------------
+    def setback(self) -> dict[str, Any]:
+        return dict(self._settings.get("setback", {}))
+
+    def set_setback(self, patch: dict[str, Any]) -> dict[str, Any]:
+        sb = self._settings.setdefault("setback", {})
+        if "enabled" in patch:
+            sb["enabled"] = bool(patch["enabled"])
+        if "presence_entity" in patch:
+            sb["presence_entity"] = str(patch["presence_entity"] or "")
+        if "frost_c" in patch:
+            try:
+                sb["frost_c"] = float(patch["frost_c"])
+            except (TypeError, ValueError):
+                pass
+        self._save_settings()
+        self._seed_live_from_snapshot()
+        return self.setback()
+
+    def thermostats(self) -> list[dict[str, Any]]:
+        return list(self._settings.get("thermostats", []))
+
+    def _next_th_id(self) -> str:
+        n = 0
+        for t in self._settings.get("thermostats", []):
+            tid = str(t.get("id", ""))
+            if tid.startswith("t"):
+                try:
+                    n = max(n, int(tid[1:]))
+                except ValueError:
+                    pass
+        return "t%d" % (n + 1)
+
+    def add_thermostat(self, name: str = "") -> str:
+        tid = self._next_th_id()
+        self._settings.setdefault("thermostats", []).append(
+            {"id": tid, "name": name or "Thermostat", "climate": "",
+             "comfort_c": 21.0, "eco_c": 17.0}
+        )
+        self._save_settings()
+        return tid
+
+    def update_thermostat(self, tid: str, patch: dict[str, Any]) -> bool:
+        for t in self._settings.get("thermostats", []):
+            if t.get("id") == tid:
+                if "name" in patch:
+                    t["name"] = str(patch["name"]) or "Thermostat"
+                if "climate" in patch:
+                    t["climate"] = str(patch["climate"] or "")
+                for f in ("comfort_c", "eco_c"):
+                    if f in patch:
+                        try:
+                            t[f] = float(patch[f])
+                        except (TypeError, ValueError):
+                            pass
+                self._save_settings()
+                self._seed_live_from_snapshot()
+                return True
+        return False
+
+    def remove_thermostat(self, tid: str) -> bool:
+        lst = self._settings.get("thermostats", [])
+        new = [t for t in lst if t.get("id") != tid]
+        if len(new) != len(lst):
+            self._settings["thermostats"] = new
+            self._save_settings()
+            return True
+        return False
+
+    def live_state(self, entity_id: str) -> dict[str, Any]:
+        """Latest cached raw state of a watched entity (live or snapshot)."""
+        return self._live_by_id.get(entity_id) or \
+            (self._ha_snapshot.get("state_by_id") or {}).get(entity_id) or {}
+
+    def presence_is_home(self) -> Optional[bool]:
+        """True/False from the configured presence entity, None if unknown."""
+        pe = self.setback().get("presence_entity")
+        if not pe:
+            return None
+        st = self.live_state(pe)
+        s = str(st.get("state", "")).lower()
+        if s in ("home", "on", "true", "present", "anwesend"):
+            return True
+        if s in ("not_home", "away", "off", "false", "abwesend"):
+            return False
+        return None
 
     def current_price_ct(self) -> Optional[float]:
         """Current purchase price in ct/kWh based on the configured tariff."""
@@ -850,9 +945,20 @@ class Store:
         walk(self._config)
         return ids
 
+    def watched_entity_ids(self) -> set[str]:
+        """Config entities plus thermostat climate entities and presence."""
+        ids = self.config_entity_ids()
+        for t in self._settings.get("thermostats", []):
+            if isinstance(t, dict) and t.get("climate"):
+                ids.add(t["climate"])
+        pe = self._settings.get("setback", {}).get("presence_entity")
+        if pe:
+            ids.add(pe)
+        return ids
+
     def observe_config_state(self, entity_id: str, new_state: dict[str, Any]) -> None:
-        """Cache the live state of a configured entity (any HA device)."""
-        if new_state and entity_id in self.config_entity_ids():
+        """Cache the live state of a watched entity (config / thermostat / presence)."""
+        if new_state and entity_id in self.watched_entity_ids():
             self._live_by_id[entity_id] = new_state
 
     def set_ha_snapshot(
@@ -878,7 +984,7 @@ class Store:
         """Seed the live cache for configured entities from the last snapshot,
         so the balance works immediately without waiting for state_changed."""
         state_by_id = self._ha_snapshot.get("state_by_id") or {}
-        for eid in self.config_entity_ids():
+        for eid in self.watched_entity_ids():
             if eid not in self._live_by_id and eid in state_by_id:
                 self._live_by_id[eid] = state_by_id[eid]
 

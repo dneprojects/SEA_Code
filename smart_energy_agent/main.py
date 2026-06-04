@@ -12,6 +12,7 @@ from . import const, discovery
 from .control import ControlEngine
 from .ha_client import HAClient
 from .store import Store
+from .thermostat import ThermostatEngine
 from .web import WebServer
 
 _LOG_LEVELS = {
@@ -39,6 +40,7 @@ class SmartEnergyAgent:
         )
         self.web = WebServer(self.store, self.ha_status)
         self.control = ControlEngine(self.store, self.client.call_service)
+        self.thermostat = ThermostatEngine(self.store, self.client.call_service)
 
     async def _on_connected(self) -> None:
         """Run discovery snapshot + subscribe once the WS is authenticated."""
@@ -119,6 +121,17 @@ class SmartEnergyAgent:
             except Exception as err:  # noqa: BLE001
                 logging.getLogger(__name__).warning("Control loop error: %s", err)
 
+    async def _setback(self) -> None:
+        """Periodically run the thermostat absence-setback engine (no-op if off)."""
+        while True:
+            await asyncio.sleep(const.SETBACK_INTERVAL)
+            if not self.client.connected:
+                continue
+            try:
+                await self.thermostat.run_once()
+            except Exception as err:  # noqa: BLE001
+                logging.getLogger(__name__).warning("Setback loop error: %s", err)
+
     async def _solar_forecast(self) -> None:
         """Periodically refresh the solar forecast + energy prefs (initial pull on connect)."""
         while True:
@@ -133,6 +146,7 @@ class SmartEnergyAgent:
         client_task = asyncio.create_task(self.client.run_forever())
         recorder_task = asyncio.create_task(self._recorder())
         control_task = asyncio.create_task(self._control())
+        setback_task = asyncio.create_task(self._setback())
         forecast_task = asyncio.create_task(self._solar_forecast())
 
         # Keep ha_status in sync with the live connection flag.
@@ -149,6 +163,7 @@ class SmartEnergyAgent:
             status_task.cancel()
             recorder_task.cancel()
             control_task.cancel()
+            setback_task.cancel()
             forecast_task.cancel()
             await self.client.stop()
             await self.web.stop()

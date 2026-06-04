@@ -2,6 +2,14 @@
 
 ## 0.2.0
 
+- New **Thermostate** settings page (Einstellungen → Thermostate): absence
+  temperature setback for room/radiator thermostats (concept 6.6). Add named
+  thermostats (climate entity + comfort/eco °C), a global presence entity, frost
+  guard and a master switch. A new engine sets eco on away and comfort on home
+  (opt-in, respects frost, no-op while presence is unknown). HA `call_service`
+  now supports service data (climate.set_temperature).
+- Power-flow: wider spacing for expanded sub-power circles (readable labels).
+
 - Merged the forecast into the **Verlauf** view (removed the separate "Prognose"
   menu item): the forecast is drawn as **dashed lines in the same colours** as
   the history; chart colours now match the dashboard. Added **pan ◀/▶** buttons

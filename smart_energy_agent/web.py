@@ -51,6 +51,8 @@ class WebServer:
         self._app.router.add_post("/api/setup/config", self._api_setup_config)
         self._app.router.add_post("/api/setup/import-prefs", self._api_setup_import)
         self._app.router.add_get("/api/categories", self._api_categories)
+        self._app.router.add_get("/api/thermostats", self._api_thermostats_get)
+        self._app.router.add_post("/api/thermostats", self._api_thermostats_post)
         self._app.router.add_static(
             "/static", str(const.WEB_DIR), show_index=False
         )
@@ -173,6 +175,36 @@ class WebServer:
 
     async def _api_categories(self, _request: web.Request) -> web.Response:
         return web.json_response({"groups": self._store.categories_with_entities()})
+
+    async def _api_thermostats_get(self, _request: web.Request) -> web.Response:
+        return web.json_response({
+            "setback": self._store.setback(),
+            "thermostats": self._store.thermostats(),
+            "presence_home": self._store.presence_is_home(),
+        })
+
+    async def _api_thermostats_post(self, request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "invalid json"}, status=400)
+        op = body.get("op")
+        if op == "setback":
+            self._store.set_setback(body)
+        elif op == "add":
+            self._store.add_thermostat(body.get("name", ""))
+        elif op == "update":
+            if not self._store.update_thermostat(body.get("id"), body):
+                return web.json_response({"error": "unknown id"}, status=404)
+        elif op == "remove":
+            if not self._store.remove_thermostat(body.get("id")):
+                return web.json_response({"error": "unknown id"}, status=404)
+        else:
+            return web.json_response({"error": "unknown op"}, status=400)
+        return web.json_response({
+            "ok": True, "setback": self._store.setback(),
+            "thermostats": self._store.thermostats(),
+        })
 
     async def _api_settings_get(self, _request: web.Request) -> web.Response:
         from . import __version__

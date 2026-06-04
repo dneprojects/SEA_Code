@@ -43,6 +43,9 @@ PURGE_INTERVAL = 86400    # seconds between retention purges (daily)
 # Solar forecast (Energy dashboard / Forecast.Solar) refresh
 SOLAR_FORECAST_INTERVAL = 900  # seconds between solar-forecast refreshes (15 min)
 
+# Thermostat absence-setback engine
+SETBACK_INTERVAL = 120     # seconds between setback decisions
+
 # PV-surplus control engine
 CONTROL_INTERVAL = 60     # seconds between control decisions
 CONTROL_ON_MARGIN_W = 50  # surplus must exceed this to consider switching on

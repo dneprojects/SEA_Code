@@ -236,15 +236,17 @@ class HAClient:
         return await self._command("energy/get_prefs") or {}
 
     async def call_service(
-        self, domain: str, service: str, entity_id: str
+        self, domain: str, service: str, entity_id: str,
+        data: Optional[dict[str, Any]] = None,
     ) -> Any:
-        """Call a HA service on a single target entity (e.g. switch.turn_on)."""
-        return await self._command(
-            "call_service",
-            domain=domain,
-            service=service,
-            target={"entity_id": entity_id},
-        )
+        """Call a HA service on a single target entity (e.g. switch.turn_on,
+        climate.set_temperature with {"temperature": 19})."""
+        payload: dict[str, Any] = {
+            "domain": domain, "service": service, "target": {"entity_id": entity_id},
+        }
+        if data:
+            payload["service_data"] = data
+        return await self._command("call_service", **payload)
 
     async def subscribe_state_changes(self) -> None:
         """Subscribe to state_changed events; results routed to on_state_changed."""
