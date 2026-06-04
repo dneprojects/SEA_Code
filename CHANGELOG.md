@@ -2,6 +2,9 @@
 
 ## 0.2.0
 
+- Wizard: **free, user-named consumers** ("Weitere Verbraucher", e.g. "Allgemein",
+  "Wohnungen") — each with its own power/energy entity (multi). They appear as
+  extra nodes in the power-flow diagram and as groups in the device view.
 - Dashboard: native animated **power-flow diagram** (SVG) — house in the centre
   with PV, grid (import/export direction), battery (charge/discharge + SoC) and
   the configured loads (heat pump, wallbox) as nodes; flow lines animate in the

@@ -114,6 +114,20 @@ CATEGORIES: list[dict[str, Any]] = [
 
 CATEGORY_KEYS = {c["key"] for c in CATEGORIES}
 
+# Free, user-named consumers (a list, not a fixed category). Each entry has the
+# same slot shape; they appear as extra nodes in the power-flow diagram.
+CONSUMER_SLOTS: list[dict[str, Any]] = [
+    {"key": "power", "label": "Leistung", "unit_group": "power",
+     "multi": True, "required": True,
+     "help": "Eigene Mess-Entitaet(en) des Verbrauchers (werden summiert)."},
+    {"key": "energy", "label": "Energie", "unit_group": "energy",
+     "multi": True, "required": False, "help": "kWh-Zaehler (optional)."},
+]
+
+
+def find_consumer_slot(slot_key: str) -> Optional[dict[str, Any]]:
+    return next((s for s in CONSUMER_SLOTS if s["key"] == slot_key), None)
+
 
 def find_category(category_key: str) -> Optional[dict[str, Any]]:
     return next((c for c in CATEGORIES if c["key"] == category_key), None)

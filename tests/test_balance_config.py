@@ -75,6 +75,24 @@ def test_import_export_pair() -> None:
     assert bal["grid_w"] == 300.0
 
 
+def test_named_consumers_reported() -> None:
+    config = {
+        "pv": {"power": ["s.pv"]}, "grid": {"power": "s.grid"},
+        "consumers": [
+            {"id": "c1", "name": "Allgemein", "power": ["s.a"]},
+            {"id": "c2", "name": "Wohnungen", "power": ["s.w1", "s.w2"]},
+            {"id": "c3", "name": "Leer", "power": []},
+        ],
+    }
+    live = {"s.pv": _p(0), "s.grid": _p(0), "s.a": _p(46),
+            "s.w1": _p(100), "s.w2": _p(147)}
+    bal = balance_from_config(config, live)
+    cons = {c["name"]: c["power_w"] for c in bal["consumers"]}
+    assert cons["Allgemein"] == 46.0
+    assert cons["Wohnungen"] == 247.0   # summed
+    assert cons["Leer"] is None         # no entities yet
+
+
 def test_missing_live_values_are_safe() -> None:
     config = {"pv": {"power": ["s.pv"]}, "grid": {"power": "s.grid"}}
     bal = balance_from_config(config, {})  # no live data yet

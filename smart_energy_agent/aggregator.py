@@ -100,6 +100,18 @@ def balance_from_config(
     hp_w = sum_power("heat_pump")
     ev_w = sum_power("ev_charger")
 
+    consumers = []
+    for c in config.get("consumers") or []:
+        lst = c.get("power") or []
+        if isinstance(lst, str):
+            lst = [lst]
+        vals = [v for v in (val(e) for e in lst) if v is not None]
+        consumers.append({
+            "id": c.get("id"),
+            "name": c.get("name", "Verbraucher"),
+            "power_w": round(sum(vals), 1) if vals else None,
+        })
+
     has_grid = bool(grid_cfg.get("power") or grid_cfg.get("import_power") or grid_cfg.get("export_power"))
     return {
         "pv_w": round(pv_w, 1),
@@ -111,6 +123,7 @@ def balance_from_config(
         "surplus_w": round(surplus_w, 1),
         "heat_pump_w": round(hp_w, 1) if hp_w is not None else None,
         "ev_w": round(ev_w, 1) if ev_w is not None else None,
+        "consumers": consumers,
         "sources": {
             "pv": len(pv_list), "grid": 1 if has_grid else 0,
             "battery": 1 if batt_cfg.get("power") else 0, "house": 0,

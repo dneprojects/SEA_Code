@@ -421,8 +421,15 @@
         return;
       }
       const W=560, H=430, R=42;
-      const pos = { pv:[280,66], grid:[78,215], house:[280,215], battery:[280,364],
-                    heat_pump:[482,140], wallbox:[482,290] };
+      const pos = { pv:[280,66], grid:[78,215], house:[280,215], battery:[280,364] };
+      // Loads on the right, distributed vertically (heat pump, wallbox, consumers).
+      const palette = ["#80b8ff","#80e0ff","#caa0ff","#ffc080","#a0d0a0","#e0a0c0"];
+      const loads = [];
+      if (f.heat_pump_w!=null) loads.push({icon:"🌡️", name:"Wärmepumpe", w:f.heat_pump_w, color:"#ff8080"});
+      if (f.ev_w!=null) loads.push({icon:"🚗", name:"Wallbox", w:f.ev_w, color:"#008080"});
+      (f.consumers||[]).forEach((c,i) => loads.push({icon:"🔌", name:c.name, w:c.power_w, color:palette[i%palette.length]}));
+      loads.forEach((ld,i) => { const y = loads.length<=1 ? 215 : 70 + (360-70)*i/(loads.length-1);
+        ld.key = "L"+i; pos[ld.key] = [482, y]; });
       const conns = [];
       const add = (from,to,p,color) => { if (p!=null && Math.abs(p)>=1) conns.push({from,to,p:Math.abs(p),color}); };
       if (f.pv_w>0) add("pv","house", f.pv_w, "#d9a52b");
@@ -430,8 +437,7 @@
       else if (f.grid_w<0) add("house","grid", f.grid_w, "#3f9b2f");
       if (f.battery_w>0) add("house","battery", f.battery_w, "#d97a2b");
       else if (f.battery_w<0) add("battery","house", f.battery_w, "#d97a2b");
-      if (f.heat_pump_w) add("house","heat_pump", f.heat_pump_w, "#ff8080");
-      if (f.ev_w) add("house","wallbox", f.ev_w, "#008080");
+      loads.forEach(ld => { if (ld.w) add("house", ld.key, ld.w, ld.color); });
       const maxP = Math.max(1, ...conns.map(c=>c.p));
       const wOf = p => 1.5 + 5*Math.min(1, p/maxP);
       const seg = (a,b) => { const [x1,y1]=pos[a], [x2,y2]=pos[b];
@@ -449,8 +455,7 @@
         battery:{icon:"🔋", name:"Batterie", val:flowBattLabel(f.battery_w), color:"#d97a2b",
                  sub:f.battery_soc!=null?("SoC "+f.battery_soc+" %"):""},
       };
-      if (f.heat_pump_w!=null) defs.heat_pump = {icon:"🌡️", name:"Wärmepumpe", val:fmtW(f.heat_pump_w), color:"#ff8080"};
-      if (f.ev_w!=null) defs.wallbox = {icon:"🚗", name:"Wallbox", val:fmtW(f.ev_w), color:"#008080"};
+      loads.forEach(ld => { defs[ld.key] = {icon:ld.icon, name:ld.name, val:fmtW(ld.w||0), color:ld.color}; });
       Object.keys(defs).forEach(k => { const [x,y]=pos[k], n=defs[k], r=n.big?R+6:R;
         svg += `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="${n.color}" stroke-width="${n.big?3.5:2.5}"/>`;
         svg += `<text x="${x}" y="${y-7}" text-anchor="middle" font-size="18">${n.icon}</text>`;
@@ -550,8 +555,84 @@
                <span class="sub">${c.key==="grid"?"aktivieren, wenn Bezug negativ dargestellt wird":"aktivieren, wenn Laden negativ dargestellt wird"}</span></div>`
           : "";
         return `<div class="panel-title">${c.label}</div>${slots}${inv}`;
-      }).join("");
+      }).join("") + '<div id="setup-consumers"></div>';
       cats.forEach(c => c.slots.forEach(s => loadSlot(c.key, s.key, "")));
+      renderSetupConsumers();
+    }
+    // ---- free, user-named consumers ----
+    const consTimers = {}, consQuery = {};
+    function consList() { return (setupData && setupData.config && setupData.config.consumers) || []; }
+    function renderSetupConsumers() {
+      const slots = (setupData && setupData.consumer_slots) || [];
+      const cons = consList();
+      let html = `<div class="panel-title">Weitere Verbraucher</div>
+        <p class="sub" style="margin:0 0 8px">Frei benennbare Verbraucher mit eigener Leistungs-Entität (z. B. „Allgemein“, „Wohnungen“) — erscheinen als Knoten im Energiefluss.</p>`;
+      html += cons.map(c => {
+        const slotsHtml = slots.map(s => {
+          const sid = "cons_"+c.id+"_"+s.key;
+          const req = s.required ? ' <span style="color:#9c3a2f">*</span>' : '';
+          return `<div class="setrow" style="align-items:flex-start">
+            <label>${s.label}${req}</label>
+            <div style="flex:1;min-width:280px">
+              <input type="text" placeholder="suchen…" style="width:180px"
+                     oninput="searchConsumerSlot('${c.id}','${s.key}',this.value)">
+              <div id="${sid}" class="sub" style="margin-top:4px">lädt…</div></div></div>`;
+        }).join("");
+        return `<div style="border:1px solid var(--border);background:#fff;padding:8px 12px;margin-bottom:10px">
+          <div class="setrow"><label>Name</label>
+            <input type="text" value="${(c.name||'').replace(/"/g,'&quot;')}"
+                   onchange="updateConsumerName('${c.id}',this.value)" style="width:220px">
+            <button class="btn" style="margin-left:auto" onclick="removeConsumer('${c.id}')">Entfernen</button></div>
+          ${slotsHtml}</div>`;
+      }).join("");
+      html += `<button class="btn" onclick="addConsumer()">+ Verbraucher hinzufügen</button>`;
+      document.getElementById("setup-consumers").innerHTML = html;
+      cons.forEach(c => slots.forEach(s => loadConsumerSlot(c.id, s.key, "")));
+    }
+    async function loadConsumerSlot(cid, slot, q) {
+      const sid = "cons_"+cid+"_"+slot;
+      const el = document.getElementById(sid); if (!el) return;
+      const c = consList().find(x => x.id === cid) || {};
+      const cur = c[slot];
+      let cands = [];
+      try { cands = (await fetch(api("/api/setup/suggest")+"?category=consumers&slot="+slot+"&q="+encodeURIComponent(q)).then(r=>r.json())).candidates || []; }
+      catch(e) {}
+      const valFmt = (x) => x.state!=null ? fmtState(x.state, x.unit) : "";
+      const tag = (x) => x.reason ? ` <span class="ov">${x.reason}</span>` : "";
+      const selArr = Array.isArray(cur)?cur:(cur?[cur]:[]);
+      const sel = new Set(selArr);
+      const shown = new Set(cands.map(x=>x.entity_id));
+      const pinned = selArr.filter(e=>!shown.has(e)).map(e=>({entity_id:e, name:e, state:null, unit:null, reason:"ausgewählt"}));
+      const list = pinned.concat(cands);
+      el.innerHTML = list.length ? list.map(x =>
+        `<label style="display:block;padding:1px 0"><input type="checkbox" ${sel.has(x.entity_id)?"checked":""}
+           onchange="toggleConsumerMulti('${cid}','${slot}','${x.entity_id}',this.checked)">
+           ${x.name} <span class="eid">${x.entity_id}</span> <span class="num">${valFmt(x)}</span>${tag(x)}</label>`
+        ).join("") : "<span>keine Treffer</span>";
+    }
+    function searchConsumerSlot(cid, slot, q) {
+      consQuery[cid+slot] = q;
+      clearTimeout(consTimers[cid+slot]);
+      consTimers[cid+slot] = setTimeout(() => loadConsumerSlot(cid, slot, q), 250);
+    }
+    async function postConsumer(body) {
+      try {
+        const r = await fetch(api("/api/setup/consumers"), { method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r=>r.json());
+        if (r.config) setupData.config = r.config;
+        flash("setup-msg", "gespeichert");
+        return r;
+      } catch(e) { flash("setup-msg", "Fehler beim Speichern"); return {}; }
+    }
+    async function addConsumer() { await postConsumer({op:"add", name:"Verbraucher"}); renderSetupConsumers(); }
+    async function removeConsumer(id) { await postConsumer({op:"remove", id}); renderSetupConsumers(); }
+    async function updateConsumerName(id, name) { await postConsumer({op:"update", id, name}); }
+    async function toggleConsumerMulti(cid, slot, eid, on) {
+      const c = consList().find(x => x.id === cid) || {};
+      const cur = c[slot]; const set = new Set(Array.isArray(cur)?cur:(cur?[cur]:[]));
+      if (on) set.add(eid); else set.delete(eid);
+      await postConsumer({op:"update", id:cid, [slot]:Array.from(set)});
+      loadConsumerSlot(cid, slot, consQuery[cid+slot] || "");
     }
     async function loadSlot(cat, slot, q) {
       const sid = "slot_"+cat+"_"+slot;

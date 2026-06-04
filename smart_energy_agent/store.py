@@ -619,15 +619,75 @@ class Store:
     def config_entity_ids(self) -> set[str]:
         """All entity ids referenced anywhere in the config (flattened)."""
         ids: set[str] = set()
-        for category in self._config.values():
-            if not isinstance(category, dict):
-                continue
-            for value in category.values():
+
+        def collect(d: dict[str, Any]) -> None:
+            for value in d.values():
                 if isinstance(value, str) and value:
                     ids.add(value)
                 elif isinstance(value, list):
                     ids.update(v for v in value if isinstance(v, str) and v)
+
+        for category in self._config.values():
+            if isinstance(category, dict):
+                collect(category)
+        for consumer in self._config.get("consumers", []):
+            if isinstance(consumer, dict):
+                collect(consumer)
         return ids
+
+    # --- free, user-named consumers -----------------------------------------
+    def consumers(self) -> list[dict[str, Any]]:
+        return list(self._config.get("consumers", []))
+
+    def _next_consumer_id(self) -> str:
+        n = 0
+        for c in self._config.get("consumers", []):
+            cid = str(c.get("id", ""))
+            if cid.startswith("c"):
+                try:
+                    n = max(n, int(cid[1:]))
+                except ValueError:
+                    pass
+        return "c%d" % (n + 1)
+
+    def add_consumer(self, name: str = "") -> str:
+        cid = self._next_consumer_id()
+        self._config.setdefault("consumers", []).append(
+            {"id": cid, "name": name or "Verbraucher", "power": [], "energy": []}
+        )
+        self._save_config()
+        return cid
+
+    def update_consumer(
+        self, cid: str, name: Optional[str] = None,
+        power: Any = None, energy: Any = None,
+    ) -> bool:
+        def as_list(v: Any) -> list[str]:
+            if isinstance(v, str):
+                v = [v] if v else []
+            return [str(x) for x in (v or []) if x]
+
+        for c in self._config.get("consumers", []):
+            if c.get("id") == cid:
+                if name is not None:
+                    c["name"] = str(name) or "Verbraucher"
+                if power is not None:
+                    c["power"] = as_list(power)
+                if energy is not None:
+                    c["energy"] = as_list(energy)
+                self._save_config()
+                self._seed_live_from_snapshot()
+                return True
+        return False
+
+    def remove_consumer(self, cid: str) -> bool:
+        lst = self._config.get("consumers", [])
+        new = [c for c in lst if c.get("id") != cid]
+        if len(new) != len(lst):
+            self._config["consumers"] = new
+            self._save_config()
+            return True
+        return False
 
     def observe_config_state(self, entity_id: str, new_state: dict[str, Any]) -> None:
         """Cache the live state of a configured entity (any HA device)."""
@@ -671,15 +731,24 @@ class Store:
         """Catalog + current config + energy-dashboard pre-fill for the wizard."""
         return {
             "categories": setup_catalog.CATEGORIES,
+            "consumer_slots": setup_catalog.CONSUMER_SLOTS,
             "config": self.config(),
+            "consumers": self.consumers(),
             "prefill": suggest.prefill_from_prefs(self._energy_prefs),
             "has_prefs": bool(self._energy_prefs.get("energy_sources")),
         }
 
     def suggestions(self, category: str, slot_key: str, query: str = "") -> list[dict[str, Any]]:
-        spec = setup_catalog.find_slot(category, slot_key)
-        cat = setup_catalog.find_category(category)
-        if spec is None or cat is None or not self._ha_snapshot:
+        if category == "consumers":
+            spec = setup_catalog.find_consumer_slot(slot_key)
+            cat_hints: list[str] = []
+        else:
+            spec = setup_catalog.find_slot(category, slot_key)
+            cat = setup_catalog.find_category(category)
+            cat_hints = cat.get("hints", []) if cat else []
+            if cat is None:
+                spec = None
+        if spec is None or not self._ha_snapshot:
             return []
         return suggest.rank_for_slot(
             self._ha_snapshot.get("states", []),
@@ -687,45 +756,54 @@ class Store:
             self._ha_snapshot.get("device_registry", []),
             self._ha_snapshot.get("area_registry", []),
             slot=spec,
-            category_hints=cat.get("hints", []),
+            category_hints=cat_hints,
             prefs_entities=suggest.prefs_entity_set(self._energy_prefs),
             query=query,
         )
 
+    def _slot_items(
+        self, slots: list[dict[str, Any]], cfg: dict[str, Any], invert_keys: tuple[str, ...] = ()
+    ) -> list[dict[str, Any]]:
+        state_by_id = self._ha_snapshot.get("state_by_id") or {}
+        items: list[dict[str, Any]] = []
+        for slot in slots:
+            value = cfg.get(slot["key"])
+            eids = value if isinstance(value, list) else ([value] if value else [])
+            for eid in eids:
+                st = self._live_by_id.get(eid) or state_by_id.get(eid) or {}
+                attrs = st.get("attributes", {}) or {}
+                power_w = None
+                if slot.get("unit_group") == "power":
+                    power_w = _state_power_w(st)
+                    if (power_w is not None and cfg.get("invert")
+                            and slot["key"] in invert_keys):
+                        power_w = -power_w
+                items.append({
+                    "slot": slot["key"], "slot_label": slot["label"],
+                    "entity_id": eid, "name": attrs.get("friendly_name", eid),
+                    "state": st.get("state"),
+                    "unit": attrs.get("unit_of_measurement"),
+                    "power_w": round(power_w, 1) if power_w is not None else None,
+                })
+        return items
+
     def categories_with_entities(self) -> list[dict[str, Any]]:
         """Config grouped by logical category for the device view: each assigned
         entity with its slot label and live value (regardless of HA device)."""
-        state_by_id = self._ha_snapshot.get("state_by_id") or {}
         groups: list[dict[str, Any]] = []
         for cat in setup_catalog.CATEGORIES:
             cfg = self._config.get(cat["key"], {}) or {}
-            items: list[dict[str, Any]] = []
-            for slot in cat["slots"]:
-                value = cfg.get(slot["key"])
-                eids = value if isinstance(value, list) else ([value] if value else [])
-                for eid in eids:
-                    st = self._live_by_id.get(eid) or state_by_id.get(eid) or {}
-                    attrs = st.get("attributes", {}) or {}
-                    # For power entities show the sign-adjusted value, so the
-                    # invert flag is visible here too (grid/battery).
-                    power_w = None
-                    if slot.get("unit_group") == "power":
-                        power_w = _state_power_w(st)
-                        if (power_w is not None and cfg.get("invert")
-                                and cat["key"] in ("grid", "battery")
-                                and slot["key"] == "power"):
-                            power_w = -power_w
-                    items.append({
-                        "slot": slot["key"],
-                        "slot_label": slot["label"],
-                        "entity_id": eid,
-                        "name": attrs.get("friendly_name", eid),
-                        "state": st.get("state"),
-                        "unit": attrs.get("unit_of_measurement"),
-                        "power_w": round(power_w, 1) if power_w is not None else None,
-                    })
+            invert_keys = ("power",) if cat["key"] in ("grid", "battery") else ()
+            items = self._slot_items(cat["slots"], cfg, invert_keys)
             groups.append({
                 "key": cat["key"], "label": cat["label"],
+                "count": len(items), "entities": items,
+            })
+        for c in self._config.get("consumers", []):
+            items = self._slot_items(setup_catalog.CONSUMER_SLOTS, c)
+            groups.append({
+                "key": "consumer_" + str(c.get("id")),
+                "label": c.get("name", "Verbraucher"),
                 "count": len(items), "entities": items,
             })
         return groups

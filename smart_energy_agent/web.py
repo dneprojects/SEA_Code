@@ -50,6 +50,7 @@ class WebServer:
         self._app.router.add_get("/api/setup/suggest", self._api_setup_suggest)
         self._app.router.add_post("/api/setup/config", self._api_setup_config)
         self._app.router.add_post("/api/setup/import-prefs", self._api_setup_import)
+        self._app.router.add_post("/api/setup/consumers", self._api_setup_consumers)
         self._app.router.add_get("/api/categories", self._api_categories)
         self._app.router.add_static(
             "/static", str(const.WEB_DIR), show_index=False
@@ -168,6 +169,29 @@ class WebServer:
 
     async def _api_setup_import(self, _request: web.Request) -> web.Response:
         return web.json_response({"ok": True, "config": self._store.import_prefs()})
+
+    async def _api_setup_consumers(self, request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "invalid json"}, status=400)
+        op = body.get("op")
+        result: dict[str, Any] = {"ok": True}
+        if op == "add":
+            result["id"] = self._store.add_consumer(body.get("name", ""))
+        elif op == "update":
+            if not self._store.update_consumer(
+                body.get("id"), name=body.get("name"),
+                power=body.get("power"), energy=body.get("energy"),
+            ):
+                return web.json_response({"error": "unknown id"}, status=404)
+        elif op == "remove":
+            if not self._store.remove_consumer(body.get("id")):
+                return web.json_response({"error": "unknown id"}, status=404)
+        else:
+            return web.json_response({"error": "unknown op"}, status=400)
+        result["config"] = self._store.config()
+        return web.json_response(result)
 
     async def _api_categories(self, _request: web.Request) -> web.Response:
         return web.json_response({"groups": self._store.categories_with_entities()})
