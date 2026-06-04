@@ -17,7 +17,11 @@
     a { color:var(--brand); text-decoration:none; }
     a:hover { text-decoration:underline; }
 
-    header { background:#fff; }
+    header { background:#fff; position:relative; }
+    /* Mobile hamburger (white) over the red banner; hidden on desktop. */
+    .menu-btn { display:none; position:absolute; left:12px; bottom:26px;
+                width:32px; height:32px; padding:0; cursor:pointer; z-index:30; }
+    #menu-backdrop { display:none; position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:35; }
     .topbar { display:flex; align-items:center; justify-content:space-between;
               gap:16px; padding:14px 22px 12px; flex-wrap:wrap; }
     .topbar .logo { height:46px; display:block; }
@@ -112,6 +116,14 @@
 
     footer { background:var(--brand-dark); border-top:1px solid #611611; color:#f0d9d7;
              font-size:11px; padding:12px 22px; margin-top:26px; }
+    @media (max-width:760px) {
+      .menu-btn { display:block; }
+      .sidebar { position:fixed; left:0; top:0; height:100%; width:230px; z-index:40;
+                 transform:translateX(-105%); transition:transform .3s ease-in-out;
+                 overflow-y:auto; box-shadow:2px 2px 8px rgba(0,0,0,.35); padding-top:10px; }
+      .sidebar.open { transform:translateX(0); }
+      .content { padding:0 12px 24px; }
+    }
   </style>
 </head>
 <body>
@@ -162,8 +174,10 @@
         </g>
       </g>
     </svg>
+    <img class="menu-btn" src="static/acc_white.png" alt="Menü" title="Menü" onclick="toggleMenu()">
   </header>
 
+  <div id="menu-backdrop" onclick="closeMenu()"></div>
   <div class="layout">
     <nav class="sidebar">
       <a href="#" data-view="dashboard" class="active" onclick="showView('dashboard');return false;">Dashboard</a>
@@ -372,8 +386,17 @@
       return txt + (unit ? " "+unit : "");
     }
 
+    function toggleMenu() {
+      const open = document.querySelector(".sidebar").classList.toggle("open");
+      document.getElementById("menu-backdrop").style.display = open ? "block" : "none";
+    }
+    function closeMenu() {
+      document.querySelector(".sidebar").classList.remove("open");
+      document.getElementById("menu-backdrop").style.display = "none";
+    }
     function showView(name) {
       view = name;
+      closeMenu();
       ["dashboard","setup","devices","history","savings","consumers","basic","thermostats"].forEach(v => {
         document.getElementById("view-"+v).hidden = (v !== name);
       });

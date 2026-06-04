@@ -2,6 +2,10 @@
 
 ## 0.2.0
 
+- Mobile: the sidebar collapses into a slide-in drawer; a white hamburger icon
+  (from SmartHub) appears on the red header to toggle it, with a backdrop and
+  auto-close on navigation. Desktop layout unchanged.
+
 - New **Thermostate** settings page (Einstellungen → Thermostate): absence
   temperature setback for room/radiator thermostats (concept 6.6). Add named
   thermostats (climate entity + comfort/eco °C), a global presence entity, frost
