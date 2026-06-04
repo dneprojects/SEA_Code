@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import Any, Iterable, Optional
 
 from . import discovery
-from .setup_catalog import UNIT_GROUPS, find_slot
+from .setup_catalog import UNIT_GROUPS
 
 PREFS_BONUS = 100.0
 HINT_BONUS = 10.0
@@ -147,64 +147,69 @@ def _grid_fields(source: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def prefill_from_prefs(prefs: Optional[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Derive slot pre-fills from the HA energy preferences.
+def prefill_from_prefs(prefs: Optional[dict[str, Any]]) -> dict[str, Any]:
+    """Derive an instance-shaped pre-fill from the HA energy preferences.
 
-    Returns ``{category: {slot: value}}`` plus a ``tariff`` hint. ``stat_rate``
-    is the power entity (preferred for our power slots); energy stats fill the
-    energy slots; ``device_consumption`` named like a heat pump fills heat_pump.
+    solar -> one PV instance (named powers from stat_rate); battery -> a battery
+    instance; grid power + price; named device_consumption -> a heat_pump /
+    water_heater / ev_charger instance with a named power. Returns a config-shaped
+    dict (lists of instances) plus a ``tariff`` hint.
     """
-    out: dict[str, dict[str, Any]] = {
-        "pv": {}, "battery": {}, "grid": {}, "heat_pump": {}, "ev_charger": {}, "tariff": {}
+    out: dict[str, Any] = {
+        "grid": {}, "pv": [], "battery": [], "heat_pump": [],
+        "water_heater": [], "ev_charger": [], "consumers": [], "tariff": {},
     }
     if not isinstance(prefs, dict):
         return out
 
-    def assign(category: str, slot: str, value: Any) -> None:
-        """Set a slot value, appending for multi slots (e.g. several pumps)."""
-        if not value:
-            return
-        spec = find_slot(category, slot)
-        if spec and spec.get("multi"):
-            lst = out[category].setdefault(slot, [])
-            if value not in lst:
-                lst.append(value)
-        else:
-            out[category].setdefault(slot, value)
+    def named(entity: str, label: str) -> dict[str, Any]:
+        return {"id": "", "name": label, "entity": entity}
 
+    pv_powers: list[dict[str, Any]] = []
+    pv_energy: list[dict[str, Any]] = []
     for s in prefs.get("energy_sources") or []:
         if not isinstance(s, dict):
             continue
         stype = s.get("type")
         if stype == "solar":
-            assign("pv", "power", s.get("stat_rate"))
-            assign("pv", "energy_today", s.get("stat_energy_from"))
+            if s.get("stat_rate"):
+                pv_powers.append(named(s["stat_rate"], "PV"))
+            if s.get("stat_energy_from"):
+                pv_energy.append(named(s["stat_energy_from"], "Ertrag"))
         elif stype == "battery":
-            assign("battery", "power", s.get("stat_rate"))
-            assign("battery", "soc", s.get("stat_soc"))
+            if s.get("stat_rate") or s.get("stat_soc"):
+                out["battery"].append({
+                    "id": "", "name": "Batterie",
+                    "power": s.get("stat_rate", ""), "soc": s.get("stat_soc", ""),
+                    "invert": False,
+                })
         elif stype == "grid":
             gf = _grid_fields(s)
-            assign("grid", "power", gf.get("power"))
-            if gf.get("import_energy"):
-                out["grid"]["import_energy"] = gf["import_energy"]
-            if gf.get("export_energy"):
-                out["grid"]["export_energy"] = gf["export_energy"]
+            if gf.get("power"):
+                out["grid"]["power"] = gf["power"]
             if gf.get("price_entity"):
                 out["tariff"]["price_entity"] = gf["price_entity"]
+    if pv_powers or pv_energy:
+        out["pv"].append({"id": "", "name": "PV-Anlage", "powers": pv_powers, "energy": pv_energy})
 
-    # Map named device consumption to the matching category (heat pump, wallbox).
     consumption_map = (
         ("heat_pump", discovery.HEATPUMP_HINTS),
         ("ev_charger", discovery.EV_HINTS),
+        ("water_heater", discovery.WATERHEATER_HINTS),
     )
     for dc in prefs.get("device_consumption") or []:
         if not isinstance(dc, dict):
             continue
         name = (dc.get("name") or "").lower()
-        for category, hints in consumption_map:
+        for kind, hints in consumption_map:
             if any(h in name for h in hints):
-                assign(category, "power", dc.get("stat_rate"))
-                assign(category, "energy", dc.get("stat_consumption"))
+                ekey = "energies" if kind in ("heat_pump", "water_heater") else "energy"
+                inst: dict[str, Any] = {"id": "", "name": dc.get("name") or kind, "powers": [], ekey: []}
+                if dc.get("stat_rate"):
+                    inst["powers"].append(named(dc["stat_rate"], "Leistung"))
+                if dc.get("stat_consumption"):
+                    inst[ekey].append(named(dc["stat_consumption"], "Energie"))
+                out[kind].append(inst)
                 break
     return out
 

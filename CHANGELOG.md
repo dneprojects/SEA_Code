@@ -2,6 +2,19 @@
 
 ## 0.2.0
 
+- Wizard redesigned to a uniform **instance pattern**: setup starts empty with
+  "… hinzufügen" buttons; every genus (PV, battery, heat pump, heating rod,
+  wallbox, consumer) is an addable, renameable, removable instance — only the
+  grid stays a fixed section. Entity pickers collapse to a summary after
+  selection. Heat pump (and any genus) supports **multiple named powers/energies**
+  (two pumps + auxiliary heater) and **heating circuits** (temperature + setpoint).
+  Controllable instances get a **control radio** (switch via strategy / setpoint)
+  that then asks for the actuator entity. Driven by a declarative
+  `setup_catalog.INSTANCE_KINDS`; the whole config is posted and **sanitised**
+  server-side; the old flat beta config is migrated automatically.
+- Power-flow diagram: one **summary circle per device** with a **"+"** that
+  expands its individual sub-powers as circles to the right (`balance` now emits
+  `loads` with `parts`).
 - Wizard: **free, user-named consumers** ("Weitere Verbraucher", e.g. "Allgemein",
   "Wohnungen") — each with its own power/energy entity (multi). They appear as
   extra nodes in the power-flow diagram and as groups in the device view.

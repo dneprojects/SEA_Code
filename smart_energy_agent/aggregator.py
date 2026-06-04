@@ -39,17 +39,25 @@ def _state_power_w(state: Optional[dict[str, Any]]) -> Optional[float]:
     return val
 
 
+LOAD_KINDS = ("heat_pump", "water_heater", "ev_charger", "consumers")
+
+
+def _powers_of(inst: dict[str, Any]) -> list[str]:
+    """Entity ids of an instance's named power sub-list."""
+    return [p.get("entity") for p in (inst.get("powers") or []) if isinstance(p, dict) and p.get("entity")]
+
+
 def balance_from_config(
     config: dict[str, Any],
     live_by_id: dict[str, dict[str, Any]],
     *,
     grid_invert: bool = False,
 ) -> dict[str, Any]:
-    """Energy balance from the explicit wizard configuration (v1: PV + grid,
-    no battery). Returns the same shape as :func:`compute_balance`.
+    """Energy balance from the instance-based wizard configuration.
 
-    house_load = pv + grid (import positive); surplus = pv - house_load.
-    Also surfaces the heat-pump power as ``heat_pump_w`` for the UI/monitoring.
+    house_load = pv + grid − battery_charge; surplus = pv − house_load.
+    ``loads`` carries one node per load instance (summed) plus its ``parts``
+    (named individual powers) for the expandable power-flow diagram.
     """
     def val(entity_id: Optional[str]) -> Optional[float]:
         return _state_power_w(live_by_id.get(entity_id)) if entity_id else None
@@ -61,11 +69,29 @@ def balance_from_config(
         except (TypeError, ValueError):
             return None
 
-    pv_cfg = config.get("pv") or {}
-    pv_list = pv_cfg.get("power") or []
-    if isinstance(pv_list, str):
-        pv_list = [pv_list]
-    pv_w = sum(v for v in (val(e) for e in pv_list) if v is not None)
+    # PV: sum all powers of all PV instances.
+    pv_w = 0.0
+    n_pv = 0
+    for inst in config.get("pv") or []:
+        for eid in _powers_of(inst):
+            v = val(eid)
+            if v is not None:
+                pv_w += v
+                n_pv += 1
+
+    # Battery: sum power (±invert) over instances; SoC = mean of available.
+    batt_w = 0.0
+    soc_vals: list[float] = []
+    n_batt = 0
+    for inst in config.get("battery") or []:
+        v = val(inst.get("power"))
+        if v is not None:
+            batt_w += -v if inst.get("invert") else v
+            n_batt += 1
+        s = num(inst.get("soc"))
+        if s is not None:
+            soc_vals.append(s)
+    batt_soc = round(sum(soc_vals) / len(soc_vals), 1) if soc_vals else None
 
     grid_cfg = config.get("grid") or {}
     grid_w: Optional[float] = None
@@ -74,60 +100,45 @@ def balance_from_config(
         if grid_w is not None and (grid_cfg.get("invert") or grid_invert):
             grid_w = -grid_w
     elif grid_cfg.get("import_power") or grid_cfg.get("export_power"):
-        imp = val(grid_cfg.get("import_power")) or 0.0
-        exp = val(grid_cfg.get("export_power")) or 0.0
-        grid_w = imp - exp
+        grid_w = (val(grid_cfg.get("import_power")) or 0.0) - (val(grid_cfg.get("export_power")) or 0.0)
     grid_w = grid_w or 0.0
 
-    batt_cfg = config.get("battery") or {}
-    batt_w = val(batt_cfg.get("power")) or 0.0 if batt_cfg.get("power") else 0.0
-    if batt_w and batt_cfg.get("invert"):
-        batt_w = -batt_w
-    batt_soc = num(batt_cfg.get("soc")) if batt_cfg.get("soc") else None
-
-    # House load = generation + grid import − battery charge (positive = charging).
     house_load_w = pv_w + grid_w - batt_w
     surplus_w = pv_w - house_load_w
 
-    def sum_power(cfg_key: str) -> Optional[float]:
-        cfg = config.get(cfg_key) or {}
-        lst = cfg.get("power") or []
-        if isinstance(lst, str):
-            lst = [lst]
-        vals = [v for v in (val(e) for e in lst) if v is not None]
-        return sum(vals) if vals else None
-
-    hp_w = sum_power("heat_pump")
-    ev_w = sum_power("ev_charger")
-
-    consumers = []
-    for c in config.get("consumers") or []:
-        lst = c.get("power") or []
-        if isinstance(lst, str):
-            lst = [lst]
-        vals = [v for v in (val(e) for e in lst) if v is not None]
-        consumers.append({
-            "id": c.get("id"),
-            "name": c.get("name", "Verbraucher"),
-            "power_w": round(sum(vals), 1) if vals else None,
-        })
+    loads: list[dict[str, Any]] = []
+    for kind in LOAD_KINDS:
+        for inst in config.get(kind) or []:
+            parts = []
+            total = 0.0
+            have = False
+            for p in inst.get("powers") or []:
+                if not isinstance(p, dict):
+                    continue
+                v = val(p.get("entity"))
+                if v is not None:
+                    parts.append({"name": p.get("name", "Leistung"), "power_w": round(v, 1)})
+                    total += v
+                    have = True
+            loads.append({
+                "key": kind + ":" + str(inst.get("id")),
+                "name": inst.get("name", kind),
+                "kind": kind,
+                "power_w": round(total, 1) if have else None,
+                "parts": parts,
+            })
 
     has_grid = bool(grid_cfg.get("power") or grid_cfg.get("import_power") or grid_cfg.get("export_power"))
     return {
         "pv_w": round(pv_w, 1),
         "grid_w": round(grid_w, 1),
         "battery_w": round(batt_w, 1),
-        "battery_soc": round(batt_soc, 1) if batt_soc is not None else None,
+        "battery_soc": batt_soc,
         "house_load_w": round(house_load_w, 1),
         "house_load_measured": False,
         "surplus_w": round(surplus_w, 1),
-        "heat_pump_w": round(hp_w, 1) if hp_w is not None else None,
-        "ev_w": round(ev_w, 1) if ev_w is not None else None,
-        "consumers": consumers,
-        "sources": {
-            "pv": len(pv_list), "grid": 1 if has_grid else 0,
-            "battery": 1 if batt_cfg.get("power") else 0, "house": 0,
-        },
+        "loads": loads,
+        "sources": {"pv": n_pv, "grid": 1 if has_grid else 0, "battery": n_batt, "house": 0},
     }
 
 
