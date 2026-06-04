@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from smart_energy_agent import setup_catalog
 from smart_energy_agent.suggest import (
+    derive_on_device,
     prefill_from_prefs,
     prefs_entity_set,
     rank_for_slot,
@@ -115,6 +116,25 @@ def test_prefill_empty() -> None:
     assert prefill_from_prefs(None) == {
         "grid": {}, "pv": [], "battery": [], "heat_pump": [],
         "water_heater": [], "ev_charger": [], "consumers": [], "tariff": {}}
+
+
+def test_derive_power_from_energy_on_same_device() -> None:
+    # Energy dashboard knows the battery *energy* entity; derive its power entity
+    # from the same HA device (preferring battery-named candidates).
+    pairs = [
+        _state("sensor.batt_energy_in", "Batterie Energie", dc="energy", unit="kWh", device="dev_b"),
+        _state("sensor.batt_inout", "Batterie Leistung", dc="power", unit="W", device="dev_b"),
+        _state("sensor.other_power", "Anderer Sensor", dc="power", unit="W", device="dev_x"),
+    ]
+    states = [s for s, _m in pairs]
+    ent_reg = [m for _s, m in pairs]
+    got = derive_on_device(states, ent_reg, "sensor.batt_energy_in", "power",
+                           setup_catalog.kind_hints("battery"))
+    assert got == "sensor.batt_inout"
+
+
+def test_derive_returns_none_without_device() -> None:
+    assert derive_on_device([], [], "sensor.x", "power") is None
 
 
 def test_prefs_entity_set_collects_all() -> None:

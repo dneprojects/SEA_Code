@@ -177,7 +177,10 @@ def prefill_from_prefs(prefs: Optional[dict[str, Any]]) -> dict[str, Any]:
             if s.get("stat_energy_from"):
                 pv_energy.append(named(s["stat_energy_from"], "Ertrag"))
         elif stype == "battery":
-            if s.get("stat_rate") or s.get("stat_soc"):
+            # Recognise the battery even if only energy entities are configured;
+            # the power/SoC are derived from the same device later (store._prefill).
+            if (s.get("stat_rate") or s.get("stat_soc")
+                    or s.get("stat_energy_from") or s.get("stat_energy_to")):
                 out["battery"].append({
                     "id": "", "name": "Batterie",
                     "power": s.get("stat_rate", ""), "soc": s.get("stat_soc", ""),
@@ -212,6 +215,48 @@ def prefill_from_prefs(prefs: Optional[dict[str, Any]]) -> dict[str, Any]:
                 out[kind].append(inst)
                 break
     return out
+
+
+def derive_on_device(
+    states: list[dict[str, Any]],
+    entity_registry: Optional[list[dict[str, Any]]],
+    ref_entity_id: Optional[str],
+    unit_group: str,
+    hints: Iterable[str] = (),
+) -> Optional[str]:
+    """Find an entity of ``unit_group`` on the *same HA device* as ``ref_entity_id``.
+
+    Used to derive e.g. the battery power entity from a battery energy/SoC entity
+    that the Energy dashboard already references (same naming/device logic).
+    Prefers candidates whose name matches ``hints``.
+    """
+    if not ref_entity_id:
+        return None
+    meta_by = {e["entity_id"]: e for e in (entity_registry or []) if e.get("entity_id")}
+    did = (meta_by.get(ref_entity_id) or {}).get("device_id")
+    if not did:
+        return None
+    hints = tuple(hints)
+    best: Optional[str] = None
+    best_score = -1
+    for st in states or []:
+        eid = st.get("entity_id")
+        if not eid:
+            continue
+        m = meta_by.get(eid, {})
+        if m.get("device_id") != did or m.get("disabled_by") or m.get("hidden_by"):
+            continue
+        if m.get("entity_category") in discovery.SKIP_CATEGORIES:
+            continue
+        attrs = st.get("attributes", {}) or {}
+        if not _matches_unit_group(_domain(eid), attrs.get("device_class"),
+                                   attrs.get("unit_of_measurement"), unit_group):
+            continue
+        hay = f"{attrs.get('friendly_name', '')} {eid}".lower()
+        score = sum(1 for h in hints if h in hay)
+        if score > best_score:
+            best_score, best = score, eid
+    return best
 
 
 def prefs_entity_set(prefs: Optional[dict[str, Any]]) -> set[str]:

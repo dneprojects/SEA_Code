@@ -337,6 +337,20 @@
   </div>
   <footer>Phase 1 — Beobachtung &amp; Kuratierung. Haken = in Energiemodell einbeziehen; Rolle per Auswahl korrigieren. Auswahl wird gespeichert.</footer>
 
+  <!-- Entity picker popup -->
+  <div id="picker" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50;align-items:center;justify-content:center"
+       onclick="if(event.target===this)closePicker()">
+    <div style="background:#fff;border:1px solid var(--border);box-shadow:2px 2px 10px rgba(0,0,0,.3);width:min(560px,94vw);max-height:82vh;display:flex;flex-direction:column;padding:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <b id="picker-title">Entität wählen</b>
+        <button class="btn" onclick="closePicker()">×</button>
+      </div>
+      <input id="picker-search" type="text" placeholder="suchen…" autocomplete="off"
+             style="width:100%;margin:8px 0;box-sizing:border-box" oninput="pickerSearch(this.value)">
+      <div id="picker-list" style="overflow:auto"></div>
+    </div>
+  </div>
+
   <script>
     const api = (p) => p.replace(/^\//, "");
     let scope = "included";
@@ -539,8 +553,8 @@
       const e = document.getElementById(id); if (!e) return;
       e.textContent = msg; setTimeout(() => e.textContent = "", 2500);
     }
-    const openFields = new Map();   // path -> {ug, kind} for expanded entity pickers
-    const fieldQuery = {};
+    let pickerCtx = null;           // {path, ug, kind} of the entity picker popup
+    let pickerTimer = null;
     async function loadSetup() {
       try { setupData = await fetch(api("/api/setup/catalog")).then(r=>r.json()); }
       catch(e) { setupData = { grid:{fields:[]}, kinds:[], config:{} }; }
@@ -585,7 +599,6 @@
           + `<button class="btn" onclick="addInstance('${kind.key}')">+ ${kind.add_label||(kind.label+' hinzufügen')}</button>`;
       });
       el.innerHTML = html;
-      openFields.forEach((m,path) => loadFieldSuggestions(path, m.ug, m.kind, fieldQuery[path]||""));
     }
     function instanceHtml(kind, inst, idx) {
       const base = kind.key+"/"+idx;
@@ -609,17 +622,10 @@
       const val = getByPath(path);
       const req = f.optional ? '' : ' <span style="color:#9c3a2f">*</span>';
       const ctl = f.control ? ' <span class="ov">Stellgröße</span>' : '';
-      if (!openFields.has(path)) {
-        const summ = val ? `<span class="eid">${val}</span>` : '<span class="sub">— nicht gewählt —</span>';
-        return row(f.label+req+ctl,
-          `${summ} <button class="btn" onclick="openField('${path}','${f.unit_group}','${kindKey}')">${val?'ändern':'wählen'}</button>`
-          + (val ? ` <button class="btn" onclick="clearField('${path}')">×</button>` : ''));
-      }
-      const sid = "fs_"+path.replace(/\W/g,'_');
+      const summ = val ? `<span class="eid">${val}</span>` : '<span class="sub">— nicht gewählt —</span>';
       return row(f.label+req+ctl,
-        `<input type="text" placeholder="suchen…" style="width:180px"
-            oninput="searchField('${path}','${f.unit_group}','${kindKey}',this.value)">
-         <div id="${sid}" class="sub" style="margin-top:4px">lädt…</div>`);
+        `${summ} <button class="btn" onclick="openPicker('${path}','${f.unit_group}','${kindKey}')">${val?'Ändern':'Wählen'}</button>`
+        + (val ? ` <button class="btn" onclick="clearField('${path}')">×</button>` : ''));
     }
     function namedList(listPath, f, kindKey) {
       const list = getByPath(listPath) || [];
@@ -662,25 +668,49 @@
     }
     // --- mutations ---
     function setVal(path, val) { setByPath(path, val); saveConfig(); }
-    function openField(path, ug, kind) { openFields.set(path, {ug, kind}); renderSetup(); }
-    function clearField(path) { setByPath(path, ""); openFields.delete(path); saveConfig(); }
-    function selectField(path, val) { setByPath(path, val); openFields.delete(path); saveConfig(); }
-    function searchField(path, ug, kind, q) {
-      fieldQuery[path] = q;
-      clearTimeout(setupTimers[path]);
-      setupTimers[path] = setTimeout(() => loadFieldSuggestions(path, ug, kind, q), 250);
+    function clearField(path) { setByPath(path, ""); saveConfig(); }
+    function selectField(path, val) { setByPath(path, val); saveConfig(); }
+    // --- entity picker popup ---
+    function openPicker(path, ug, kind) {
+      pickerCtx = {path, ug, kind};
+      document.getElementById("picker").style.display = "flex";
+      const s = document.getElementById("picker-search"); s.value = "";
+      pickerSearch("");
+      s.focus();
     }
-    async function loadFieldSuggestions(path, ug, kind, q) {
-      const sid = "fs_"+path.replace(/\W/g,'_'); const el = document.getElementById(sid); if (!el) return;
+    function closePicker() {
+      document.getElementById("picker").style.display = "none";
+      pickerCtx = null;
+    }
+    function pickerSearch(q) {
+      clearTimeout(pickerTimer);
+      pickerTimer = setTimeout(() => loadPicker(q), 200);
+    }
+    async function loadPicker(q) {
+      if (!pickerCtx) return;
+      const {path, ug, kind} = pickerCtx;
       const cur = getByPath(path);
+      const el = document.getElementById("picker-list");
+      el.innerHTML = "<div class='sub'>lädt…</div>";
       let cands = [];
       try { cands = (await fetch(api("/api/setup/suggest")+"?unit_group="+encodeURIComponent(ug)+"&kind="+encodeURIComponent(kind||"")+"&q="+encodeURIComponent(q)).then(r=>r.json())).candidates || []; }
       catch(e) {}
+      if (!pickerCtx || pickerCtx.path !== path) return;  // popup changed meanwhile
       const valFmt = (c) => c.state!=null ? fmtState(c.state, c.unit) : "";
-      let opts = [`<option value="">— nicht zugeordnet —</option>`].concat(cands.map(c =>
-        `<option value="${c.entity_id}" ${cur===c.entity_id?"selected":""}>${c.name} — ${c.entity_id}${c.reason?" ("+c.reason+")":""}</option>`));
-      if (cur && !cands.some(c=>c.entity_id===cur)) opts.push(`<option value="${cur}" selected>${cur}</option>`);
-      el.innerHTML = `<select style="width:100%;max-width:540px" onchange="selectField('${path}',this.value)">${opts.join("")}</select>`;
+      const rowFor = (eid, label, sub, sel) =>
+        `<div onclick="choosePicker('${eid}')" style="padding:6px 8px;border-bottom:1px solid var(--alt);cursor:pointer;${sel?'background:#eef5ff':''}">
+           ${label}${sub?` <span class="sub">${sub}</span>`:''}</div>`;
+      let html = rowFor("", "— nicht zugeordnet —", "", !cur);
+      html += cands.map(c => rowFor(c.entity_id,
+        `${c.name} <span class="eid">${c.entity_id}</span> <span class="num">${valFmt(c)}</span>`,
+        c.reason, c.entity_id===cur)).join("");
+      if (cur && !cands.some(c=>c.entity_id===cur))
+        html += rowFor(cur, `<span class="eid">${cur}</span>`, "aktuell", true);
+      el.innerHTML = html || "<div class='sub'>keine Treffer</div>";
+    }
+    function choosePicker(eid) {
+      if (pickerCtx) selectField(pickerCtx.path, eid);
+      closePicker();
     }
     function addInstance(kindKey) {
       const kind = setupData.kinds.find(k=>k.key===kindKey); const l = setupData.config[kindKey] || [];

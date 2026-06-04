@@ -717,9 +717,67 @@ class Store:
         self._seed_live_from_snapshot()
         return self.config()
 
+    def _prefill(self) -> dict[str, Any]:
+        """Energy-dashboard pre-fill with device-based power/SoC derivation.
+
+        The Energy dashboard usually configures *energy* entities. For PV, grid
+        and battery we derive the matching *power* (and battery SoC) entity from
+        the same HA device as that energy/SoC entity, so the power slots are
+        pre-selected too.
+        """
+        pf = suggest.prefill_from_prefs(self._energy_prefs)
+        states = self._ha_snapshot.get("states") or []
+        ent = self._ha_snapshot.get("entity_registry") or []
+        if not states:
+            return pf
+        srcs = [s for s in (self._energy_prefs.get("energy_sources") or []) if isinstance(s, dict)]
+
+        def derive(ref: Optional[str], unit_group: str, hint_kind: str) -> Optional[str]:
+            return suggest.derive_on_device(states, ent, ref, unit_group,
+                                            setup_catalog.kind_hints(hint_kind))
+
+        # PV: derive a power for each solar source that only exposes energy.
+        if pf.get("pv"):
+            inst = pf["pv"][0]
+            have = {p.get("entity") for p in inst.get("powers", [])}
+            for s in (x for x in srcs if x.get("type") == "solar"):
+                if s.get("stat_rate"):
+                    continue
+                p = derive(s.get("stat_energy_from"), "power", "pv")
+                if p and p not in have:
+                    inst.setdefault("powers", []).append({"id": "", "name": "PV", "entity": p})
+                    have.add(p)
+
+        # Grid: derive power from the energy entity's device if not configured.
+        if not pf["grid"].get("power"):
+            grid_src = next((x for x in srcs if x.get("type") == "grid"), {})
+            ref = grid_src.get("stat_energy_from") or grid_src.get("stat_energy_to")
+            if not ref:
+                ff = grid_src.get("flow_from")
+                if isinstance(ff, list) and ff:
+                    ref = ff[0].get("stat_energy_from")
+            p = derive(ref, "power", "grid")
+            if p:
+                pf["grid"]["power"] = p
+
+        # Battery: derive power + SoC from the energy/SoC device.
+        b_sources = [x for x in srcs if x.get("type") == "battery"]
+        for i, inst in enumerate(pf.get("battery") or []):
+            src = b_sources[i] if i < len(b_sources) else {}
+            ref = inst.get("soc") or src.get("stat_energy_from") or src.get("stat_energy_to") or inst.get("power")
+            if not inst.get("power"):
+                p = derive(ref, "power", "battery")
+                if p:
+                    inst["power"] = p
+            if not inst.get("soc"):
+                soc = derive(ref or inst.get("power"), "soc", "battery")
+                if soc:
+                    inst["soc"] = soc
+        return pf
+
     def import_prefs(self) -> dict[str, Any]:
         """Create instances from the HA energy-dashboard preferences (empty kinds)."""
-        prefill = suggest.prefill_from_prefs(self._energy_prefs)
+        prefill = self._prefill()
         cfg = self._config
         if prefill.get("grid", {}).get("power") and not (cfg.get("grid") or {}).get("power"):
             cfg.setdefault("grid", {})["power"] = prefill["grid"]["power"]
@@ -802,7 +860,7 @@ class Store:
             "kinds": setup_catalog.INSTANCE_KINDS,
             "circuit_fields": setup_catalog.CIRCUIT_FIELDS,
             "config": self.config(),
-            "prefill": suggest.prefill_from_prefs(self._energy_prefs),
+            "prefill": self._prefill(),
             "has_prefs": bool(self._energy_prefs.get("energy_sources")),
         }
 

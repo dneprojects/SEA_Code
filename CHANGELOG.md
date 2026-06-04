@@ -15,6 +15,11 @@
 - Power-flow diagram: one **summary circle per device** with a **"+"** that
   expands its individual sub-powers as circles to the right (`balance` now emits
   `loads` with `parts`).
+- Energy-dashboard pre-fill now **derives the power (and battery SoC) entity from
+  the same HA device** as the configured energy entity — for PV, grid and battery
+  — so power slots get pre-selected even when only energy entities are set up.
+- Entity selection moved into a **popup dialog** (search + ranked list) opened by
+  an "Ändern/Wählen" button, keeping the setup page clean.
 - Wizard: **free, user-named consumers** ("Weitere Verbraucher", e.g. "Allgemein",
   "Wohnungen") — each with its own power/energy entity (multi). They appear as
   extra nodes in the power-flow diagram and as groups in the device view.
