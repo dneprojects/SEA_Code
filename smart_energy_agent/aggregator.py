@@ -89,12 +89,16 @@ def balance_from_config(
     house_load_w = pv_w + grid_w - batt_w
     surplus_w = pv_w - house_load_w
 
-    hp_cfg = config.get("heat_pump") or {}
-    hp_list = hp_cfg.get("power") or []
-    if isinstance(hp_list, str):
-        hp_list = [hp_list]
-    hp_vals = [v for v in (val(e) for e in hp_list) if v is not None]
-    hp_w = sum(hp_vals) if hp_vals else None
+    def sum_power(cfg_key: str) -> Optional[float]:
+        cfg = config.get(cfg_key) or {}
+        lst = cfg.get("power") or []
+        if isinstance(lst, str):
+            lst = [lst]
+        vals = [v for v in (val(e) for e in lst) if v is not None]
+        return sum(vals) if vals else None
+
+    hp_w = sum_power("heat_pump")
+    ev_w = sum_power("ev_charger")
 
     has_grid = bool(grid_cfg.get("power") or grid_cfg.get("import_power") or grid_cfg.get("export_power"))
     return {
@@ -106,6 +110,7 @@ def balance_from_config(
         "house_load_measured": False,
         "surplus_w": round(surplus_w, 1),
         "heat_pump_w": round(hp_w, 1) if hp_w is not None else None,
+        "ev_w": round(ev_w, 1) if ev_w is not None else None,
         "sources": {
             "pv": len(pv_list), "grid": 1 if has_grid else 0,
             "battery": 1 if batt_cfg.get("power") else 0, "house": 0,

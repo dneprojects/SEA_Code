@@ -81,6 +81,8 @@
     .legend .sw { display:inline-block; width:11px; height:11px; margin-right:5px; vertical-align:middle; }
     .legend .off { opacity:.4; text-decoration:line-through; }
     .chart-wrap { background:#fff; border:1px solid var(--border); box-shadow:1px 1px 4px rgba(120,120,120,.18); padding:8px; }
+    @keyframes flowdash { to { stroke-dashoffset: -14; } }
+    .flow-anim { animation: flowdash 1s linear infinite; }
     .setrow { display:flex; align-items:center; gap:10px; margin:10px 0; }
     .setrow label { min-width:230px; color:var(--fg); }
     .btn { font-family:var(--body-font); font-size:13px; background:#eee; border:1px solid #bbb;
@@ -164,7 +166,7 @@
         <div class="panel-title">Übersicht</div>
         <div class="cards" id="summary"></div>
         <div class="panel-title">Energiefluss</div>
-        <div class="cards" id="flow"></div>
+        <div class="chart-wrap" id="flow"></div>
       </section>
 
       <!-- Einrichtung -->
@@ -406,23 +408,60 @@
       } catch(e) {}
       refresh();
     }
+    function flowGridLabel(w) { if (w==null) return "–";
+      return w>0 ? "→ "+fmtW(w) : (w<0 ? "← "+fmtW(-w) : "0 W"); }
+    function flowBattLabel(w) { if (w==null) return "–";
+      return w>0 ? "↓ "+fmtW(w) : (w<0 ? "↑ "+fmtW(-w) : "0 W"); }
     function renderFlow(f) {
-      if (!f || (f.sources && (f.sources.pv+f.sources.grid+f.sources.battery+f.sources.house)===0)) {
-        document.getElementById("flow").innerHTML =
-          "<div class='card'><div class='sub'>Noch keine einbezogenen Quellen (PV/Netz/Batterie/Hausverbrauch).</div></div>";
+      const el = document.getElementById("flow");
+      const anyVal = f && ((f.pv_w||0)!==0 || (f.grid_w||0)!==0 || (f.battery_w||0)!==0
+        || (f.house_load_w||0)!==0 || f.heat_pump_w!=null || f.ev_w!=null);
+      if (!anyVal) {
+        el.innerHTML = "<div class='sub' style='padding:20px'>Noch keine Energiedaten. Unter „Einrichtung“ PV/Netz/Batterie zuordnen.</div>";
         return;
       }
-      const signed = (w) => { if (w==null) return "–";
-        const cls = w>0?"pos":(w<0?"neg":""); return `<span class="${cls}">${fmtW(w)}</span>`; };
-      const nodes = [
-        { l:"PV-Erzeugung", v:fmtW(f.pv_w) },
-        { l:"Hausverbrauch", v:fmtW(f.house_load_w), sub:f.house_load_measured?"gemessen":"aus Bilanz hergeleitet" },
-        { l:"Netz", v:signed(f.grid_w), sub:"+ Bezug / − Einspeisung" },
-        { l:"Batterie", v:signed(f.battery_w), sub:(f.battery_soc!=null?"SoC "+f.battery_soc+" % · ":"")+"+ laden / − entladen" },
-        { l:"PV-Überschuss", v:fmtW(f.surplus_w), cls:"surplus" },
-      ];
-      document.getElementById("flow").innerHTML = nodes.map(n =>
-        `<div class="card ${n.cls||''}"><div class="v">${n.v}</div><div class="l">${n.l}</div>${n.sub?`<div class="sub">${n.sub}</div>`:""}</div>`).join("");
+      const W=560, H=430, R=42;
+      const pos = { pv:[280,66], grid:[78,215], house:[280,215], battery:[280,364],
+                    heat_pump:[482,140], wallbox:[482,290] };
+      const conns = [];
+      const add = (from,to,p,color) => { if (p!=null && Math.abs(p)>=1) conns.push({from,to,p:Math.abs(p),color}); };
+      if (f.pv_w>0) add("pv","house", f.pv_w, "#d9a52b");
+      if (f.grid_w>0) add("grid","house", f.grid_w, "#7a8a99");
+      else if (f.grid_w<0) add("house","grid", f.grid_w, "#3f9b2f");
+      if (f.battery_w>0) add("house","battery", f.battery_w, "#d97a2b");
+      else if (f.battery_w<0) add("battery","house", f.battery_w, "#d97a2b");
+      if (f.heat_pump_w) add("house","heat_pump", f.heat_pump_w, "#ff8080");
+      if (f.ev_w) add("house","wallbox", f.ev_w, "#008080");
+      const maxP = Math.max(1, ...conns.map(c=>c.p));
+      const wOf = p => 1.5 + 5*Math.min(1, p/maxP);
+      const seg = (a,b) => { const [x1,y1]=pos[a], [x2,y2]=pos[b];
+        const dx=x2-x1, dy=y2-y1, d=Math.hypot(dx,dy)||1, ux=dx/d, uy=dy/d;
+        return [x1+ux*R, y1+uy*R, x2-ux*R, y2-uy*R]; };
+      let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:620px;margin:auto">`;
+      conns.forEach(c => { const [x1,y1,x2,y2]=seg(c.from,c.to), w=wOf(c.p);
+        svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c.color}" stroke-width="${w}" opacity="0.22" stroke-linecap="round"/>`;
+        svg += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${c.color}" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="2 8" class="flow-anim"/>`;
+      });
+      const defs = {
+        pv:{icon:"🔆", name:"PV", val:fmtW(f.pv_w), color:"#d9a52b"},
+        grid:{icon:"🗼", name:"Netz", val:flowGridLabel(f.grid_w), color:"#7a8a99"},
+        house:{icon:"🏠", name:"Haus", val:fmtW(f.house_load_w), color:"#2f5f8f", big:true},
+        battery:{icon:"🔋", name:"Batterie", val:flowBattLabel(f.battery_w), color:"#d97a2b",
+                 sub:f.battery_soc!=null?("SoC "+f.battery_soc+" %"):""},
+      };
+      if (f.heat_pump_w!=null) defs.heat_pump = {icon:"🌡️", name:"Wärmepumpe", val:fmtW(f.heat_pump_w), color:"#ff8080"};
+      if (f.ev_w!=null) defs.wallbox = {icon:"🚗", name:"Wallbox", val:fmtW(f.ev_w), color:"#008080"};
+      Object.keys(defs).forEach(k => { const [x,y]=pos[k], n=defs[k], r=n.big?R+6:R;
+        svg += `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="${n.color}" stroke-width="${n.big?3.5:2.5}"/>`;
+        svg += `<text x="${x}" y="${y-7}" text-anchor="middle" font-size="18">${n.icon}</text>`;
+        svg += `<text x="${x}" y="${y+14}" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">${n.val}</text>`;
+        svg += `<text x="${x}" y="${y+r+14}" text-anchor="middle" font-size="11" fill="#6b6c6e">${n.name}</text>`;
+        if (n.sub) svg += `<text x="${x}" y="${y+r+27}" text-anchor="middle" font-size="10" fill="#9aa0a6">${n.sub}</text>`;
+      });
+      svg += `</svg>`;
+      const sur = f.surplus_w!=null
+        ? `<div class="sub" style="text-align:center;margin-top:4px">PV-Überschuss: <b style="color:#3f9b2f">${fmtW(f.surplus_w)}</b></div>` : "";
+      el.innerHTML = svg + sur;
     }
     function renderSummary(s) {
       const dot = document.getElementById("ha-dot"), txt = document.getElementById("ha-text");

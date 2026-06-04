@@ -2,6 +2,11 @@
 
 ## 0.2.0
 
+- Dashboard: native animated **power-flow diagram** (SVG) — house in the centre
+  with PV, grid (import/export direction), battery (charge/discharge + SoC) and
+  the configured loads (heat pump, wallbox) as nodes; flow lines animate in the
+  direction of energy flow with width scaled by power. Fed by `/api/flow`
+  (balance now also reports wallbox power `ev_w`).
 - Wizard fixes: multi-select (PV) no longer accumulates silently — already
   selected entities that the current search hides are now pinned (and can be
   unchecked), and the list re-renders after each change. The invert flag
