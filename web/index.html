@@ -399,7 +399,20 @@
     function renderFlow(f) {
       lastFlow = f;
       const el = document.getElementById("flow");
-      const loads = (f && f.loads || []).filter(l => l.configured);
+      let loads = (f && f.loads || []).filter(l => l.configured);
+      // Group the free consumers into a single aggregate node, expandable into
+      // the individual consumers (mutually exclusive with other branches).
+      const cons = loads.filter(l => l.kind === "consumers");
+      if (cons.length) {
+        loads = loads.filter(l => l.kind !== "consumers");
+        const vals = cons.map(c => c.power_w).filter(v => v != null);
+        loads.push({
+          key: "consumers:all", kind: "consumers", configured: true,
+          name: cons.length === 1 ? cons[0].name : "Weitere Verbraucher",
+          power_w: vals.length ? Math.round(vals.reduce((a,b)=>a+b,0)*10)/10 : null,
+          parts: cons.map(c => ({name: c.name, power_w: c.power_w})),
+        });
+      }
       const anyVal = f && ((f.pv_w||0)!==0 || (f.grid_w||0)!==0 || (f.battery_w||0)!==0
         || (f.house_load_w||0)!==0 || loads.length);
       if (!anyVal) {
