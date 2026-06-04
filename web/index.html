@@ -184,11 +184,11 @@
       <a href="#" data-view="devices" onclick="showView('devices');return false;">Geräte</a>
       <a href="#" data-view="history" onclick="showView('history');return false;">Verlauf</a>
       <a href="#" data-view="savings" onclick="showView('savings');return false;">Einsparung</a>
-      <a href="#" data-view="consumers" onclick="showView('consumers');return false;">Verbraucher</a>
+      <a href="#" data-view="consumers" onclick="showView('consumers');return false;">Strategien</a>
       <a href="#" class="parent" onclick="showView('basic');return false;">Einstellungen</a>
       <a href="#" class="sub" data-view="basic" onclick="showView('basic');return false;">Grundeinstellungen</a>
-      <a href="#" class="sub" data-view="setup" onclick="showView('setup');return false;">Einrichtung</a>
-      <a href="#" class="sub" data-view="thermostats" onclick="showView('thermostats');return false;">Thermostate</a>
+      <a href="#" class="sub" data-view="setup" onclick="showView('setup');return false;">Erzeuger/Verbraucher</a>
+      <a href="#" class="sub" data-view="thermostats" onclick="showView('thermostats');return false;">Temperaturabsenkung</a>
     </nav>
 
     <div class="content">
@@ -202,7 +202,7 @@
 
       <!-- Einrichtung -->
       <section id="view-setup" hidden>
-        <div class="panel-title">Einrichtung</div>
+        <div class="panel-title">Erzeuger / Verbraucher</div>
         <p class="sub" style="margin:0 0 8px">Ordne den Größen, die der Agent braucht, die passenden HA-Entitäten zu — unabhängig davon, von welchem HA-Gerät sie stammen. Vorschläge kommen aus Home Assistant; bereits im Energy-Dashboard konfigurierte Entitäten stehen oben. <span style="color:#9c3a2f">*</span> = benötigt.</p>
         <div class="controls">
           <button class="btn" onclick="importPrefs()">Aus Energy-Dashboard übernehmen</button>
@@ -274,21 +274,22 @@
 
       <!-- Verbraucher -->
       <section id="view-consumers" hidden>
-        <div class="panel-title">Verbraucher</div>
+        <div class="panel-title">Strategien</div>
+        <div class="setrow"><label>Optimierungsstrategie</label>
+          <select id="set-strategy" onchange="strategyChanged();saveStrategy()"></select></div>
+        <div class="setrow"><span class="sub" id="set-strategy-desc"></span></div>
         <div style="background:#fff;border:1px solid var(--border);box-shadow:1px 1px 4px rgba(120,120,120,.18);padding:10px 14px;margin:12px 0">
           <label style="font-weight:bold;color:var(--fg)"><input type="checkbox" id="ctrl-master" onchange="toggleControl()"> PV-Überschusssteuerung aktiv</label>
           <span class="sub" id="ctrl-status" style="margin-left:8px"></span>
           <div class="sub" style="margin-top:4px">Schaltet nur Verbraucher im Modus „Automatisch“ und nur schaltbare Geräte (Schalter/Lampe). Solange aus, wird nichts geschaltet.</div>
         </div>
+        <div class="panel-title">Verbraucher-Steuerung</div>
         <div id="consumers"></div>
       </section>
 
       <!-- Grundeinstellungen (inkl. Tarife) -->
       <section id="view-basic" hidden>
         <div class="panel-title">Grundeinstellungen</div>
-        <div class="setrow"><label>Optimierungsstrategie</label>
-          <select id="set-strategy" onchange="strategyChanged()"></select></div>
-        <div class="setrow"><span class="sub" id="set-strategy-desc"></span></div>
         <div class="setrow"><label>Aufbewahrung Historie (Tage)</label>
           <input type="number" id="set-ret" min="1" max="3650"> <span class="sub">leer = Standard</span></div>
         <div class="setrow"><label>PV-Prognose-Entität</label>
@@ -335,7 +336,7 @@
 
       <!-- Thermostate (Absenkung bei Abwesenheit) -->
       <section id="view-thermostats" hidden>
-        <div class="panel-title">Thermostate — Absenkung bei Abwesenheit</div>
+        <div class="panel-title">Temperaturabsenkung bei Abwesenheit</div>
         <p class="sub" style="margin:0 0 8px">Senkt Heizkörper-Thermostate bei Abwesenheit auf die Eco-Temperatur und stellt bei Anwesenheit die Komforttemperatur wieder her. Frostschutz wird nie unterschritten.</p>
         <div id="thermo-setback"></div>
         <div class="panel-title">Thermostate</div>
@@ -513,10 +514,8 @@
       const dot = document.getElementById("ha-dot"), txt = document.getElementById("ha-text");
       dot.className = "dot "+(s.ha_connected?"ok":"bad");
       txt.textContent = s.ha_connected ? "verbunden mit HA "+(s.ha_version||"") : "nicht verbunden";
-      const ct = (x) => x!=null ? x+" ct" : "–";
       const metrics = [
         { v:fmtW(s.pv_w), l:"PV-Erzeugung" }, { v:fmtW(s.grid_w), l:"Netz" }, { v:fmtW(s.battery_w), l:"Batterie" },
-        { v:ct(s.current_price_ct), l:"Bezugspreis /kWh" }, { v:ct(s.feed_in_ct), l:"Einspeisung /kWh" },
       ];
       document.getElementById("summary").innerHTML = metrics.map(m =>
         `<div class="card"><div class="v">${m.v}</div><div class="l">${m.l}</div></div>`).join("");
@@ -921,13 +920,24 @@
       const x = strategiesList.find(o => o.value === v);
       document.getElementById("set-strategy-desc").textContent = x ? x.desc : "";
     }
+    function fillStrategy(s) {
+      strategiesList = s.strategies || [];
+      const sel = document.getElementById("set-strategy");
+      if (!sel) return;
+      sel.innerHTML = strategiesList.map(x =>
+        `<option value="${x.value}"${x.value===s.strategy?" selected":""}>${x.label}</option>`).join("");
+      strategyChanged();
+    }
+    async function saveStrategy() {
+      try {
+        await fetch(api("/api/settings"), { method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({strategy: document.getElementById("set-strategy").value}) });
+      } catch(e) {}
+    }
     async function loadSettings() {
       let s = {};
       try { s = await fetch(api("/api/settings")).then(r=>r.json()); } catch(e) {}
-      strategiesList = s.strategies || [];
-      document.getElementById("set-strategy").innerHTML = strategiesList.map(x =>
-        `<option value="${x.value}"${x.value===s.strategy?" selected":""}>${x.label}</option>`).join("");
-      strategyChanged();
       document.getElementById("set-ret").value = (s.retention_days==null?"":s.retention_days);
       document.getElementById("set-pvfc").value = s.pv_forecast_entity||"";
       const info = [
@@ -942,7 +952,6 @@
     }
     async function saveSettings() {
       const body = {
-        strategy: document.getElementById("set-strategy").value,
         retention_days: document.getElementById("set-ret").value || null,
         pv_forecast_entity: document.getElementById("set-pvfc").value,
       };
@@ -1025,6 +1034,7 @@
         const s = await fetch(api("/api/settings")).then(r=>r.json());
         document.getElementById("ctrl-master").checked = !!s.control_enabled;
         document.getElementById("ctrl-status").textContent = s.control_enabled ? "aktiv" : "aus";
+        fillStrategy(s);
       } catch(e) {}
       renderConsumers(data.consumers||[]);
     }
