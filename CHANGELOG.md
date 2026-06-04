@@ -2,6 +2,13 @@
 
 ## 0.2.0
 
+- Strategies are now **auto-detected from the configured entities** and listed on
+  the Strategien page with status (aktiv / verfügbar / verfügbar (folgt) / nicht
+  verfügbar) and what's still missing — PV-surplus self-consumption, wallbox
+  surplus charging, dynamic-tariff load shifting, battery optimisation, absence
+  setback. `GET /api/strategies`, `strategies.overview()`.
+- Removed the obsolete Phase-1 footer.
+
 - Temperaturabsenkung reworked into **groups** (persons + their rooms): a group
   is set back only when **all** its persons are away; comfort returns when anyone
   is home. Multiple groups supported. Optional **predictive pre-heating** to a

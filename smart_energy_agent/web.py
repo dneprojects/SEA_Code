@@ -42,6 +42,7 @@ class WebServer:
         self._app.router.add_get("/api/forecast", self._api_forecast)
         self._app.router.add_get("/api/settings", self._api_settings_get)
         self._app.router.add_post("/api/settings", self._api_settings_post)
+        self._app.router.add_get("/api/strategies", self._api_strategies)
         self._app.router.add_get("/api/consumers", self._api_consumers_get)
         self._app.router.add_post("/api/consumers", self._api_consumers_post)
         self._app.router.add_get("/api/devices", self._api_devices_get)
@@ -221,6 +222,9 @@ class WebServer:
         except Exception:  # noqa: BLE001
             return web.json_response({"error": "invalid json"}, status=400)
         return web.json_response(self._store.set_settings(body))
+
+    async def _api_strategies(self, _request: web.Request) -> web.Response:
+        return web.json_response({"strategies": self._store.strategies_overview()})
 
     async def _api_consumers_get(self, _request: web.Request) -> web.Response:
         return web.json_response({

@@ -275,7 +275,10 @@
       <!-- Verbraucher -->
       <section id="view-consumers" hidden>
         <div class="panel-title">Strategien</div>
-        <div class="setrow"><label>Optimierungsstrategie</label>
+        <p class="sub" style="margin:0 0 6px">Verfügbare Strategien werden automatisch aus den konfigurierten Entitäten ermittelt.</p>
+        <div id="strategies"></div>
+        <div class="panel-title">Optimierungsstrategie</div>
+        <div class="setrow"><label>Modus</label>
           <select id="set-strategy" onchange="strategyChanged();saveStrategy()"></select></div>
         <div class="setrow"><span class="sub" id="set-strategy-desc"></span></div>
         <div style="background:#fff;border:1px solid var(--border);box-shadow:1px 1px 4px rgba(120,120,120,.18);padding:10px 14px;margin:12px 0">
@@ -1032,7 +1035,25 @@
         document.getElementById("ctrl-status").textContent = s.control_enabled ? "aktiv" : "aus";
         fillStrategy(s);
       } catch(e) {}
+      loadStrategies();
       renderConsumers(data.consumers||[]);
+    }
+    async function loadStrategies() {
+      let list = [];
+      try { list = (await fetch(api("/api/strategies")).then(r=>r.json())).strategies || []; } catch(e) {}
+      const badge = (st) => st.active
+        ? '<span style="color:#fff;background:#3f9b2f;padding:1px 7px;border-radius:8px;font-size:11px">aktiv</span>'
+        : st.available
+          ? (st.engine_ready
+              ? '<span style="color:#fff;background:#2f5f8f;padding:1px 7px;border-radius:8px;font-size:11px">verfügbar</span>'
+              : '<span style="color:#fff;background:#9aa0a6;padding:1px 7px;border-radius:8px;font-size:11px">verfügbar (folgt)</span>')
+          : '<span style="color:#fff;background:#c9bcae;padding:1px 7px;border-radius:8px;font-size:11px">nicht verfügbar</span>';
+      document.getElementById("strategies").innerHTML = list.map(st => `
+        <div style="border:1px solid var(--border);background:#fff;padding:6px 10px;margin-bottom:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <b style="color:var(--fg)">${st.name}</b> ${badge(st)}
+          <span class="sub">${st.desc||''}</span>
+          ${st.missing&&st.missing.length ? `<span class="sub" style="flex-basis:100%;color:#9c3a2f">Fehlt: ${st.missing.join(", ")}</span>` : ''}
+        </div>`).join("");
     }
     async function toggleControl() {
       const on = document.getElementById("ctrl-master").checked;

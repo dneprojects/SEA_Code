@@ -16,7 +16,7 @@ from typing import Any, Callable, Optional
 
 import aiosqlite
 
-from . import const, forecast, setup_catalog, suggest
+from . import const, forecast, setup_catalog, strategies, suggest
 from .aggregator import compute_balance, balance_from_config, _state_power_w
 from .models import (
     EnergyEntity, EnergyRole, ROLE_LABELS, ROLE_ORDER,
@@ -334,6 +334,10 @@ class Store:
         if s in ("not_home", "away", "off", "false", "abwesend"):
             return False
         return None
+
+    def strategies_overview(self) -> list[dict[str, Any]]:
+        """Which energy-saving strategies are possible from the current config."""
+        return strategies.overview(self._config, self._settings, self.groups())
 
     def group_present(self, group: dict[str, Any]) -> Optional[bool]:
         """Group presence: present if ANY person home; away only if ALL away;
