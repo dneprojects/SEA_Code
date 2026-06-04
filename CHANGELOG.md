@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - Guided setup wizard ("Einrichtung"): instead of unreliable auto-classification,
   the user assigns the entities the agent really needs per logical category

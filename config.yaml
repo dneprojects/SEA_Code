@@ -1,7 +1,7 @@
 # Home Assistant App (formerly add-on) configuration for Smart Energy Agent.
 # Phase 1: entity discovery, curation and monitoring
 name: Smart Energy Agent
-version: 0.1.0
+version: 0.2.0
 slug: smart_energy_agent
 description: >-
   Detects energy-related HA entities (power, energy, PV, grid, battery,
