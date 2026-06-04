@@ -83,6 +83,21 @@
     .chart-wrap { background:#fff; border:1px solid var(--border); box-shadow:1px 1px 4px rgba(120,120,120,.18); padding:8px; }
     @keyframes flowdash { to { stroke-dashoffset: -14; } }
     .flow-anim { animation: flowdash 1s linear infinite; }
+    /* Compact setup wizard */
+    #view-setup .panel-title { margin:12px 0 4px; }
+    #view-setup .swrow { display:flex; align-items:center; gap:8px; margin:3px 0; flex-wrap:wrap; }
+    #view-setup .swrow > label { min-width:150px; color:var(--fg); font-size:12px; }
+    #view-setup .swctl { display:flex; align-items:center; gap:6px; flex-wrap:wrap; flex:1; }
+    #view-setup .swdev { border:1px solid var(--border); background:#fff; margin-bottom:6px; }
+    #view-setup .swdev > summary { padding:5px 10px; cursor:pointer; display:flex; align-items:center; gap:10px; }
+    #view-setup .swname { color:var(--fg); }
+    #view-setup .swdel { margin-left:auto; }
+    #view-setup .swbody { padding:4px 10px 8px; border-top:1px solid var(--alt); }
+    #view-setup .swchip { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--alt);
+                          padding:2px 5px; margin:2px 4px 2px 0; border-radius:3px; }
+    #view-setup .swinline { font-size:12px; }
+    #view-setup input, #view-setup select { font-size:12px; padding:2px 4px; }
+    #view-setup .btn { padding:2px 8px; font-size:12px; }
     .setrow { display:flex; align-items:center; gap:10px; margin:10px 0; }
     .setrow label { min-width:230px; color:var(--fg); }
     .btn { font-family:var(--body-font); font-size:13px; background:#eee; border:1px solid #bbb;
@@ -504,88 +519,107 @@
       } catch(e) { flash("setup-msg", "Fehler beim Speichern"); }
       if (rerender !== false) renderSetup();
     }
+    const openInstances = new Set(["grid"]);
+    function onToggleDev(id, open) { if (open) openInstances.add(id); else openInstances.delete(id); }
+    function reqStar(f) { return f.optional ? '' : ' <span style="color:#9c3a2f">*</span>'; }
     function row(label, inner) {
-      return `<div class="setrow" style="align-items:flex-start"><label>${label}</label>
-        <div style="flex:1;min-width:280px">${inner}</div></div>`;
+      return `<div class="swrow"><label>${label}</label><div class="swctl">${inner}</div></div>`;
     }
     // --- render ---
     function renderSetup() {
       const d = setupData || {}; const el = document.getElementById("setup"); if (!el) return;
-      let html = `<div class="panel-title">${d.grid.label}</div><div>`
-        + (d.grid.fields||[]).map(f => fieldHtml("grid/"+f.key, f, "grid")).join("") + `</div>`;
+      let html = gridDetails(d.grid || {fields:[]});
       (d.kinds||[]).forEach(kind => {
         const list = setupData.config[kind.key] || [];
         html += `<div class="panel-title">${kind.label}</div>`
-          + list.map((inst,idx) => instanceHtml(kind, inst, idx)).join("")
+          + list.map((inst,idx) => deviceDetails(kind, inst, idx)).join("")
           + `<button class="btn" onclick="addInstance('${kind.key}')">+ ${kind.add_label||(kind.label+' hinzufügen')}</button>`;
       });
       el.innerHTML = html;
     }
-    function instanceHtml(kind, inst, idx) {
+    function gridDetails(g) {
+      const open = openInstances.has("grid");
+      return `<div class="panel-title">${g.label||"Netz"}</div>
+        <details class="swdev"${open?' open':''} ontoggle="onToggleDev('grid',this.open)">
+          <summary><b class="swname">${g.label||"Netz"}</b></summary>
+          <div class="swbody">${(g.fields||[]).map(f => fieldHtml("grid/"+f.key, f, "grid")).join("")}</div>
+        </details>`;
+    }
+    function deviceInfo(kind, inst) {
+      let n = 0;
+      (kind.fields||[]).forEach(f => { const v = inst[f.key];
+        if (f.kind==="entity") { if (v) n++; }
+        else if (f.kind==="named_power"||f.kind==="named_energy") n += (v||[]).filter(x=>x&&x.entity).length;
+        else if (f.kind==="circuits") (v||[]).forEach(c => { if(c.temp)n++; if(c.setpoint)n++; });
+      });
+      const c = inst.control;
+      if (kind.control && c) { if(c.mode==="switch"&&c.switch)n++; if(c.mode==="setpoint"&&c.setpoint)n++; }
+      return n + " Entität" + (n===1?"":"en");
+    }
+    function deviceDetails(kind, inst, idx) {
       const base = kind.key+"/"+idx;
-      let h = `<div style="border:1px solid var(--border);background:#fff;padding:8px 12px;margin-bottom:10px">
-        <div class="setrow"><label>Name</label>
-          <input type="text" value="${esc(inst.name)}" onchange="setVal('${base}/name',this.value)" style="width:220px">
-          <button class="btn" style="margin-left:auto" onclick="removeInstance('${kind.key}',${idx})">Entfernen</button></div>`;
-      h += (kind.fields||[]).map(f => fieldHtml(base+"/"+f.key, f, kind.key)).join("");
-      if (kind.control) h += controlHtml(base, inst, kind.key);
-      return h + `</div>`;
+      const open = openInstances.has(inst.id);
+      let body = row("Name",
+        `<input type="text" value="${esc(inst.name)}" onchange="setVal('${base}/name',this.value)" style="width:200px">`);
+      body += (kind.fields||[]).map(f => fieldHtml(base+"/"+f.key, f, kind.key)).join("");
+      if (kind.control) body += controlHtml(base, inst, kind.key);
+      return `<details class="swdev"${open?' open':''} ontoggle="onToggleDev('${inst.id}',this.open)">
+        <summary><b class="swname">${esc(inst.name)}</b> <span class="sub">${deviceInfo(kind,inst)}</span>
+          <button class="btn swdel" onclick="event.stopPropagation();removeInstance('${kind.key}',${idx})">Entfernen</button></summary>
+        <div class="swbody">${body}</div></details>`;
     }
     function fieldHtml(path, f, kindKey) {
       if (f.kind === "entity") return entityField(path, f, kindKey);
       if (f.kind === "flag") return row(f.label,
-        `<input type="checkbox" ${getByPath(path)?"checked":""} onchange="setVal('${path}',this.checked)">`);
+        `<label class="swinline"><input type="checkbox" ${getByPath(path)?"checked":""} onchange="setVal('${path}',this.checked)"> ja</label>`);
       if (f.kind === "named_power" || f.kind === "named_energy") return namedList(path, f, kindKey);
       if (f.kind === "circuits") return circuitsList(path, f, kindKey);
       return "";
     }
-    function entityField(path, f, kindKey) {
+    function entityPick(path, ug, kind) {
       const val = getByPath(path);
-      const req = f.optional ? '' : ' <span style="color:#9c3a2f">*</span>';
+      const summ = val ? `<span class="eid">${val}</span>` : '<span class="sub">—</span>';
+      return `${summ} <button class="btn" onclick="openPicker('${path}','${ug}','${kind}')">${val?'Ändern':'Wählen'}</button>`
+        + (val ? ` <button class="btn" onclick="clearField('${path}')">×</button>` : '');
+    }
+    function entityField(path, f, kindKey) {
       const ctl = f.control ? ' <span class="ov">Stellgröße</span>' : '';
-      const summ = val ? `<span class="eid">${val}</span>` : '<span class="sub">— nicht gewählt —</span>';
-      return row(f.label+req+ctl,
-        `${summ} <button class="btn" onclick="openPicker('${path}','${f.unit_group}','${kindKey}')">${val?'Ändern':'Wählen'}</button>`
-        + (val ? ` <button class="btn" onclick="clearField('${path}')">×</button>` : ''));
+      return row(f.label + reqStar(f) + ctl, entityPick(path, f.unit_group, kindKey));
     }
     function namedList(listPath, f, kindKey) {
       const list = getByPath(listPath) || [];
-      const req = f.optional ? '' : ' <span style="color:#9c3a2f">*</span>';
-      let h = `<div class="setrow" style="align-items:flex-start"><label>${f.label}${req}</label><div style="flex:1">`;
-      h += list.map((it,i) => {
+      const chips = list.map((it,i) => {
         const ip = listPath+"/"+i;
-        return `<div style="border:1px solid var(--alt);padding:4px 6px;margin-bottom:4px">
-          <input type="text" value="${esc(it.name)}" placeholder="${f.item_label}"
-                 onchange="setVal('${ip}/name',this.value)" style="width:150px">
-          <button class="btn" onclick="removeAt('${listPath}',${i})">−</button>
-          ${entityField(ip+'/entity', {label:'Entität', unit_group:f.unit_group, optional:true}, kindKey)}</div>`;
+        return `<span class="swchip"><input type="text" value="${esc(it.name)}" placeholder="${f.item_label}"
+            onchange="setVal('${ip}/name',this.value)" style="width:96px"> ${entityPick(ip+'/entity', f.unit_group, kindKey)}
+          <button class="btn" onclick="removeAt('${listPath}',${i})">−</button></span>`;
       }).join("");
-      return h + `<button class="btn" onclick="addItem('${listPath}','${f.item_label}')">+ ${f.item_label} hinzufügen</button></div></div>`;
+      return row(f.label + reqStar(f),
+        chips + ` <button class="btn" onclick="addItem('${listPath}','${f.item_label}')">+ ${f.item_label}</button>`);
     }
     function circuitsList(listPath, f, kindKey) {
       const list = getByPath(listPath) || [];
       const cf = setupData.circuit_fields || [];
-      let h = `<div class="setrow" style="align-items:flex-start"><label>${f.label}</label><div style="flex:1">`;
-      h += list.map((it,i) => {
+      const ug = (k) => (cf.find(x=>x.key===k)||{}).unit_group || "temperature";
+      const chips = list.map((it,i) => {
         const ip = listPath+"/"+i;
-        return `<div style="border:1px solid var(--alt);padding:4px 6px;margin-bottom:4px">
-          <input type="text" value="${esc(it.name)}" placeholder="Heizkreis"
-                 onchange="setVal('${ip}/name',this.value)" style="width:150px">
-          <button class="btn" onclick="removeAt('${listPath}',${i})">−</button>
-          ${cf.map(sf => entityField(ip+'/'+sf.key, sf, kindKey)).join("")}</div>`;
+        return `<span class="swchip"><input type="text" value="${esc(it.name)}" placeholder="Heizkreis"
+            onchange="setVal('${ip}/name',this.value)" style="width:96px">
+          <span class="sub">Temp</span> ${entityPick(ip+'/temp', ug('temp'), kindKey)}
+          <span class="sub">Soll</span> ${entityPick(ip+'/setpoint', ug('setpoint'), kindKey)}
+          <button class="btn" onclick="removeAt('${listPath}',${i})">−</button></span>`;
       }).join("");
-      return h + `<button class="btn" onclick="addCircuit('${listPath}')">+ Heizkreis hinzufügen</button></div></div>`;
+      return row(f.label, chips + ` <button class="btn" onclick="addCircuit('${listPath}')">+ Heizkreis</button>`);
     }
     function controlHtml(base, inst, kindKey) {
-      const c = inst.control || {mode:''}; const m = c.mode || '';
+      const m = (inst.control||{}).mode || '';
       const rn = "ctl_"+base.replace(/\W/g,'_');
-      let h = row('Steuerung',
-        `<label><input type="radio" name="${rn}" ${m==='switch'?'checked':''} onchange="setVal('${base}/control/mode','switch')"> Per Strategie schalten</label>
-         <label style="margin-left:12px"><input type="radio" name="${rn}" ${m==='setpoint'?'checked':''} onchange="setVal('${base}/control/mode','setpoint')"> Sollwert vorgeben</label>`
-        + (m ? ` <button class="btn" onclick="setVal('${base}/control/mode','')">keine</button>` : ''));
-      if (m==='switch') h += entityField(base+'/control/switch', {label:'Schalt-Entität', unit_group:'switch', optional:true}, kindKey);
-      if (m==='setpoint') h += entityField(base+'/control/setpoint', {label:'Sollwert-Entität', unit_group:'setpoint', optional:true}, kindKey);
-      return h;
+      let inner = `<label class="swinline"><input type="radio" name="${rn}" ${m==='switch'?'checked':''} onchange="setVal('${base}/control/mode','switch')"> schalten</label>
+        <label class="swinline"><input type="radio" name="${rn}" ${m==='setpoint'?'checked':''} onchange="setVal('${base}/control/mode','setpoint')"> Sollwert</label>`
+        + (m ? ` <button class="btn" onclick="setVal('${base}/control/mode','')">keine</button>` : '');
+      if (m==='switch') inner += ' ' + entityPick(base+'/control/switch', 'switch', kindKey);
+      if (m==='setpoint') inner += ' ' + entityPick(base+'/control/setpoint', 'setpoint', kindKey);
+      return row("Steuerung", inner);
     }
     // --- mutations ---
     function setVal(path, val) { setByPath(path, val); saveConfig(); }
@@ -638,6 +672,7 @@
       const inst = {id:genId(kindKey), name:kind.label+" "+(l.length+1)};
       (kind.fields||[]).forEach(f => { inst[f.key] = f.kind==="entity" ? "" : (f.kind==="flag" ? false : []); });
       if (kind.control) inst.control = {mode:"", switch:"", setpoint:""};
+      openInstances.add(inst.id);   // new device starts expanded
       l.push(inst); setByPath(kindKey, l); saveConfig();
     }
     function removeInstance(kindKey, i) { const l = setupData.config[kindKey]||[]; l.splice(i,1); setByPath(kindKey,l); saveConfig(); }

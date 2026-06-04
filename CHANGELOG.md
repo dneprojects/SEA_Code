@@ -2,6 +2,9 @@
 
 ## 0.2.0
 
+- Setup page made compact: each device is now a **collapsible panel** (summary
+  shows name + entity count), rows are tight and single-line where possible, and
+  named powers/energies/circuits render as inline chips.
 - UI cleanup: removed the "Auswahl der Entitäten" view; **Einrichtung** moved
   under **Einstellungen** (Einstellungen → Grundeinstellungen / Einrichtung).
   Tariffs merged into Grundeinstellungen and **pre-filled from the Energy
