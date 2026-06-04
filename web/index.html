@@ -337,11 +337,8 @@
       <!-- Thermostate (Absenkung bei Abwesenheit) -->
       <section id="view-thermostats" hidden>
         <div class="panel-title">Temperaturabsenkung bei Abwesenheit</div>
-        <p class="sub" style="margin:0 0 8px">Senkt Heizkörper-Thermostate bei Abwesenheit auf die Eco-Temperatur und stellt bei Anwesenheit die Komforttemperatur wieder her. Frostschutz wird nie unterschritten.</p>
-        <div id="thermo-setback"></div>
-        <div class="panel-title">Thermostate</div>
-        <div id="thermo-list"></div>
-        <button class="btn" onclick="addThermostat()" title="Thermostat hinzufügen">+ Thermostat hinzufügen</button>
+        <p class="sub" style="margin:0 0 8px">Pro Gruppe Personen und ihre Räume/Thermostate. Abgesenkt wird nur, wenn <b>alle</b> Personen der Gruppe abwesend sind. Optional vorausschauendes Aufheizen auf eine Komfortzeit (gelernte Vorlaufzeit). Frostschutz wird nie unterschritten.</p>
+        <div id="thermo"></div>
         <span class="sub" id="thermo-msg" style="margin-left:8px"></span>
       </section>
     </div>
@@ -1104,71 +1101,82 @@
       } catch(e) { msg.textContent = " Fehler beim Speichern"; }
     }
 
-    // ---------- Thermostate (Absenkung) ----------
-    let thermoData = { setback:{}, thermostats:[] };
+    // ---------- Temperaturabsenkung (Gruppen) ----------
+    let sbData = { enabled:false, frost_c:7, groups:[] };
+    let sbPresence = {};
     function thFlash(m) { const e=document.getElementById("thermo-msg"); if (e){ e.textContent=m; setTimeout(()=>e.textContent="",2500);} }
+    function thGid() { return "g"+Math.random().toString(36).slice(2,8); }
     async function loadThermostats() {
-      try { thermoData = await fetch(api("/api/thermostats")).then(r=>r.json()); }
-      catch(e) { thermoData = { setback:{}, thermostats:[] }; }
+      try { const r = await fetch(api("/api/thermostats")).then(r=>r.json());
+        sbData = r.setback || {enabled:false,frost_c:7,groups:[]}; sbPresence = r.presence || {}; }
+      catch(e) { sbData = {enabled:false,frost_c:7,groups:[]}; sbPresence={}; }
+      if (!sbData.groups) sbData.groups = [];
       renderThermo();
     }
-    async function postThermo(body) {
+    async function saveSb(rerender) {
       try {
         const r = await fetch(api("/api/thermostats"), { method:"POST",
-          headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) }).then(r=>r.json());
-        if (r.thermostats) thermoData.thermostats = r.thermostats;
-        if (r.setback) thermoData.setback = r.setback;
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({setback:sbData}) }).then(r=>r.json());
+        if (r.setback) sbData = r.setback;
+        if (r.presence) sbPresence = r.presence;
         thFlash("gespeichert");
       } catch(e) { thFlash("Fehler beim Speichern"); }
+      if (rerender) renderThermo();
     }
     function renderThermo() {
-      const sb = thermoData.setback || {};
-      const presLabel = sb.presence_entity ? `<span class="eid">${sb.presence_entity}</span>` : '<span class="sub">— nicht gewählt —</span>';
-      const home = thermoData.presence_home;
-      const homeTxt = home===true ? "anwesend" : home===false ? "abwesend" : "unbekannt";
-      document.getElementById("thermo-setback").innerHTML = `
-        <div class="setrow"><label>Absenkung aktiv</label>
-          <input type="checkbox" id="sb-enabled" ${sb.enabled?"checked":""} onchange="saveSetback()"></div>
-        <div class="setrow"><label>Anwesenheits-Entität</label>
-          ${presLabel} <button class="btn" onclick="pickPresence()">${sb.presence_entity?'Ändern':'Wählen'}</button>
-          ${sb.presence_entity?`<button class="btn" onclick="clearPresence()">×</button>`:''}
-          <span class="sub">· Status: ${homeTxt}</span></div>
+      const el = document.getElementById("thermo");
+      let h = `<div class="setrow"><label>Absenkung aktiv</label>
+          <input type="checkbox" ${sbData.enabled?"checked":""} onchange="sbData.enabled=this.checked;saveSb(false)"></div>
         <div class="setrow"><label>Frostschutz (°C)</label>
-          <input type="number" id="sb-frost" step="0.5" value="${sb.frost_c!=null?sb.frost_c:7}" style="width:80px" onchange="saveSetback()"></div>`;
-      const list = thermoData.thermostats || [];
-      document.getElementById("thermo-list").innerHTML = list.length ? list.map(t => {
-        const cl = t.climate ? `<span class="eid">${t.climate}</span>` : '<span class="sub">— nicht gewählt —</span>';
-        return `<div style="border:1px solid var(--border);background:#fff;padding:6px 10px;margin-bottom:6px">
-          <div class="setrow"><label>Name</label>
-            <input type="text" value="${(t.name||'').replace(/"/g,'&quot;')}" onchange="updateThermo('${t.id}','name',this.value)" style="width:200px">
-            <button class="btn" style="margin-left:auto" title="Thermostat entfernen" onclick="removeThermostat('${t.id}')">Entfernen</button></div>
-          <div class="setrow"><label>Thermostat (climate)</label>
-            ${cl} <button class="btn" onclick="pickClimate('${t.id}')">${t.climate?'Ändern':'Wählen'}</button></div>
-          <div class="setrow"><label>Komfort (°C)</label>
-            <input type="number" step="0.5" value="${t.comfort_c!=null?t.comfort_c:21}" style="width:80px" onchange="updateThermo('${t.id}','comfort_c',this.value)"></div>
-          <div class="setrow"><label>Eco / Absenkung (°C)</label>
-            <input type="number" step="0.5" value="${t.eco_c!=null?t.eco_c:17}" style="width:80px" onchange="updateThermo('${t.id}','eco_c',this.value)"></div>
-        </div>`;
-      }).join("") : "<p class='sub'>Noch keine Thermostate. Mit „+ Thermostat hinzufügen“ anlegen.</p>";
+          <input type="number" step="0.5" value="${sbData.frost_c!=null?sbData.frost_c:7}" style="width:80px"
+                 onchange="sbData.frost_c=parseFloat(this.value);saveSb(false)"></div>`;
+      (sbData.groups||[]).forEach((g,gi) => {
+        const pres = sbPresence[g.id];
+        const presTxt = pres===true?"anwesend":pres===false?"abwesend":"unbekannt";
+        h += `<div style="border:1px solid var(--border);background:#fff;padding:8px 10px;margin:8px 0">
+          <div class="setrow"><label>Gruppe</label>
+            <input type="text" value="${(g.name||'').replace(/"/g,'&quot;')}" style="width:180px"
+                   onchange="sbData.groups[${gi}].name=this.value;saveSb(false)">
+            <span class="sub">· Status: ${presTxt}</span>
+            <button class="btn" style="margin-left:auto" onclick="sbData.groups.splice(${gi},1);saveSb(true)">Gruppe entfernen</button></div>
+          <div class="setrow"><label>Personen (alle abwesend → absenken)</label>
+            <div style="flex:1">${(g.persons||[]).map((p,pi) =>
+              `<span class="swchip" style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--alt);padding:2px 5px;margin:2px 4px 2px 0">
+                 <span class="eid">${p}</span>
+                 <button class="btn" title="Person entfernen" onclick="sbData.groups[${gi}].persons.splice(${pi},1);saveSb(true)">−</button></span>`).join("")}
+              <button class="btn" onclick="pickPerson(${gi})">+ Person</button></div></div>
+          <div class="setrow"><label>Komfort ab (optional, HH:MM)</label>
+            <input type="time" value="${g.comfort_time||''}" onchange="sbData.groups[${gi}].comfort_time=this.value;saveSb(false)">
+            <span class="sub">vorausschauend vorheizen</span></div>
+          <div style="margin:4px 0 2px;color:var(--brand);font-size:11px;text-transform:uppercase">Thermostate</div>`;
+        (g.thermostats||[]).forEach((t,ti) => {
+          const cl = t.climate ? `<span class="eid">${t.climate}</span>` : '<span class="sub">— nicht gewählt —</span>';
+          const k = (t.reheat_k && t.reheat_k>0) ? ` · gelernt: ${t.reheat_k} min/K` : "";
+          h += `<div style="border:1px solid var(--alt);padding:4px 8px;margin-bottom:4px;display:flex;flex-wrap:wrap;align-items:center;gap:8px">
+            <input type="text" value="${(t.name||'').replace(/"/g,'&quot;')}" placeholder="Raum" style="width:120px"
+                   onchange="sbData.groups[${gi}].thermostats[${ti}].name=this.value;saveSb(false)">
+            ${cl} <button class="btn" onclick="pickClimate(${gi},${ti})">${t.climate?'Ändern':'Wählen'}</button>
+            <span class="sub">Komfort</span><input type="number" step="0.5" value="${t.comfort_c!=null?t.comfort_c:21}" style="width:64px"
+                   onchange="sbData.groups[${gi}].thermostats[${ti}].comfort_c=parseFloat(this.value);saveSb(false)">
+            <span class="sub">Eco</span><input type="number" step="0.5" value="${t.eco_c!=null?t.eco_c:17}" style="width:64px"
+                   onchange="sbData.groups[${gi}].thermostats[${ti}].eco_c=parseFloat(this.value);saveSb(false)">
+            <span class="sub">${k}</span>
+            <button class="btn" style="margin-left:auto" title="Thermostat entfernen" onclick="sbData.groups[${gi}].thermostats.splice(${ti},1);saveSb(true)">−</button></div>`;
+        });
+        h += `<button class="btn" onclick="addTh(${gi})">+ Thermostat</button></div>`;
+      });
+      h += `<button class="btn" onclick="addGroup()">+ Gruppe hinzufügen</button>`;
+      el.innerHTML = h;
     }
-    async function saveSetback() {
-      await postThermo({ op:"setback",
-        enabled: document.getElementById("sb-enabled").checked,
-        frost_c: document.getElementById("sb-frost").value });
+    function addGroup() { sbData.groups.push({id:thGid(), name:"Gruppe "+(sbData.groups.length+1), persons:[], comfort_time:"", thermostats:[]}); saveSb(true); }
+    function addTh(gi) { sbData.groups[gi].thermostats.push({id:"t"+Math.random().toString(36).slice(2,7), name:"Raum", climate:"", comfort_c:21, eco_c:17, reheat_k:0}); saveSb(true); }
+    function pickPerson(gi) {
+      openPickerCb("presence", "", "", eid => { if (eid){ sbData.groups[gi].persons.push(eid); } saveSb(true); });
     }
-    function pickPresence() {
-      openPickerCb("presence", "", (thermoData.setback||{}).presence_entity||"",
-        async eid => { await postThermo({op:"setback", presence_entity:eid}); renderThermo(); });
+    function pickClimate(gi, ti) {
+      openPickerCb("climate", "", sbData.groups[gi].thermostats[ti].climate||"",
+        eid => { sbData.groups[gi].thermostats[ti].climate = eid; saveSb(true); });
     }
-    async function clearPresence() { await postThermo({op:"setback", presence_entity:""}); renderThermo(); }
-    function pickClimate(id) {
-      const t = (thermoData.thermostats||[]).find(x=>x.id===id) || {};
-      openPickerCb("climate", "", t.climate||"",
-        async eid => { await postThermo({op:"update", id, climate:eid}); renderThermo(); });
-    }
-    async function updateThermo(id, field, val) { await postThermo({op:"update", id, [field]:val}); }
-    async function addThermostat() { await postThermo({op:"add", name:"Thermostat"}); renderThermo(); }
-    async function removeThermostat(id) { await postThermo({op:"remove", id}); renderThermo(); }
 
     (async () => { refresh(); setInterval(refresh, 5000); })();
   </script>

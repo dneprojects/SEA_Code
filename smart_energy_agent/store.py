@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import aiosqlite
 
@@ -58,14 +58,15 @@ class Store:
                 "price_entity": "",        # HA sensor (ct/kWh) for dynamic mode
                 "feed_in_ct": 8.0,         # feed-in compensation (ct/kWh)
             },
-            # Absence temperature setback for room thermostats (concept 6.6).
+            # Absence temperature setback (concept 6.6), grouped by persons+rooms.
+            # groups: [{id, name, persons:[eid], comfort_time:"HH:MM",
+            #           thermostats:[{id,name,climate,comfort_c,eco_c,reheat_k}]}]
+            # Away (setback) only when ALL persons of a group are away.
             "setback": {
                 "enabled": False,          # master switch (safety: off)
-                "presence_entity": "",     # person/device_tracker/zone/... (home = present)
                 "frost_c": 7.0,            # never set below this
+                "groups": [],
             },
-            # Room thermostats: [{id, name, climate, comfort_c, eco_c}]
-            "thermostats": [],
         }
         self._load_settings()
         # Last seen value of the dynamic price entity (ct/kWh), if used.
@@ -252,90 +253,98 @@ class Store:
     def feed_in_ct(self) -> Optional[float]:
         return self._settings.get("tariff", {}).get("feed_in_ct")
 
-    # --- absence setback + room thermostats (concept 6.6) -------------------
-    def setback(self) -> dict[str, Any]:
-        return dict(self._settings.get("setback", {}))
+    # --- absence setback, grouped by persons + rooms (concept 6.6) ----------
+    DEFAULT_REHEAT_K = 20.0  # minutes per Kelvin until a learned value exists
 
-    def set_setback(self, patch: dict[str, Any]) -> dict[str, Any]:
-        sb = self._settings.setdefault("setback", {})
-        if "enabled" in patch:
-            sb["enabled"] = bool(patch["enabled"])
-        if "presence_entity" in patch:
-            sb["presence_entity"] = str(patch["presence_entity"] or "")
-        if "frost_c" in patch:
-            try:
-                sb["frost_c"] = float(patch["frost_c"])
-            except (TypeError, ValueError):
-                pass
+    def setback(self) -> dict[str, Any]:
+        return json.loads(json.dumps(self._settings.get("setback", {})))
+
+    def groups(self) -> list[dict[str, Any]]:
+        return self._settings.get("setback", {}).get("groups", [])
+
+    @staticmethod
+    def _sanitize_setback(raw: Any, gen_id: Callable[[str, set[str]], str]) -> dict[str, Any]:
+        raw = raw if isinstance(raw, dict) else {}
+        out: dict[str, Any] = {"enabled": bool(raw.get("enabled"))}
+        try:
+            out["frost_c"] = float(raw.get("frost_c", 7.0))
+        except (TypeError, ValueError):
+            out["frost_c"] = 7.0
+        used_g: set[str] = set()
+        groups = []
+        for g in raw.get("groups") or []:
+            if not isinstance(g, dict):
+                continue
+            gid = str(g.get("id") or "") or gen_id("g", used_g)
+            if gid in used_g:
+                gid = gen_id("g", used_g)
+            used_g.add(gid)
+            persons = [str(p) for p in (g.get("persons") or []) if p]
+            used_t: set[str] = set()
+            ths = []
+            for t in g.get("thermostats") or []:
+                if not isinstance(t, dict):
+                    continue
+                tid = str(t.get("id") or "") or gen_id("t", used_t)
+                if tid in used_t:
+                    tid = gen_id("t", used_t)
+                used_t.add(tid)
+                def num(key, dflt):
+                    try:
+                        return float(t.get(key, dflt))
+                    except (TypeError, ValueError):
+                        return dflt
+                ths.append({"id": tid, "name": str(t.get("name") or "Thermostat"),
+                            "climate": str(t.get("climate") or ""),
+                            "comfort_c": num("comfort_c", 21.0), "eco_c": num("eco_c", 17.0),
+                            "reheat_k": num("reheat_k", 0.0)})
+            groups.append({"id": gid, "name": str(g.get("name") or "Gruppe"),
+                           "persons": persons, "comfort_time": str(g.get("comfort_time") or ""),
+                           "thermostats": ths})
+        out["groups"] = groups
+        return out
+
+    def set_setback_full(self, raw: Any) -> dict[str, Any]:
+        self._settings["setback"] = self._sanitize_setback(raw, self._gen_id)
         self._save_settings()
         self._seed_live_from_snapshot()
         return self.setback()
 
-    def thermostats(self) -> list[dict[str, Any]]:
-        return list(self._settings.get("thermostats", []))
-
-    def _next_th_id(self) -> str:
-        n = 0
-        for t in self._settings.get("thermostats", []):
-            tid = str(t.get("id", ""))
-            if tid.startswith("t"):
-                try:
-                    n = max(n, int(tid[1:]))
-                except ValueError:
-                    pass
-        return "t%d" % (n + 1)
-
-    def add_thermostat(self, name: str = "") -> str:
-        tid = self._next_th_id()
-        self._settings.setdefault("thermostats", []).append(
-            {"id": tid, "name": name or "Thermostat", "climate": "",
-             "comfort_c": 21.0, "eco_c": 17.0}
-        )
-        self._save_settings()
-        return tid
-
-    def update_thermostat(self, tid: str, patch: dict[str, Any]) -> bool:
-        for t in self._settings.get("thermostats", []):
-            if t.get("id") == tid:
-                if "name" in patch:
-                    t["name"] = str(patch["name"]) or "Thermostat"
-                if "climate" in patch:
-                    t["climate"] = str(patch["climate"] or "")
-                for f in ("comfort_c", "eco_c"):
-                    if f in patch:
-                        try:
-                            t[f] = float(patch[f])
-                        except (TypeError, ValueError):
-                            pass
-                self._save_settings()
-                self._seed_live_from_snapshot()
-                return True
-        return False
-
-    def remove_thermostat(self, tid: str) -> bool:
-        lst = self._settings.get("thermostats", [])
-        new = [t for t in lst if t.get("id") != tid]
-        if len(new) != len(lst):
-            self._settings["thermostats"] = new
-            self._save_settings()
-            return True
-        return False
+    def set_thermostat_reheat(self, group_id: str, th_id: str, k: float) -> None:
+        for g in self.groups():
+            if g.get("id") == group_id:
+                for t in g.get("thermostats", []):
+                    if t.get("id") == th_id:
+                        t["reheat_k"] = round(float(k), 1)
+                        self._save_settings()
+                        return
 
     def live_state(self, entity_id: str) -> dict[str, Any]:
         """Latest cached raw state of a watched entity (live or snapshot)."""
         return self._live_by_id.get(entity_id) or \
             (self._ha_snapshot.get("state_by_id") or {}).get(entity_id) or {}
 
-    def presence_is_home(self) -> Optional[bool]:
-        """True/False from the configured presence entity, None if unknown."""
-        pe = self.setback().get("presence_entity")
-        if not pe:
+    def presence_is_home(self, entity_id: str) -> Optional[bool]:
+        """True/False for one presence entity, None if unknown/unavailable."""
+        if not entity_id:
             return None
-        st = self.live_state(pe)
-        s = str(st.get("state", "")).lower()
+        s = str(self.live_state(entity_id).get("state", "")).lower()
         if s in ("home", "on", "true", "present", "anwesend"):
             return True
         if s in ("not_home", "away", "off", "false", "abwesend"):
+            return False
+        return None
+
+    def group_present(self, group: dict[str, Any]) -> Optional[bool]:
+        """Group presence: present if ANY person home; away only if ALL away;
+        None (unknown) if no persons or any state unknown and none home."""
+        persons = group.get("persons") or []
+        if not persons:
+            return None
+        states = [self.presence_is_home(p) for p in persons]
+        if any(s is True for s in states):
+            return True
+        if all(s is False for s in states):
             return False
         return None
 
@@ -946,14 +955,15 @@ class Store:
         return ids
 
     def watched_entity_ids(self) -> set[str]:
-        """Config entities plus thermostat climate entities and presence."""
+        """Config entities plus setback persons and thermostat climate entities."""
         ids = self.config_entity_ids()
-        for t in self._settings.get("thermostats", []):
-            if isinstance(t, dict) and t.get("climate"):
-                ids.add(t["climate"])
-        pe = self._settings.get("setback", {}).get("presence_entity")
-        if pe:
-            ids.add(pe)
+        for g in self.groups():
+            if not isinstance(g, dict):
+                continue
+            ids.update(p for p in (g.get("persons") or []) if p)
+            for t in g.get("thermostats") or []:
+                if isinstance(t, dict) and t.get("climate"):
+                    ids.add(t["climate"])
         return ids
 
     def observe_config_state(self, entity_id: str, new_state: dict[str, Any]) -> None:

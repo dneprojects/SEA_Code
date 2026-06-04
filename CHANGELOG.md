@@ -2,6 +2,13 @@
 
 ## 0.2.0
 
+- Temperaturabsenkung reworked into **groups** (persons + their rooms): a group
+  is set back only when **all** its persons are away; comfort returns when anyone
+  is home. Multiple groups supported. Optional **predictive pre-heating** to a
+  per-group comfort time using a **learned reheat rate** (min/K, EWMA). Frost
+  guard + opt-in unchanged. Full-object `POST /api/thermostats` with server-side
+  sanitising; live presence shown per group.
+
 - Mobile: the sidebar collapses into a slide-in drawer; a white hamburger icon
   (from SmartHub) appears on the red header to toggle it, with a backdrop and
   auto-close on navigation. Desktop layout unchanged.
