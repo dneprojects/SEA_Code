@@ -59,8 +59,11 @@ class SmartEnergyAgent:
         self.store.set_devices(
             discovery.discover_devices(states, ent_reg, dev_reg, area_reg)
         )
+        # Keep the raw snapshot for the setup wizard's suggestion engine.
+        self.store.set_ha_snapshot(states, ent_reg, dev_reg, area_reg)
         await self.client.subscribe_state_changes()
         await self._refresh_solar_forecast()
+        await self._refresh_energy_prefs()
 
     async def _refresh_solar_forecast(self) -> None:
         """Pull the Energy-dashboard solar forecast (Forecast.Solar) into the store."""
@@ -69,6 +72,13 @@ class SmartEnergyAgent:
         except Exception as err:  # noqa: BLE001
             logging.getLogger(__name__).debug("Solar forecast fetch failed: %s", err)
 
+    async def _refresh_energy_prefs(self) -> None:
+        """Pull the HA Energy-dashboard preferences (wizard pre-fill/ranking)."""
+        try:
+            self.store.set_energy_prefs(await self.client.get_energy_prefs())
+        except Exception as err:  # noqa: BLE001
+            logging.getLogger(__name__).debug("Energy prefs fetch failed: %s", err)
+
     def _on_state_changed(self, data: dict[str, Any]) -> None:
         entity_id = data.get("entity_id")
         new_state = data.get("new_state")
@@ -76,6 +86,7 @@ class SmartEnergyAgent:
             self.store.update_state(entity_id, new_state)
             self.store.update_device_state(entity_id, new_state)
             self.store.observe_external(entity_id, new_state)
+            self.store.observe_config_state(entity_id, new_state)
 
     async def _recorder(self) -> None:
         """Periodically record the energy balance and purge old history."""
@@ -109,11 +120,12 @@ class SmartEnergyAgent:
                 logging.getLogger(__name__).warning("Control loop error: %s", err)
 
     async def _solar_forecast(self) -> None:
-        """Periodically refresh the solar forecast (initial pull is on connect)."""
+        """Periodically refresh the solar forecast + energy prefs (initial pull on connect)."""
         while True:
             await asyncio.sleep(const.SOLAR_FORECAST_INTERVAL)
             if self.client.connected:
                 await self._refresh_solar_forecast()
+                await self._refresh_energy_prefs()
 
     async def run(self) -> None:
         await self.store.open_db()

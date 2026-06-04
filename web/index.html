@@ -146,6 +146,7 @@
   <div class="layout">
     <nav class="sidebar">
       <a href="#" data-view="dashboard" class="active" onclick="showView('dashboard');return false;">Dashboard</a>
+      <a href="#" data-view="setup" onclick="showView('setup');return false;">Einrichtung</a>
       <a href="#" data-view="devices" onclick="showView('devices');return false;">Geräte</a>
       <a href="#" data-view="history" onclick="showView('history');return false;">Verlauf</a>
       <a href="#" data-view="forecast" onclick="showView('forecast');return false;">Prognose</a>
@@ -166,18 +167,21 @@
         <div class="cards" id="flow"></div>
       </section>
 
-      <!-- Geräte -->
+      <!-- Einrichtung -->
+      <section id="view-setup" hidden>
+        <div class="panel-title">Einrichtung</div>
+        <p class="sub" style="margin:0 0 8px">Ordne den Größen, die der Agent braucht, die passenden HA-Entitäten zu — unabhängig davon, von welchem HA-Gerät sie stammen. Vorschläge kommen aus Home Assistant; bereits im Energy-Dashboard konfigurierte Entitäten stehen oben. <span style="color:#9c3a2f">*</span> = benötigt.</p>
+        <div class="controls">
+          <button class="btn" onclick="importPrefs()">Aus Energy-Dashboard übernehmen</button>
+          <span class="sub" id="setup-msg"></span>
+        </div>
+        <div id="setup"></div>
+      </section>
+
+      <!-- Geräte (nach Gattung) -->
       <section id="view-devices" hidden>
         <div class="panel-title">Geräte</div>
-        <p class="sub" style="margin:0 0 8px">Erkannte Geräte nach Typ. Haken = in Energiemodell einbeziehen; Typ bei Bedarf korrigieren. Auswahl wird gespeichert. Einzelne Sonderfälle (z. B. geschaltete Steckdosen) unter Einstellungen → Auswahl der Entitäten.</p>
-        <div class="controls">
-          <span>Anzeige:</span>
-          <span class="seg">
-            <button id="dev-scope-included" class="active" onclick="setDevScope('included')">nur einbezogene</button>
-            <button id="dev-scope-all" onclick="setDevScope('all')">alle</button>
-          </span>
-          <span id="dev-scope-hint"></span>
-        </div>
+        <p class="sub" style="margin:0 0 8px">Die eingerichteten Gattungen mit den zugeordneten Entitäten und Live-Werten. Zuordnung erfolgt unter „Einrichtung".</p>
         <div id="devices"></div>
       </section>
 
@@ -362,7 +366,7 @@
 
     function showView(name) {
       view = name;
-      ["dashboard","devices","history","forecast","savings","consumers","settings","basic","tariff","entities"].forEach(v => {
+      ["dashboard","setup","devices","history","forecast","savings","consumers","settings","basic","tariff","entities"].forEach(v => {
         document.getElementById("view-"+v).hidden = (v !== name);
       });
       document.querySelectorAll(".sidebar a").forEach(a =>
@@ -372,6 +376,7 @@
       if (parent) parent.classList.toggle("active", inSettings);
       document.querySelectorAll(".sidebar a.sub").forEach(a =>
         a.style.display = inSettings ? "block" : "none");
+      if (name === "setup") loadSetup();
       if (name === "devices") loadDevices();
       if (name === "history") loadHistory();
       if (name === "forecast") loadForecast();
@@ -467,78 +472,121 @@
       } catch(err) { document.getElementById("ha-text").textContent = "Fehler beim Laden"; }
     }
 
-    // ---------- Geräte ----------
-    let devScope = "included";
-    let deviceMeta = { types:[], subroles:[] };
-    function setDevScope(s) {
-      devScope = s;
-      document.getElementById("dev-scope-included").classList.toggle("active", s==="included");
-      document.getElementById("dev-scope-all").classList.toggle("active", s==="all");
-      loadDevices();
+    // ---------- Einrichtung (Wizard) ----------
+    let setupData = null;
+    const setupTimers = {};
+    function flash(id, msg) {
+      const e = document.getElementById(id); if (!e) return;
+      e.textContent = msg; setTimeout(() => e.textContent = "", 2500);
     }
+    async function loadSetup() {
+      try { setupData = await fetch(api("/api/setup/catalog")).then(r=>r.json()); }
+      catch(e) { setupData = { categories:[], config:{} }; }
+      renderSetup();
+    }
+    function renderSetup() {
+      const d = setupData || {}, cats = d.categories || [], cfg = d.config || {};
+      const el = document.getElementById("setup");
+      el.innerHTML = cats.map(c => {
+        const ccfg = cfg[c.key] || {};
+        const slots = c.slots.map(s => {
+          const sid = "slot_"+c.key+"_"+s.key;
+          const req = s.required ? '<span style="color:#9c3a2f">*</span>' : '';
+          return `<div class="setrow" style="align-items:flex-start">
+            <label>${s.label} ${req}</label>
+            <div style="flex:1;min-width:280px">
+              <input type="text" placeholder="suchen…" style="width:200px"
+                     oninput="searchSlot('${c.key}','${s.key}',this.value)">
+              <div id="${sid}" class="sub" style="margin-top:4px">lädt…</div>
+              ${s.help?`<div class="sub" style="margin-top:2px;color:var(--muted)">${s.help}</div>`:""}
+            </div></div>`;
+        }).join("");
+        const inv = c.key === "grid"
+          ? `<div class="setrow"><label>Vorzeichen umkehren</label>
+               <input type="checkbox" ${ccfg.invert?"checked":""}
+                      onchange="saveSlot('grid','invert',this.checked)">
+               <span class="sub">aktivieren, wenn Bezug negativ dargestellt wird</span></div>`
+          : "";
+        return `<div class="panel-title">${c.label}</div>${slots}${inv}`;
+      }).join("");
+      cats.forEach(c => c.slots.forEach(s => loadSlot(c.key, s.key, "")));
+    }
+    async function loadSlot(cat, slot, q) {
+      const sid = "slot_"+cat+"_"+slot;
+      const el = document.getElementById(sid); if (!el) return;
+      const spec = setupData.categories.find(x=>x.key===cat).slots.find(x=>x.key===slot);
+      const cur = ((setupData.config||{})[cat]||{})[slot];
+      let cands = [];
+      try { cands = (await fetch(api("/api/setup/suggest")+"?category="+cat+"&slot="+slot+"&q="+encodeURIComponent(q)).then(r=>r.json())).candidates || []; }
+      catch(e) {}
+      const valFmt = (c) => c.state!=null ? fmtState(c.state, c.unit) : "";
+      const tag = (c) => c.reason ? ` <span class="ov">${c.reason}</span>` : "";
+      if (spec.multi) {
+        const sel = new Set(Array.isArray(cur)?cur:(cur?[cur]:[]));
+        el.innerHTML = cands.length ? cands.map(c =>
+          `<label style="display:block;padding:1px 0"><input type="checkbox" ${sel.has(c.entity_id)?"checked":""}
+             onchange="toggleMulti('${cat}','${slot}','${c.entity_id}',this.checked)">
+             ${c.name} <span class="eid">${c.entity_id}</span> <span class="num">${valFmt(c)}</span>${tag(c)}</label>`
+          ).join("") : "<span>keine Treffer</span>";
+      } else {
+        let opts = [`<option value="">— nicht zugeordnet —</option>`].concat(cands.map(c =>
+          `<option value="${c.entity_id}" ${cur===c.entity_id?"selected":""}>${c.name} — ${c.entity_id}${c.reason?" ("+c.reason+")":""}</option>`));
+        if (cur && !cands.some(c=>c.entity_id===cur))
+          opts.push(`<option value="${cur}" selected>${cur}</option>`);
+        const curVal = cands.find(c=>c.entity_id===cur);
+        el.innerHTML = `<select style="width:100%;max-width:540px"
+            onchange="saveSlot('${cat}','${slot}',this.value)">${opts.join("")}</select>`
+          + (curVal ? ` <span class="num">${valFmt(curVal)}</span>` : "");
+      }
+    }
+    function searchSlot(cat, slot, q) {
+      clearTimeout(setupTimers[cat+slot]);
+      setupTimers[cat+slot] = setTimeout(() => loadSlot(cat, slot, q), 250);
+    }
+    async function postConfig(cat, slot, value) {
+      try {
+        const r = await fetch(api("/api/setup/config"), { method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({category:cat, slot, value}) }).then(r=>r.json());
+        if (r.config) setupData.config = r.config;
+        flash("setup-msg", "gespeichert");
+      } catch(e) { flash("setup-msg", "Fehler beim Speichern"); }
+    }
+    async function saveSlot(cat, slot, value) { await postConfig(cat, slot, value); }
+    async function toggleMulti(cat, slot, eid, on) {
+      const cur = ((setupData.config||{})[cat]||{})[slot];
+      const set = new Set(Array.isArray(cur)?cur:(cur?[cur]:[]));
+      if (on) set.add(eid); else set.delete(eid);
+      await postConfig(cat, slot, Array.from(set));
+    }
+    async function importPrefs() {
+      try {
+        const r = await fetch(api("/api/setup/import-prefs"), { method:"POST" }).then(r=>r.json());
+        if (r.config) setupData.config = r.config;
+        flash("setup-msg", "aus Energy-Dashboard übernommen");
+        renderSetup();
+      } catch(e) { flash("setup-msg", "Fehler beim Übernehmen"); }
+    }
+
+    // ---------- Geräte (nach Gattung) ----------
     async function loadDevices() {
-      let data = { groups:[], summary:{}, types:[], subroles:[] };
-      try { data = await fetch(api("/api/devices")+"?scope="+devScope).then(r=>r.json()); } catch(e) {}
-      deviceMeta = { types:data.types||[], subroles:data.subroles||[] };
-      const s = data.summary || {};
-      document.getElementById("dev-scope-hint").textContent =
-        (s.included!=null ? s.included+" von "+s.total+" einbezogen" : "");
-      renderDevices(data.groups || []);
+      let data = { groups:[] };
+      try { data = await fetch(api("/api/categories")).then(r=>r.json()); } catch(e) {}
+      renderCategories(data.groups || []);
     }
-    function devTypeSelect(dev) {
-      const opts = deviceMeta.types.map(t =>
-        `<option value="${t.value}"${t.value===dev.device_type?" selected":""}>${t.label}</option>`).join("");
-      return `<select onchange="saveDevice('${dev.device_id}', {device_type:this.value})">${opts}</select>`;
-    }
-    function deviceBody(dev) {
-      const byRole = {};
-      (dev.entities||[]).forEach(e => { (byRole[e.sub_role] = byRole[e.sub_role] || []).push(e); });
-      const val = (e) => e.power_w!=null ? fmtW(e.power_w) : fmtState(e.state, e.unit);
-      let html = "";
-      deviceMeta.subroles.forEach(r => {
-        const list = byRole[r.value]; if (!list || !list.length) return;
-        html += `<div style="margin:6px 0 2px;color:var(--brand);font-size:11px;text-transform:uppercase">${r.label}</div>`;
-        html += list.map(e =>
-          `<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-bottom:1px solid var(--alt)">
-             <span>${e.friendly_name}<span class="eid"> ${e.entity_id}</span></span>
-             <span class="num">${val(e)}</span></div>`).join("");
-      });
-      return html || "<div class='sub'>Keine Entitäten.</div>";
-    }
-    function renderDevices(groups) {
+    function renderCategories(groups) {
       const el = document.getElementById("devices");
-      if (!groups.length) {
-        el.innerHTML = "<p style='color:var(--muted)'>Keine Geräte in dieser Ansicht.</p>";
+      if (!groups.some(g => g.count > 0)) {
+        el.innerHTML = "<p style='color:var(--muted)'>Noch nichts eingerichtet. Unter „Einrichtung“ Entitäten zuordnen.</p>";
         return;
       }
       el.innerHTML = groups.map(g => `
         <div class="panel-title">${g.label} <span class="count">${g.count}</span></div>
-        ${g.devices.map(dev => `
-          <details style="border:1px solid var(--border);box-shadow:1px 1px 4px rgba(120,120,120,.18);margin-bottom:8px;background:#fff" ${dev.include?"open":""}>
-            <summary style="padding:8px 12px;cursor:pointer;color:var(--fg)">
-              <input type="checkbox" ${dev.include?"checked":""} onclick="event.stopPropagation()"
-                     onchange="saveDevice('${dev.device_id}', {include:this.checked})">
-              <b>${dev.name}</b>
-              ${dev.manufacturer||dev.model?`<span class="sub"> · ${[dev.manufacturer,dev.model].filter(Boolean).join(" ")}</span>`:""}
-              ${dev.area?`<span class="sub"> · ${dev.area}</span>`:""}
-              ${dev.overridden?'<span class="ov">• angepasst</span>':''}
-            </summary>
-            <div style="padding:8px 12px">
-              <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
-                <label class="sub">Typ</label> ${devTypeSelect(dev)}
-                <span class="conf">${dev.reason} (${Math.round((dev.confidence||0)*100)}%)</span>
-              </div>
-              ${deviceBody(dev)}
-            </div>
-          </details>`).join("")}`).join("");
-    }
-    async function saveDevice(device_id, patch) {
-      try {
-        await fetch(api("/api/device-override"), { method:"POST",
-          headers:{"Content-Type":"application/json"},
-          body:JSON.stringify(Object.assign({device_id}, patch)) });
-      } catch(e) {}
-      loadDevices();
+        ${g.count ? g.entities.map(e => `
+          <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:1px solid var(--alt);background:#fff">
+            <span><b>${e.slot_label}</b>: ${e.name} <span class="eid">${e.entity_id}</span></span>
+            <span class="num">${fmtState(e.state, e.unit)}</span></div>`).join("")
+          : "<p class='sub' style='padding:4px 8px'>Keine Entitäten zugeordnet.</p>"}`).join("");
     }
 
     // ---------- Verlauf (offline SVG chart) ----------

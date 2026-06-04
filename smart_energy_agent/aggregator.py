@@ -23,6 +23,75 @@ from .models import EnergyEntity, EnergyRole
 POWER_UNITS = ("W", "kW", "MW")
 
 
+def _state_power_w(state: Optional[dict[str, Any]]) -> Optional[float]:
+    """Convert a raw HA state dict into watts (handles W/kW/MW)."""
+    if not state:
+        return None
+    try:
+        val = float(state.get("state"))
+    except (TypeError, ValueError):
+        return None
+    unit = (state.get("attributes") or {}).get("unit_of_measurement")
+    if unit == "kW":
+        val *= 1000.0
+    elif unit == "MW":
+        val *= 1_000_000.0
+    return val
+
+
+def balance_from_config(
+    config: dict[str, Any],
+    live_by_id: dict[str, dict[str, Any]],
+    *,
+    grid_invert: bool = False,
+) -> dict[str, Any]:
+    """Energy balance from the explicit wizard configuration (v1: PV + grid,
+    no battery). Returns the same shape as :func:`compute_balance`.
+
+    house_load = pv + grid (import positive); surplus = pv - house_load.
+    Also surfaces the heat-pump power as ``heat_pump_w`` for the UI/monitoring.
+    """
+    def val(entity_id: Optional[str]) -> Optional[float]:
+        return _state_power_w(live_by_id.get(entity_id)) if entity_id else None
+
+    pv_cfg = config.get("pv") or {}
+    pv_list = pv_cfg.get("power") or []
+    if isinstance(pv_list, str):
+        pv_list = [pv_list]
+    pv_w = sum(v for v in (val(e) for e in pv_list) if v is not None)
+
+    grid_cfg = config.get("grid") or {}
+    grid_w: Optional[float] = None
+    if grid_cfg.get("power"):
+        grid_w = val(grid_cfg["power"])
+        if grid_w is not None and (grid_cfg.get("invert") or grid_invert):
+            grid_w = -grid_w
+    elif grid_cfg.get("import_power") or grid_cfg.get("export_power"):
+        imp = val(grid_cfg.get("import_power")) or 0.0
+        exp = val(grid_cfg.get("export_power")) or 0.0
+        grid_w = imp - exp
+    grid_w = grid_w or 0.0
+
+    house_load_w = pv_w + grid_w
+    surplus_w = pv_w - house_load_w
+
+    hp_cfg = config.get("heat_pump") or {}
+    hp_w = val(hp_cfg.get("power")) if hp_cfg.get("power") else None
+
+    has_grid = bool(grid_cfg.get("power") or grid_cfg.get("import_power") or grid_cfg.get("export_power"))
+    return {
+        "pv_w": round(pv_w, 1),
+        "grid_w": round(grid_w, 1),
+        "battery_w": 0.0,
+        "battery_soc": None,
+        "house_load_w": round(house_load_w, 1),
+        "house_load_measured": False,
+        "surplus_w": round(surplus_w, 1),
+        "heat_pump_w": round(hp_w, 1) if hp_w is not None else None,
+        "sources": {"pv": len(pv_list), "grid": 1 if has_grid else 0, "battery": 0, "house": 0},
+    }
+
+
 def _is_power(entity: EnergyEntity) -> bool:
     return entity.unit in POWER_UNITS or entity.power_w is not None
 

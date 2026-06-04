@@ -16,8 +16,8 @@ from typing import Any, Optional
 
 import aiosqlite
 
-from . import const, forecast
-from .aggregator import compute_balance
+from . import const, forecast, setup_catalog, suggest
+from .aggregator import compute_balance, balance_from_config
 from .models import (
     EnergyEntity, EnergyRole, ROLE_LABELS, ROLE_ORDER,
     CONSUMER_ROLES, DEFAULT_CONSUMER, CONSUMER_FIELD_TYPES,
@@ -76,6 +76,15 @@ class Store:
         self._device_entity_index: dict[str, tuple[str, int]] = {}
         self._device_overrides: dict[str, dict[str, Any]] = {}
         self._load_device_overrides()
+        # --- wizard setup configuration (category -> slot -> entity) ---------
+        self._config: dict[str, Any] = {}
+        self._load_config()
+        # Live raw-state cache for entities referenced by the config.
+        self._live_by_id: dict[str, dict[str, Any]] = {}
+        # Last HA snapshot (states + registries) for the suggestion engine.
+        self._ha_snapshot: dict[str, Any] = {}
+        # Last HA energy-dashboard preferences (energy/get_prefs).
+        self._energy_prefs: dict[str, Any] = {}
 
     # --- user curation / overrides ------------------------------------------
     def _load_overrides(self) -> None:
@@ -502,24 +511,214 @@ class Store:
             )
 
         included = sum(1 for e in self._entities.values() if e.include)
+        # Header figures follow the same source as the live balance: the wizard
+        # config when set, otherwise the legacy role-based aggregation.
+        if self.has_config_balance():
+            b = self.balance()
+            pv_w, grid_w, battery_w = b.get("pv_w"), b.get("grid_w"), b.get("battery_w")
+        else:
+            pv_w = round(_sum(EnergyRole.PV), 1)
+            grid_w = round(_sum(EnergyRole.GRID), 1)
+            battery_w = round(_sum(EnergyRole.BATTERY), 1)
         return {
             "total": len(self._entities),
             "included": included,
-            "pv_w": round(_sum(EnergyRole.PV), 1),
-            "grid_w": round(_sum(EnergyRole.GRID), 1),
-            "battery_w": round(_sum(EnergyRole.BATTERY), 1),
+            "pv_w": pv_w,
+            "grid_w": grid_w,
+            "battery_w": battery_w,
             "current_price_ct": self.current_price_ct(),
             "feed_in_ct": self.feed_in_ct(),
             "last_discovery_ts": self.last_discovery_ts,
         }
 
     def balance(self) -> dict[str, Any]:
-        """Current live energy balance (PV/grid/battery/house/surplus)."""
+        """Current live energy balance (PV/grid/battery/house/surplus).
+
+        Uses the explicit wizard configuration once PV or grid power is set;
+        otherwise falls back to the legacy role-based aggregation.
+        """
+        if self.has_config_balance():
+            return balance_from_config(
+                self._config,
+                self._live_by_id,
+                grid_invert=self._settings.get("grid_invert", False),
+            )
         return compute_balance(
             list(self._entities.values()),
             grid_invert=self._settings.get("grid_invert", False),
             battery_invert=self._settings.get("battery_invert", False),
         )
+
+    # --- wizard setup configuration -----------------------------------------
+    def _load_config(self) -> None:
+        path = const.get_energy_config_path()
+        try:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as fh:
+                    self._config = json.load(fh)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Could not load energy config: %s", err)
+            self._config = {}
+
+    def _save_config(self) -> None:
+        path = const.get_energy_config_path()
+        try:
+            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+            tmp = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                json.dump(self._config, fh, indent=2)
+            os.replace(tmp, path)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Could not save energy config: %s", err)
+
+    def config(self) -> dict[str, Any]:
+        return {k: dict(v) if isinstance(v, dict) else v for k, v in self._config.items()}
+
+    def set_config(self, category: str, slot: str, value: Any) -> bool:
+        """Validate + persist one category/slot assignment from the wizard."""
+        if category not in setup_catalog.CATEGORY_KEYS:
+            return False
+        cat = self._config.setdefault(category, {})
+        if setup_catalog.is_flag(category, slot):
+            cat[slot] = bool(value)
+        else:
+            spec = setup_catalog.find_slot(category, slot)
+            if spec is None:
+                return False
+            if spec.get("multi"):
+                if isinstance(value, str):
+                    value = [value] if value else []
+                cat[slot] = [str(v) for v in (value or []) if v]
+            else:
+                cat[slot] = str(value) if value else ""
+        self._save_config()
+        self._seed_live_from_snapshot()
+        return True
+
+    def import_prefs(self) -> dict[str, Any]:
+        """Fill all derivable slots from the HA energy-dashboard preferences."""
+        prefill = suggest.prefill_from_prefs(self._energy_prefs)
+        for category in setup_catalog.CATEGORY_KEYS:
+            slots = prefill.get(category) or {}
+            cat = self._config.setdefault(category, {})
+            for slot, value in slots.items():
+                # Only keep slots that exist in the catalog (skip energy hints).
+                if setup_catalog.find_slot(category, slot):
+                    cat[slot] = value
+        # Tariff price entity hint -> dynamic-tariff entity if not set yet.
+        price = (prefill.get("tariff") or {}).get("price_entity")
+        if price:
+            t = self._settings.setdefault("tariff", {})
+            if not t.get("price_entity"):
+                t["price_entity"] = price
+                self._save_settings()
+        self._save_config()
+        self._seed_live_from_snapshot()
+        return self.config()
+
+    def config_entity_ids(self) -> set[str]:
+        """All entity ids referenced anywhere in the config (flattened)."""
+        ids: set[str] = set()
+        for category in self._config.values():
+            if not isinstance(category, dict):
+                continue
+            for value in category.values():
+                if isinstance(value, str) and value:
+                    ids.add(value)
+                elif isinstance(value, list):
+                    ids.update(v for v in value if isinstance(v, str) and v)
+        return ids
+
+    def observe_config_state(self, entity_id: str, new_state: dict[str, Any]) -> None:
+        """Cache the live state of a configured entity (any HA device)."""
+        if new_state and entity_id in self.config_entity_ids():
+            self._live_by_id[entity_id] = new_state
+
+    def set_ha_snapshot(
+        self,
+        states: list[dict[str, Any]],
+        entity_registry: list[dict[str, Any]],
+        device_registry: list[dict[str, Any]],
+        area_registry: list[dict[str, Any]],
+    ) -> None:
+        self._ha_snapshot = {
+            "states": states,
+            "entity_registry": entity_registry,
+            "device_registry": device_registry,
+            "area_registry": area_registry,
+            "state_by_id": {s.get("entity_id"): s for s in states if s.get("entity_id")},
+        }
+        self._seed_live_from_snapshot()
+
+    def set_energy_prefs(self, prefs: dict[str, Any]) -> None:
+        self._energy_prefs = prefs if isinstance(prefs, dict) else {}
+
+    def _seed_live_from_snapshot(self) -> None:
+        """Seed the live cache for configured entities from the last snapshot,
+        so the balance works immediately without waiting for state_changed."""
+        state_by_id = self._ha_snapshot.get("state_by_id") or {}
+        for eid in self.config_entity_ids():
+            if eid not in self._live_by_id and eid in state_by_id:
+                self._live_by_id[eid] = state_by_id[eid]
+
+    def has_config_balance(self) -> bool:
+        """True once PV or grid power is configured (drives balance source)."""
+        pv = (self._config.get("pv") or {}).get("power")
+        grid = self._config.get("grid") or {}
+        return bool(pv or grid.get("power") or grid.get("import_power") or grid.get("export_power"))
+
+    def catalog_payload(self) -> dict[str, Any]:
+        """Catalog + current config + energy-dashboard pre-fill for the wizard."""
+        return {
+            "categories": setup_catalog.CATEGORIES,
+            "config": self.config(),
+            "prefill": suggest.prefill_from_prefs(self._energy_prefs),
+            "has_prefs": bool(self._energy_prefs.get("energy_sources")),
+        }
+
+    def suggestions(self, category: str, slot_key: str, query: str = "") -> list[dict[str, Any]]:
+        spec = setup_catalog.find_slot(category, slot_key)
+        cat = setup_catalog.find_category(category)
+        if spec is None or cat is None or not self._ha_snapshot:
+            return []
+        return suggest.rank_for_slot(
+            self._ha_snapshot.get("states", []),
+            self._ha_snapshot.get("entity_registry", []),
+            self._ha_snapshot.get("device_registry", []),
+            self._ha_snapshot.get("area_registry", []),
+            slot=spec,
+            category_hints=cat.get("hints", []),
+            prefs_entities=suggest.prefs_entity_set(self._energy_prefs),
+            query=query,
+        )
+
+    def categories_with_entities(self) -> list[dict[str, Any]]:
+        """Config grouped by logical category for the device view: each assigned
+        entity with its slot label and live value (regardless of HA device)."""
+        state_by_id = self._ha_snapshot.get("state_by_id") or {}
+        groups: list[dict[str, Any]] = []
+        for cat in setup_catalog.CATEGORIES:
+            cfg = self._config.get(cat["key"], {}) or {}
+            items: list[dict[str, Any]] = []
+            for slot in cat["slots"]:
+                value = cfg.get(slot["key"])
+                eids = value if isinstance(value, list) else ([value] if value else [])
+                for eid in eids:
+                    st = self._live_by_id.get(eid) or state_by_id.get(eid) or {}
+                    attrs = st.get("attributes", {}) or {}
+                    items.append({
+                        "slot": slot["key"],
+                        "slot_label": slot["label"],
+                        "entity_id": eid,
+                        "name": attrs.get("friendly_name", eid),
+                        "state": st.get("state"),
+                        "unit": attrs.get("unit_of_measurement"),
+                    })
+            groups.append({
+                "key": cat["key"], "label": cat["label"],
+                "count": len(items), "entities": items,
+            })
+        return groups
 
     # --- SQLite history ------------------------------------------------------
     async def open_db(self) -> None:

@@ -46,6 +46,11 @@ class WebServer:
         self._app.router.add_post("/api/consumers", self._api_consumers_post)
         self._app.router.add_get("/api/devices", self._api_devices_get)
         self._app.router.add_post("/api/device-override", self._api_device_override)
+        self._app.router.add_get("/api/setup/catalog", self._api_setup_catalog)
+        self._app.router.add_get("/api/setup/suggest", self._api_setup_suggest)
+        self._app.router.add_post("/api/setup/config", self._api_setup_config)
+        self._app.router.add_post("/api/setup/import-prefs", self._api_setup_import)
+        self._app.router.add_get("/api/categories", self._api_categories)
         self._app.router.add_static(
             "/static", str(const.WEB_DIR), show_index=False
         )
@@ -133,6 +138,37 @@ class WebServer:
         hours = max(1, min(hours, 168))
         data = await self._store.forecast_bundle(hours=hours)
         return web.json_response(data)
+
+    # --- setup wizard --------------------------------------------------------
+    async def _api_setup_catalog(self, _request: web.Request) -> web.Response:
+        return web.json_response(self._store.catalog_payload())
+
+    async def _api_setup_suggest(self, request: web.Request) -> web.Response:
+        category = request.query.get("category", "")
+        slot = request.query.get("slot", "")
+        query = request.query.get("q", "")
+        return web.json_response(
+            {"candidates": self._store.suggestions(category, slot, query)}
+        )
+
+    async def _api_setup_config(self, request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "invalid json"}, status=400)
+        category, slot = body.get("category"), body.get("slot")
+        if not category or not slot:
+            return web.json_response({"error": "category and slot required"}, status=400)
+        ok = self._store.set_config(category, slot, body.get("value"))
+        if not ok:
+            return web.json_response({"error": "unknown category/slot"}, status=404)
+        return web.json_response({"ok": True, "config": self._store.config()})
+
+    async def _api_setup_import(self, _request: web.Request) -> web.Response:
+        return web.json_response({"ok": True, "config": self._store.import_prefs()})
+
+    async def _api_categories(self, _request: web.Request) -> web.Response:
+        return web.json_response({"groups": self._store.categories_with_entities()})
 
     async def _api_settings_get(self, _request: web.Request) -> web.Response:
         from . import __version__

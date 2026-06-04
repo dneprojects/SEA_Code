@@ -227,6 +227,14 @@ class HAClient:
         """
         return await self._command("energy/solar_forecast") or {}
 
+    async def get_energy_prefs(self) -> dict[str, Any]:
+        """HA Energy-dashboard preferences (energy_sources + device_consumption).
+
+        Used to pre-fill the setup wizard and rank already-configured entities.
+        Empty dict if the Energy dashboard is not configured.
+        """
+        return await self._command("energy/get_prefs") or {}
+
     async def call_service(
         self, domain: str, service: str, entity_id: str
     ) -> Any:

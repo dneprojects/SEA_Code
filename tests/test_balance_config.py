@@ -1,0 +1,54 @@
+"""Tests for the config-driven energy balance (wizard output)."""
+
+from __future__ import annotations
+
+from smart_energy_agent.aggregator import balance_from_config
+
+
+def _p(value, unit="W"):
+    return {"state": str(value), "attributes": {"unit_of_measurement": unit}}
+
+
+def test_pv_sum_grid_sign_and_house_derivation() -> None:
+    config = {
+        "pv": {"power": ["s.pv1", "s.pv2"]},
+        "grid": {"power": "s.grid"},
+        "heat_pump": {"power": "s.hp"},
+    }
+    live = {
+        "s.pv1": _p(1000),
+        "s.pv2": _p(2.0, "kW"),   # kW -> 2000 W
+        "s.grid": _p(-500),        # exporting 500 W
+        "s.hp": _p(800),
+    }
+    bal = balance_from_config(config, live)
+    assert bal["pv_w"] == 3000.0
+    assert bal["grid_w"] == -500.0
+    assert bal["house_load_w"] == 2500.0   # pv + grid
+    assert bal["surplus_w"] == 500.0       # pv - house == -grid
+    assert bal["heat_pump_w"] == 800.0
+    assert bal["sources"]["pv"] == 2
+
+
+def test_grid_invert_flag() -> None:
+    config = {"pv": {"power": ["s.pv"]}, "grid": {"power": "s.grid", "invert": True}}
+    live = {"s.pv": _p(1000), "s.grid": _p(-500)}
+    bal = balance_from_config(config, live)
+    assert bal["grid_w"] == 500.0
+    assert bal["house_load_w"] == 1500.0
+    assert bal["surplus_w"] == -500.0
+
+
+def test_import_export_pair() -> None:
+    config = {"grid": {"import_power": "s.imp", "export_power": "s.exp"}}
+    live = {"s.imp": _p(300), "s.exp": _p(0)}
+    bal = balance_from_config(config, live)
+    assert bal["grid_w"] == 300.0
+
+
+def test_missing_live_values_are_safe() -> None:
+    config = {"pv": {"power": ["s.pv"]}, "grid": {"power": "s.grid"}}
+    bal = balance_from_config(config, {})  # no live data yet
+    assert bal["pv_w"] == 0.0
+    assert bal["grid_w"] == 0.0
+    assert bal["heat_pump_w"] is None

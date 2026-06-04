@@ -97,3 +97,10 @@ def get_device_overrides_path() -> str:
     db = get_history_db()
     directory = os.path.dirname(db) or "."
     return os.path.join(directory, "device_overrides.json")
+
+
+def get_energy_config_path() -> str:
+    """JSON file storing the wizard's explicit category->entity configuration."""
+    db = get_history_db()
+    directory = os.path.dirname(db) or "."
+    return os.path.join(directory, "energy_config.json")
