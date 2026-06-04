@@ -30,6 +30,27 @@ def test_pv_sum_grid_sign_and_house_derivation() -> None:
     assert bal["sources"]["pv"] == 2
 
 
+def test_battery_charge_reduces_surplus() -> None:
+    config = {
+        "pv": {"power": ["s.pv"]},
+        "grid": {"power": "s.grid"},
+        "battery": {"power": "s.bat", "soc": "s.soc"},
+    }
+    live = {
+        "s.pv": _p(3000),
+        "s.grid": _p(-500),     # exporting 500
+        "s.bat": _p(1000),      # charging 1000 (consumes)
+        "s.soc": {"state": "82", "attributes": {"unit_of_measurement": "%"}},
+    }
+    bal = balance_from_config(config, live)
+    assert bal["battery_w"] == 1000.0
+    assert bal["battery_soc"] == 82.0
+    # house = pv + grid - batt = 3000 - 500 - 1000 = 1500
+    assert bal["house_load_w"] == 1500.0
+    assert bal["surplus_w"] == 1500.0  # pv - house
+    assert bal["sources"]["battery"] == 1
+
+
 def test_grid_invert_flag() -> None:
     config = {"pv": {"power": ["s.pv"]}, "grid": {"power": "s.grid", "invert": True}}
     live = {"s.pv": _p(1000), "s.grid": _p(-500)}

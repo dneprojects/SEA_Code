@@ -100,7 +100,7 @@
            onerror="this.style.display='none';this.nextElementSibling.style.display='inline';">
       <span class="logo-fallback" style="display:none">habitron</span>
       <div class="titlebox">
-        <span class="apptitle">Smart Energy Agent</span>
+        <span class="apptitle">Smart Energy Agent <span id="app-version" class="sub" style="font-weight:normal"></span></span>
         <span class="status"><span id="ha-dot" class="dot"></span><span id="ha-text">verbinde…</span> · <span id="updated"></span></span>
       </div>
     </div>
@@ -468,6 +468,7 @@
           fetch(api("/api/entities")+"?scope="+scope).then(r=>r.json()),
         ]);
         renderSummary(s); renderFlow(f); renderGroups(e.groups||[]);
+        document.getElementById("app-version").textContent = s.version ? "v"+s.version : "";
         document.getElementById("updated").textContent = "Stand: "+new Date().toLocaleTimeString("de-DE");
       } catch(err) { document.getElementById("ha-text").textContent = "Fehler beim Laden"; }
     }
@@ -492,8 +493,9 @@
         const slots = c.slots.map(s => {
           const sid = "slot_"+c.key+"_"+s.key;
           const req = s.required ? '<span style="color:#9c3a2f">*</span>' : '';
+          const ctl = s.control ? ' <span class="ov">Stellgröße</span>' : '';
           return `<div class="setrow" style="align-items:flex-start">
-            <label>${s.label} ${req}</label>
+            <label>${s.label} ${req}${ctl}</label>
             <div style="flex:1;min-width:280px">
               <input type="text" placeholder="suchen…" style="width:200px"
                      oninput="searchSlot('${c.key}','${s.key}',this.value)">
@@ -501,11 +503,11 @@
               ${s.help?`<div class="sub" style="margin-top:2px;color:var(--muted)">${s.help}</div>`:""}
             </div></div>`;
         }).join("");
-        const inv = c.key === "grid"
+        const inv = (c.key === "grid" || c.key === "battery")
           ? `<div class="setrow"><label>Vorzeichen umkehren</label>
                <input type="checkbox" ${ccfg.invert?"checked":""}
-                      onchange="saveSlot('grid','invert',this.checked)">
-               <span class="sub">aktivieren, wenn Bezug negativ dargestellt wird</span></div>`
+                      onchange="saveSlot('${c.key}','invert',this.checked)">
+               <span class="sub">${c.key==="grid"?"aktivieren, wenn Bezug negativ dargestellt wird":"aktivieren, wenn Laden negativ dargestellt wird"}</span></div>`
           : "";
         return `<div class="panel-title">${c.label}</div>${slots}${inv}`;
       }).join("");

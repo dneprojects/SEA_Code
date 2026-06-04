@@ -54,6 +54,13 @@ def balance_from_config(
     def val(entity_id: Optional[str]) -> Optional[float]:
         return _state_power_w(live_by_id.get(entity_id)) if entity_id else None
 
+    def num(entity_id: Optional[str]) -> Optional[float]:
+        st = live_by_id.get(entity_id) if entity_id else None
+        try:
+            return float(st.get("state")) if st else None
+        except (TypeError, ValueError):
+            return None
+
     pv_cfg = config.get("pv") or {}
     pv_list = pv_cfg.get("power") or []
     if isinstance(pv_list, str):
@@ -72,7 +79,14 @@ def balance_from_config(
         grid_w = imp - exp
     grid_w = grid_w or 0.0
 
-    house_load_w = pv_w + grid_w
+    batt_cfg = config.get("battery") or {}
+    batt_w = val(batt_cfg.get("power")) or 0.0 if batt_cfg.get("power") else 0.0
+    if batt_w and batt_cfg.get("invert"):
+        batt_w = -batt_w
+    batt_soc = num(batt_cfg.get("soc")) if batt_cfg.get("soc") else None
+
+    # House load = generation + grid import − battery charge (positive = charging).
+    house_load_w = pv_w + grid_w - batt_w
     surplus_w = pv_w - house_load_w
 
     hp_cfg = config.get("heat_pump") or {}
@@ -82,13 +96,16 @@ def balance_from_config(
     return {
         "pv_w": round(pv_w, 1),
         "grid_w": round(grid_w, 1),
-        "battery_w": 0.0,
-        "battery_soc": None,
+        "battery_w": round(batt_w, 1),
+        "battery_soc": round(batt_soc, 1) if batt_soc is not None else None,
         "house_load_w": round(house_load_w, 1),
         "house_load_measured": False,
         "surplus_w": round(surplus_w, 1),
         "heat_pump_w": round(hp_w, 1) if hp_w is not None else None,
-        "sources": {"pv": len(pv_list), "grid": 1 if has_grid else 0, "battery": 0, "house": 0},
+        "sources": {
+            "pv": len(pv_list), "grid": 1 if has_grid else 0,
+            "battery": 1 if batt_cfg.get("power") else 0, "house": 0,
+        },
     }
 
 

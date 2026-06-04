@@ -25,10 +25,11 @@ UNIT_GROUPS: dict[str, dict[str, set[str]]] = {
     "temperature": {"device_classes": {"temperature"}, "units": {"°C", "°F"}, "domains": set()},
     "climate": {"device_classes": set(), "units": set(), "domains": {"climate"}},
     "switch": {"device_classes": set(), "units": set(), "domains": {"switch", "input_boolean"}},
+    "number": {"device_classes": set(), "units": set(), "domains": {"number"}},
 }
 
 # Per-category extra boolean flags (not entity slots).
-CATEGORY_FLAGS: dict[str, set[str]] = {"grid": {"invert"}}
+CATEGORY_FLAGS: dict[str, set[str]] = {"grid": {"invert"}, "battery": {"invert"}}
 
 CATEGORIES: list[dict[str, Any]] = [
     {
@@ -44,6 +45,18 @@ CATEGORIES: list[dict[str, Any]] = [
         ],
     },
     {
+        "key": "battery",
+        "label": "Batteriespeicher",
+        "hints": list(discovery.BATTERY_HINTS_DEV),
+        "slots": [
+            {"key": "power", "label": "Lade-/Entladeleistung (+ Laden / − Entladen)",
+             "unit_group": "power", "multi": False, "required": True,
+             "help": "Vorzeichenbehaftete Batterieleistung."},
+            {"key": "soc", "label": "Ladezustand (SoC)", "unit_group": "soc",
+             "multi": False, "required": False, "help": "Batterie-% (optional)."},
+        ],
+    },
+    {
         "key": "heat_pump",
         "label": "Wärmepumpe",
         "hints": list(discovery.HEATPUMP_HINTS),
@@ -53,6 +66,12 @@ CATEGORIES: list[dict[str, Any]] = [
              "help": "Oft von einem separaten Messgerät (z. B. Shelly PM3)."},
             {"key": "energy", "label": "Elektrische Energie", "unit_group": "energy",
              "multi": False, "required": False, "help": "kWh-Zähler der WP (optional)."},
+            {"key": "climate", "label": "Thermostat / Klima-Entität (Soll-Temperatur)",
+             "unit_group": "climate", "multi": False, "required": False, "control": True,
+             "help": "Stellgröße: Solltemperatur anheben/absenken."},
+            {"key": "temp_setpoint", "label": "Soll-/Anhebungswert (Zahlen-Entität)",
+             "unit_group": "number", "multi": False, "required": False, "control": True,
+             "help": "Alternative Stellgröße als number-Entität."},
         ],
     },
     {

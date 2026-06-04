@@ -154,7 +154,9 @@ def prefill_from_prefs(prefs: Optional[dict[str, Any]]) -> dict[str, dict[str, A
     is the power entity (preferred for our power slots); energy stats fill the
     energy slots; ``device_consumption`` named like a heat pump fills heat_pump.
     """
-    out: dict[str, dict[str, Any]] = {"pv": {}, "grid": {}, "heat_pump": {}, "tariff": {}}
+    out: dict[str, dict[str, Any]] = {
+        "pv": {}, "battery": {}, "grid": {}, "heat_pump": {}, "tariff": {}
+    }
     if not isinstance(prefs, dict):
         return out
 
@@ -169,6 +171,11 @@ def prefill_from_prefs(prefs: Optional[dict[str, Any]]) -> dict[str, dict[str, A
                 pv_rates.append(s["stat_rate"])
             if s.get("stat_energy_from"):
                 out["pv"].setdefault("energy_today", s["stat_energy_from"])
+        elif stype == "battery":
+            if s.get("stat_rate"):
+                out["battery"]["power"] = s["stat_rate"]
+            if s.get("stat_soc"):
+                out["battery"]["soc"] = s["stat_soc"]
         elif stype == "grid":
             gf = _grid_fields(s)
             if gf.get("power"):

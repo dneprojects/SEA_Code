@@ -83,6 +83,8 @@ PREFS = {
          "stat_rate": "sensor.pv_power", "config_entry_solar_forecast": ["x"]},
         {"type": "grid", "stat_energy_from": "sensor.imp", "stat_energy_to": "sensor.exp",
          "stat_rate": "sensor.grid_power", "entity_energy_price": "sensor.price"},
+        {"type": "battery", "stat_rate": "sensor.batt_power", "stat_soc": "sensor.batt_soc",
+         "stat_energy_from": "sensor.batt_out", "stat_energy_to": "sensor.batt_in"},
     ],
     "device_consumption": [
         {"stat_consumption": "sensor.hp_energy", "stat_rate": "sensor.hp_power",
@@ -99,6 +101,8 @@ def test_prefill_from_prefs_maps_all_slots() -> None:
     assert out["tariff"]["price_entity"] == "sensor.price"
     assert out["heat_pump"]["power"] == "sensor.hp_power"
     assert out["heat_pump"]["energy"] == "sensor.hp_energy"
+    assert out["battery"]["power"] == "sensor.batt_power"
+    assert out["battery"]["soc"] == "sensor.batt_soc"
 
 
 def test_prefill_legacy_flow_grid() -> None:
@@ -118,4 +122,5 @@ def test_prefs_entity_set_collects_all() -> None:
 
 
 def test_prefill_empty() -> None:
-    assert prefill_from_prefs(None) == {"pv": {}, "grid": {}, "heat_pump": {}, "tariff": {}}
+    assert prefill_from_prefs(None) == {
+        "pv": {}, "battery": {}, "grid": {}, "heat_pump": {}, "tariff": {}}

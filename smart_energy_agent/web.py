@@ -74,7 +74,9 @@ class WebServer:
         return web.FileResponse(index_file)
 
     async def _api_summary(self, _request: web.Request) -> web.Response:
+        from . import __version__
         data = self._store.summary()
+        data["version"] = __version__
         data["ha_connected"] = self._ha_status.get("connected", False)
         data["ha_version"] = self._ha_status.get("version")
         return web.json_response(data)

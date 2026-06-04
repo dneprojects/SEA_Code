@@ -14,9 +14,16 @@
 - The live energy balance now uses this explicit configuration once PV or grid
   power is set (`aggregator.balance_from_config`), falling back to the legacy
   role-based aggregation otherwise.
-- Device view reworked: entities grouped by logical category (PV / heat pump /
-  grid) with live values, regardless of their HA device (`GET /api/categories`).
-- Tests for the suggestion ranking, energy-prefs prefill and config-based balance.
+- Wizard now also covers the **battery** (charge/discharge power + SoC, sign
+  flag; included in the balance: house = pv + grid − battery) and **control
+  actuators** — for the heat pump a climate/thermostat entity or a number
+  setpoint for the temperature setback/raise (marked "Stellgröße").
+- Device view reworked: entities grouped by logical category (PV / battery /
+  heat pump / grid) with live values, regardless of their HA device
+  (`GET /api/categories`).
+- App version shown in the header.
+- Tests for the suggestion ranking, energy-prefs prefill (incl. battery) and
+  config-based balance (incl. battery).
 
 - Phase 2 (forecast): history-based household consumption forecast
   (recency-weighted hour-of-day load profile, weekday/weekend split) with a
