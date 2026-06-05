@@ -2,6 +2,8 @@
 
 ## 0.2.1
 
+- Banner redesigned: sun moved to the left, lightning bolt removed; the motif is
+  now sun → two PV modules (without pole) → car. Gradient unchanged.
 - **Persistent settings**: config + history now default to `/addon_config`
   instead of the add-on's private `/data` volume, so settings survive an
   uninstall/reinstall (HA wipes `/data` on uninstall). On update, existing
