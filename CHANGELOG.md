@@ -2,6 +2,12 @@
 
 ## 0.2.1
 
+- **Critical persistence fix**: storage was briefly pointed at `/addon_config`,
+  which is NOT a mount point — writes went to the container's ephemeral overlay
+  and were lost on every restart/update (battery charge setpoint, tariff and
+  other settings appeared "not saved"). The `addon_config:rw` share is mounted at
+  **`/config`**; storage now uses `/config`. Migration copies any files left in
+  `/data` or `/addon_config` over once.
 - Fix persistence/refresh of the tariff & strategy settings:
   - the **tariff mode** dropdown now saves immediately (previously the choice was
     lost unless "Speichern" was clicked), and saving the tariff refreshes the
@@ -31,10 +37,11 @@
   entities can now be selected.
 - Banner simplified: now shows only the sun (moved slightly right) — the PV
   modules, car and lightning bolt are gone. Gradient unchanged.
-- **Persistent settings**: config + history now default to `/addon_config`
-  instead of the add-on's private `/data` volume, so settings survive an
-  uninstall/reinstall (HA wipes `/data` on uninstall). On update, existing
-  `/data` files are copied over once (non-destructive).
+- **Persistent settings**: config + history now default to `/config` (the
+  host-mapped `addon_config` share) instead of the add-on's private `/data`
+  volume, so settings survive an uninstall/reinstall (HA wipes `/data` on
+  uninstall). On update, existing legacy files are copied over once
+  (non-destructive).
 - Strategy device rows: the stop condition is now a small black ■ button on the
   device row; once set it appears on an indented second line. The line no longer
   has a checkbox — to remove it, click "ändern" and pick "— nicht zugeordnet —".

@@ -22,11 +22,14 @@ ENV_HISTORY_DB = "SEA_HISTORY_DB"
 ENV_HISTORY_DAYS = "SEA_HISTORY_DAYS"
 
 DEFAULT_LOG_LEVEL = "info"
-# /addon_config is a host-mapped folder (see config.yaml `map:`) that survives
-# an uninstall/reinstall; /data is the add-on's private volume and is wiped on
-# uninstall. All JSON settings derive their directory from this path, so keeping
-# it under /addon_config makes the whole configuration persistent.
-DEFAULT_HISTORY_DB = "/addon_config/smart_energy_agent.db"
+# The `map: addon_config:rw` share (see config.yaml) is mounted at /config inside
+# the container (host path /addon_configs/<slug>). It is host-mapped and survives
+# an uninstall/reinstall, unlike /data (the add-on's private volume, wiped on
+# uninstall). All JSON settings derive their directory from this path, so keeping
+# it under /config makes the whole configuration persistent.
+# NOTE: it is NOT /addon_config — that path is not a mount point and would write
+# to the container's ephemeral overlay (lost on every restart).
+DEFAULT_HISTORY_DB = "/config/smart_energy_agent.db"
 DEFAULT_HISTORY_DAYS = 90
 
 # Web/Ingress server
@@ -117,11 +120,11 @@ def get_energy_config_path() -> str:
 
 
 # --- Legacy data migration ---------------------------------------------------
-# Older versions stored the DB and all JSON settings under /data, the add-on's
-# private volume, which Home Assistant wipes on uninstall. The default is now
-# /addon_config (host-mapped, survives uninstall). On a normal update the old
-# /data files are still present, so copy them over once.
-LEGACY_DATA_DIR = "/data"
+# Storage moved over time: originally /data (private volume, wiped on uninstall),
+# then briefly the WRONG /addon_config (not a mount point — ephemeral), now the
+# correct /config (the addon_config share, host-mapped & persistent). On update,
+# copy any files still present in a legacy dir over to /config once.
+LEGACY_DATA_DIRS = ("/data", "/addon_config")
 _CONFIG_FILENAMES = (
     "overrides.json",
     "settings.json",
@@ -132,11 +135,10 @@ _CONFIG_FILENAMES = (
 
 
 def migrate_legacy_data_if_needed() -> list[str]:
-    """Copy config/history from the old /data volume to the configured directory.
+    """Copy config/history from a legacy dir to the configured directory.
 
-    Non-destructive (the /data originals are kept as a fallback) and only runs
-    when the DB path is still the default and points somewhere other than the
-    legacy dir. Returns the list of filenames that were copied.
+    Non-destructive (originals are kept as a fallback) and only runs when the DB
+    path is still the default. Returns the list of filenames that were copied.
     """
     import shutil
 
@@ -144,24 +146,23 @@ def migrate_legacy_data_if_needed() -> list[str]:
     if db != DEFAULT_HISTORY_DB:
         return []  # user pointed storage elsewhere -> don't touch
     new_dir = os.path.dirname(db) or "."
-    if os.path.abspath(new_dir) == os.path.abspath(LEGACY_DATA_DIR):
-        return []
-    if not os.path.isdir(LEGACY_DATA_DIR):
-        return []
-
-    moved: list[str] = []
-    names = (os.path.basename(db), *_CONFIG_FILENAMES)
     try:
         os.makedirs(new_dir, exist_ok=True)
     except OSError:
         return []
-    for name in names:
-        src = os.path.join(LEGACY_DATA_DIR, name)
-        dst = os.path.join(new_dir, name)
-        if os.path.exists(src) and not os.path.exists(dst):
-            try:
-                shutil.copy2(src, dst)
-                moved.append(name)
-            except OSError:
-                pass
+
+    names = (os.path.basename(db), *_CONFIG_FILENAMES)
+    moved: list[str] = []
+    for legacy in LEGACY_DATA_DIRS:
+        if os.path.abspath(legacy) == os.path.abspath(new_dir) or not os.path.isdir(legacy):
+            continue
+        for name in names:
+            src = os.path.join(legacy, name)
+            dst = os.path.join(new_dir, name)
+            if os.path.exists(src) and not os.path.exists(dst):
+                try:
+                    shutil.copy2(src, dst)
+                    moved.append(name)
+                except OSError:
+                    pass
     return moved

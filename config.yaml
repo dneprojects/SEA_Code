@@ -22,15 +22,18 @@ panel_icon: mdi:transmission-tower
 panel_title: Smart Energy Agent
 hassio_api: true
 homeassistant_api: true
-# Persistent storage for config (YAML) and history (SQLite).
+# Persistent storage for config (JSON) and history (SQLite). The addon_config
+# share is mounted at /config inside the container (host: /addon_configs/<slug>)
+# and survives restart, update and uninstall.
 map:
   - addon_config:rw
 options:
   log_level: info
   # Storage location for the SQLite history AND all JSON settings (they live in
-  # the same folder). Defaults to the host-mapped /addon_config so settings
-  # survive an uninstall/reinstall; can be pointed to a mounted SSD/share later.
-  history_db_path: "/addon_config/smart_energy_agent.db"
+  # the same folder). Defaults to /config (the addon_config mount point) so
+  # settings survive a restart/update/uninstall; can be pointed to a mounted
+  # SSD/share later. NOTE: must be /config, not /addon_config (not a mount point).
+  history_db_path: "/config/smart_energy_agent.db"
   # Hard cap for raw history retention (days) to protect SD-card lifetime.
   history_retention_days: 90
 schema:

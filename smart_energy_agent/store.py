@@ -37,8 +37,7 @@ class Store:
         migrated = const.migrate_legacy_data_if_needed()
         if migrated:
             _LOGGER.info(
-                "Migrated legacy config from %s to %s: %s",
-                const.LEGACY_DATA_DIR,
+                "Migrated legacy config to %s: %s",
                 os.path.dirname(const.get_history_db()) or ".",
                 ", ".join(migrated),
             )
