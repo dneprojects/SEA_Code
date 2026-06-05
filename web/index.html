@@ -1085,22 +1085,21 @@
               + num("W/Einheit","w_per_unit",60,"Watt pro Einheit der Sollwert-Entität: z. B. Wallbox ~690 W pro Ampere; bei einem Leistungs-Sollwert in Watt = 1");
         }
         const stopBtn = (mode==='self_consumption' && on)
-          ? `<button class="btn" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${d.key}')">🛑</button>` : '';
+          ? `<button class="btn" style="color:#000" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${d.key}')">■</button>` : '';
         const main = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <label title="In dieser Strategie verwenden"><input type="checkbox" ${on?'checked':''} onchange="setLoad('${d.key}','${mode}',this.checked)"> ${d.name}</label>
           <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${d.satisfied?' · <b style=\"color:#3f9b2f\">Ziel erreicht</b>':''}</span>
           ${extra} ${stopBtn}</div>`;
         const stopLine = (mode==='self_consumption' && on && cfg.limit_entity)
           ? `<div style="padding-left:24px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
-               <input type="checkbox" checked title="Stopp-Bedingung aktiv – abwählen zum Entfernen" onchange="if(!this.checked)setLoad('${d.key}','limit_entity','')">
                <span class="sub">Stopp bei</span> <span class="eid">${cfg.limit_entity}</span> ≥
                <input type="number" title="Schwellwert" style="width:60px" value="${cfg.limit_max}" onchange="setLoad('${d.key}','limit_max',this.value)">
-               <button class="btn" title="Stopp-Entität ändern" onclick="pickLimit('${d.key}')">ändern</button></div>` : '';
+               <button class="btn" title="Stopp-Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickLimit('${d.key}')">ändern</button></div>` : '';
         return `<div style="border-bottom:1px solid var(--alt);padding:3px 0">${main}${stopLine}</div>`;
       }).join("");
     }
     function pickLimit(key) {
-      openPickerCb("value", "", "", eid => { if (eid) setLoad(key, 'limit_entity', eid); });
+      openPickerCb("value", "", "", eid => setLoad(key, 'limit_entity', eid));
     }
     async function setLoad(key, field, val) {
       try {

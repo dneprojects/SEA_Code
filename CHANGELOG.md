@@ -2,9 +2,10 @@
 
 ## 0.2.0
 
-- Strategy device rows: the stop condition is now a small 🛑 button on the device
-  row; once set it appears on an indented second line (checkbox bullet aligned
-  under the device name). Tooltips added across the pages (incl. "W/Einheit").
+- Strategy device rows: the stop condition is now a small black ■ button on the
+  device row; once set it appears on an indented second line. The line no longer
+  has a checkbox — to remove it, click "ändern" and pick "— nicht zugeordnet —".
+  Tooltips added across the pages (incl. "W/Einheit").
 - Savings: the explanation text now adapts to the selected baseline.
 - Dashboard: the power-flow frame height fits the diagram and grows for expanded
   sub-power circles (no more cut-off when expanding consumers).
