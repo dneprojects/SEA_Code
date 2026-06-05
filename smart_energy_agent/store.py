@@ -32,6 +32,15 @@ class Store:
     """Holds the current set of classified energy entities + user overrides."""
 
     def __init__(self) -> None:
+        # Bring forward any config from the old /data volume before loading.
+        migrated = const.migrate_legacy_data_if_needed()
+        if migrated:
+            _LOGGER.info(
+                "Migrated legacy config from %s to %s: %s",
+                const.LEGACY_DATA_DIR,
+                os.path.dirname(const.get_history_db()) or ".",
+                ", ".join(migrated),
+            )
         self._entities: dict[str, EnergyEntity] = {}
         self._db: Optional[aiosqlite.Connection] = None
         self.last_discovery_ts: float = 0.0

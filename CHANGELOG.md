@@ -2,6 +2,10 @@
 
 ## 0.2.1
 
+- **Persistent settings**: config + history now default to `/addon_config`
+  instead of the add-on's private `/data` volume, so settings survive an
+  uninstall/reinstall (HA wipes `/data` on uninstall). On update, existing
+  `/data` files are copied over once (non-destructive).
 - Strategy device rows: the stop condition is now a small black ■ button on the
   device row; once set it appears on an indented second line. The line no longer
   has a checkbox — to remove it, click "ändern" and pick "— nicht zugeordnet —".

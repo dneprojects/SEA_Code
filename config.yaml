@@ -27,9 +27,10 @@ map:
   - addon_config:rw
 options:
   log_level: info
-  # Storage location for the SQLite history. Use the add-on data dir by default;
-  # can be pointed to a mounted SSD/share later.
-  history_db_path: "/data/smart_energy_agent.db"
+  # Storage location for the SQLite history AND all JSON settings (they live in
+  # the same folder). Defaults to the host-mapped /addon_config so settings
+  # survive an uninstall/reinstall; can be pointed to a mounted SSD/share later.
+  history_db_path: "/addon_config/smart_energy_agent.db"
   # Hard cap for raw history retention (days) to protect SD-card lifetime.
   history_retention_days: 90
 schema:
