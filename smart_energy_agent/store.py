@@ -477,12 +477,37 @@ class Store:
             return False
         return None
 
+    @staticmethod
+    def _price_to_ct(state: dict[str, Any]) -> Optional[float]:
+        """Normalise a price entity's value to ct/kWh using its unit.
+
+        Dynamic-tariff integrations report in various units; convert currency
+        per kWh/MWh to ct/kWh. Unit-less or already-ct values pass through.
+        """
+        try:
+            val = float((state or {}).get("state"))
+        except (TypeError, ValueError):
+            return None
+        unit = str(((state or {}).get("attributes") or {})
+                   .get("unit_of_measurement") or "").lower()
+        if "/mwh" in unit:
+            val /= 10.0                       # currency/MWh -> ct/kWh (EUR-like)
+        elif any(u in unit for u in ("eur/kwh", "€/kwh", "$/kwh", "usd/kwh",
+                                     "gbp/kwh", "£/kwh", "chf/kwh")):
+            val *= 100.0                      # currency/kWh -> ct/kWh
+        # ct/kWh, cent/kWh, öre/kWh or unit-less -> already ct-scale
+        return round(val, 3)
+
     def current_price_ct(self) -> Optional[float]:
         """Current purchase price in ct/kWh based on the configured tariff."""
         t = self._settings.get("tariff", {})
         mode = t.get("mode", "static")
         if mode == "dynamic":
-            return self._dynamic_price
+            pe = t.get("price_entity") or ""
+            # Prefer the live/snapshot value so the price shows immediately after
+            # setup (before the next state_changed); fall back to the cached one.
+            val = self._price_to_ct(self.live_state(pe)) if pe else None
+            return val if val is not None else self._dynamic_price
         if mode == "ht_nt":
             lt = time.localtime()
             cur = lt.tm_hour * 60 + lt.tm_min
@@ -505,10 +530,9 @@ class Store:
             return
         t = self._settings.get("tariff", {})
         if t.get("mode") == "dynamic" and entity_id == t.get("price_entity"):
-            try:
-                self._dynamic_price = float(new_state.get("state"))
-            except (TypeError, ValueError):
-                pass
+            val = self._price_to_ct(new_state)
+            if val is not None:
+                self._dynamic_price = val
         if entity_id and entity_id == self._settings.get("pv_forecast_entity"):
             self._pv_forecast_state = new_state
 
@@ -1084,8 +1108,15 @@ class Store:
         return ids
 
     def watched_entity_ids(self) -> set[str]:
-        """Config entities plus setback persons and thermostat climate entities."""
+        """Config entities plus setback persons, thermostat climates, the tariff
+        price entity and the PV-forecast entity (so their live values stay fresh)."""
         ids = self.config_entity_ids()
+        pe = (self._settings.get("tariff", {}) or {}).get("price_entity")
+        if pe:
+            ids.add(pe)
+        fe = self._settings.get("pv_forecast_entity")
+        if fe:
+            ids.add(fe)
         for g in self.groups():
             if not isinstance(g, dict):
                 continue

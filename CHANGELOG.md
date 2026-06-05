@@ -2,6 +2,11 @@
 
 ## 0.2.1
 
+- Fix "Aktueller Bezugspreis – (Entität liefert noch keinen Wert)" for dynamic
+  tariffs: the current price now reads the entity's live/snapshot value
+  immediately (no longer waits for the next hourly state change), the price
+  entity is added to the watched set so its value stays fresh, and the value is
+  **normalised to ct/kWh** from its unit (EUR/kWh, EUR/MWh, … are converted).
 - **Critical persistence fix**: storage was briefly pointed at `/addon_config`,
   which is NOT a mount point — writes went to the container's ephemeral overlay
   and were lost on every restart/update (battery charge setpoint, tariff and
