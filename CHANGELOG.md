@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0
+## 0.2.1
 
 - Strategy device rows: the stop condition is now a small black ■ button on the
   device row; once set it appears on an indented second line. The line no longer
