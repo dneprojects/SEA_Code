@@ -258,14 +258,14 @@
         </div>
         <div class="controls">
           <span>Vergleich gegen:</span>
-          <select id="sav-baseline" onchange="savBaselineChanged()">
+          <select id="sav-baseline" title="Referenzszenario, gegen das die Ersparnis berechnet wird" onchange="savBaselineChanged()">
             <option value="full_feed">Volleinspeisung (kein Eigenverbrauch)</option>
             <option value="direct">Direkter Eigenverbrauch (ohne Speicher/Steuerung)</option>
             <option value="surplus_sink">PV-Überschuss-Senke (Heizstab/Auto)</option>
           </select>
           <span id="sav-cap-wrap" style="display:none">
             <span class="sub">Leistungsgrenze (W)</span>
-            <input type="number" id="sav-cap" value="3000" step="500" style="width:90px" onchange="loadSavings()">
+            <input type="number" id="sav-cap" title="Maximale Leistung der Überschuss-Senke (W)" value="3000" step="500" style="width:90px" onchange="loadSavings()">
             <button class="btn" onclick="document.getElementById('sav-cap').value=3000;loadSavings()">Heizstab</button>
             <button class="btn" onclick="document.getElementById('sav-cap').value=11000;loadSavings()">Auto</button>
           </span>
@@ -273,14 +273,14 @@
         <div class="cards" id="sav-cards"></div>
         <div class="panel-title">Energiebilanz im Zeitraum</div>
         <table class="info-tbl"><tbody id="sav-info"></tbody></table>
-        <p class="sub" style="margin-top:10px">Referenz: gesamte PV-Erzeugung eingespeist (Einspeisevergütung), gesamter Verbrauch aus dem Netz (Bezugspreis). Differenz zur Ist-Situation = Wert von Eigenverbrauch und Speicher. Schätzung auf Basis der aufgezeichneten Messpunkte und der hinterlegten Tarife.</p>
+        <p class="sub" id="sav-explain" style="margin-top:10px"></p>
       </section>
 
       <!-- Verbraucher -->
       <section id="view-consumers" hidden>
         <div class="panel-title">Strategien</div>
         <div class="setrow"><label>Optimierungsstrategie</label>
-          <select id="set-strategy" onchange="strategyChanged();saveStrategy()"></select></div>
+          <select id="set-strategy" title="Globaler Modus: Eigenverbrauch, Kosten (Tarif), Hybrid oder Autarkie" onchange="strategyChanged();saveStrategy()"></select></div>
         <div class="setrow"><span class="sub" id="set-strategy-desc"></span></div>
         <p class="sub" style="margin:8px 0 6px">Verfügbare Strategien werden automatisch aus den konfigurierten Entitäten ermittelt. Box aufklappen für die Einstellungen.</p>
         <div id="strategies"></div>
@@ -290,17 +290,17 @@
       <section id="view-basic" hidden>
         <div class="panel-title">Grundeinstellungen</div>
         <div class="setrow"><label>Aufbewahrung Historie (Tage)</label>
-          <input type="number" id="set-ret" min="1" max="3650"> <span class="sub">leer = Standard</span></div>
+          <input type="number" id="set-ret" min="1" max="3650" title="Wie lange Verlaufsdaten gespeichert werden (Tage); leer = Standard"> <span class="sub">leer = Standard</span></div>
         <div class="setrow"><label>PV-Prognose-Entität</label>
-          <input type="text" id="set-pvfc" placeholder="sensor.solcast_pv_forecast_forecast_today" style="width:260px">
+          <input type="text" id="set-pvfc" title="Optionale Solcast-/sonstige PV-Prognose-Entität (Forecast.Solar wird automatisch erkannt)" placeholder="sensor.solcast_pv_forecast_forecast_today" style="width:260px">
           <span class="sub">nur für Solcast/sonstige — Forecast.Solar wird automatisch erkannt</span></div>
-        <div class="setrow"><button class="btn" onclick="saveSettings()">Speichern</button>
+        <div class="setrow"><button class="btn" title="Grundeinstellungen speichern" onclick="saveSettings()">Speichern</button>
           <span id="set-msg" class="sub"></span></div>
 
         <div class="panel-title">Tarife — Bezugspreis &amp; Einspeisevergütung</div>
         <p class="sub" id="t-prefill-hint" style="margin:0 0 6px"></p>
         <div class="setrow"><label>Tarifmodell</label>
-          <select id="t-mode" onchange="tariffModeChanged()">
+          <select id="t-mode" title="Statischer Preis, HT/NT oder dynamischer Preis aus einer HA-Entität" onchange="tariffModeChanged()">
             <option value="static">Statisch (fester Preis)</option>
             <option value="ht_nt">HT/NT (Hoch-/Niedertarif)</option>
             <option value="dynamic">Dynamisch (HA-Entität)</option>
@@ -328,7 +328,7 @@
         </div>
         <div class="setrow"><label>Einspeisevergütung (ct/kWh)</label>
           <input type="number" id="t-feedin" step="0.1"></div>
-        <div class="setrow"><button class="btn" onclick="saveTariff()">Speichern</button>
+        <div class="setrow"><button class="btn" title="Tarif speichern" onclick="saveTariff()">Speichern</button>
           <span id="t-msg" class="sub"></span></div>
         <table class="info-tbl"><tbody id="t-info"></tbody></table>
 
@@ -458,7 +458,13 @@
           : ({heat_pump:"#ff8080", water_heater:"#e0902b", ev_charger:"#008080"}[ld.kind]||"#80b8ff");
         ld.icon = KIND_ICON[ld.kind] || "🔌";
         ld.x = 480; ld.y = loads.length<=1 ? hy : topPad + i*step; });
-      const H = Math.max(440, topPad + (loads.length>1 ? (loads.length-1)*step : 0) + 96);
+      // Height fits the content (anchors, loads, and the expanded branch's parts)
+      // so the frame wraps tightly and nothing is cut off at the bottom.
+      let maxY = Math.max(anchors.battery[1], anchors.house[1], anchors.grid[1]) + R + 16;
+      loads.forEach(ld => { maxY = Math.max(maxY, ld.y + R + 16);
+        if (flowExpanded.has(ld.key) && (ld.parts||[]).length>1)
+          maxY = Math.max(maxY, ld.y + (ld.parts.length-1)/2*74 + 28 + 16); });
+      const H = Math.round(maxY + 14);
       const allP = [Math.abs(f.pv_w||0), Math.abs(f.grid_w||0), Math.abs(f.battery_w||0)]
         .concat(loads.map(l=>Math.abs(l.power_w||0)));
       const maxP = Math.max(1, ...allP);
@@ -909,6 +915,13 @@
       if (baseline === "surplus_sink") info.push(["Überschuss-Senke (Baseline)", kwh(d.sink_kwh)]);
       info.push(["Messpunkte", d.samples!=null?d.samples:"–"]);
       document.getElementById("sav-info").innerHTML = info.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("");
+      const explain = {
+        full_feed: "Referenz: die gesamte PV-Erzeugung wird eingespeist (Einspeisevergütung) und der gesamte Verbrauch aus dem Netz bezogen (Bezugspreis). Die Differenz zur Ist-Situation zeigt den Wert von Eigenverbrauch und Speicher.",
+        direct: "Referenz: direkter Eigenverbrauch ohne Speicher und ohne Steuerung — nur die zeitgleich anfallende PV-Leistung deckt den Verbrauch, der Rest wird eingespeist bzw. bezogen. Die Differenz zeigt den Zusatznutzen von Speicher und aktiver Steuerung.",
+        surplus_sink: "Referenz: wie direkter Eigenverbrauch, aber PV-Überschuss wird bis zur Leistungsgrenze von einer Senke (Heizstab/Auto) genutzt statt eingespeist. Die Differenz zeigt den Mehrwert gegenüber dieser einfachen Überschuss-Nutzung.",
+      };
+      document.getElementById("sav-explain").textContent =
+        (explain[baseline] || "") + " Schätzung auf Basis der aufgezeichneten Messpunkte und der hinterlegten Tarife.";
     }
 
     // ---------- Einstellungen ----------
@@ -1060,23 +1073,30 @@
       return devs.map(d => {
         const cfg = d.cfg, on = mode==='self_consumption' ? cfg.self_consumption : cfg.tariff_shift;
         const sw = d.control_mode==='switch';
-        const ni = (lbl,f,w) => `<span class="sub">${lbl}</span><input type="number" style="width:${w||56}px" value="${cfg[f]}" onchange="setLoad('${d.key}','${f}',this.value)">`;
+        const num = (lbl,f,w,tip) => `<span class="sub" title="${tip}">${lbl}</span><input type="number" title="${tip}" style="width:${w}px" value="${cfg[f]}" onchange="setLoad('${d.key}','${f}',this.value)">`;
         let extra = "";
         if (mode==='self_consumption' && on) {
           extra = sw
-            ? ni("Prio","priority",48)+ni("PV-Schwelle W","pv_threshold_w",70)+ni("min. Laufzeit","min_runtime_min",52)
-            : ni("Prio","priority",48)+ni("max. Leistung W","max_w",72)+ni("W/Einheit","w_per_unit",60);
-          // Stop condition (e.g. vehicle SoC / temperature reached)
-          const lim = cfg.limit_entity
-            ? `<span class="eid">${cfg.limit_entity}</span> ≥ <input type="number" style="width:60px" value="${cfg.limit_max}" onchange="setLoad('${d.key}','limit_max',this.value)"> <button class="btn" title="Stopp entfernen" onclick="setLoad('${d.key}','limit_entity','')">×</button>`
-            : `<button class="btn" onclick="pickLimit('${d.key}')">Stopp-Bedingung</button>`;
-          extra += ` <span style="flex-basis:100%"></span><span class="sub">Stopp bei:</span> ${lim}`;
+            ? num("Prio","priority",48,"Priorität 1–10: höhere Geräte werden zuerst zugeschaltet")
+              + num("PV-Schwelle W","pv_threshold_w",70,"Mindest-Überschuss zum Einschalten (W)")
+              + num("min. Laufzeit","min_runtime_min",52,"Mindestlaufzeit vor dem Abschalten (min)")
+            : num("Prio","priority",48,"Priorität: höhere Geräte bekommen den Überschuss zuerst")
+              + num("max. Leistung W","max_w",72,"Maximale Leistungsaufnahme des Geräts (W)")
+              + num("W/Einheit","w_per_unit",60,"Watt pro Einheit der Sollwert-Entität: z. B. Wallbox ~690 W pro Ampere; bei einem Leistungs-Sollwert in Watt = 1");
         }
-        const tag = sw ? '<span class="sub">schaltbar</span>' : '<span class="sub">regelbar</span>';
-        return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--alt);padding:3px 0">
-          <label><input type="checkbox" ${on?'checked':''} onchange="setLoad('${d.key}','${mode}',this.checked)"> ${d.name}</label>
-          <span class="sub">${d.kind_label} · ${tag}${d.power_w!=null?' · '+fmtW(d.power_w):''}${d.satisfied?' · <b style=\"color:#3f9b2f\">Ziel erreicht</b>':''}</span>
-          ${extra}</div>`;
+        const stopBtn = (mode==='self_consumption' && on)
+          ? `<button class="btn" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${d.key}')">🛑</button>` : '';
+        const main = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label title="In dieser Strategie verwenden"><input type="checkbox" ${on?'checked':''} onchange="setLoad('${d.key}','${mode}',this.checked)"> ${d.name}</label>
+          <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${d.satisfied?' · <b style=\"color:#3f9b2f\">Ziel erreicht</b>':''}</span>
+          ${extra} ${stopBtn}</div>`;
+        const stopLine = (mode==='self_consumption' && on && cfg.limit_entity)
+          ? `<div style="padding-left:24px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
+               <input type="checkbox" checked title="Stopp-Bedingung aktiv – abwählen zum Entfernen" onchange="if(!this.checked)setLoad('${d.key}','limit_entity','')">
+               <span class="sub">Stopp bei</span> <span class="eid">${cfg.limit_entity}</span> ≥
+               <input type="number" title="Schwellwert" style="width:60px" value="${cfg.limit_max}" onchange="setLoad('${d.key}','limit_max',this.value)">
+               <button class="btn" title="Stopp-Entität ändern" onclick="pickLimit('${d.key}')">ändern</button></div>` : '';
+        return `<div style="border-bottom:1px solid var(--alt);padding:3px 0">${main}${stopLine}</div>`;
       }).join("");
     }
     function pickLimit(key) {
@@ -1237,9 +1257,9 @@
     function renderThermo() {
       const el = document.getElementById("thermo");
       let h = `<div class="setrow"><label>Absenkung aktiv</label>
-          <input type="checkbox" ${sbData.enabled?"checked":""} onchange="sbData.enabled=this.checked;saveSb(false)"></div>
+          <input type="checkbox" title="Hauptschalter für die Temperaturabsenkung" ${sbData.enabled?"checked":""} onchange="sbData.enabled=this.checked;saveSb(false)"></div>
         <div class="setrow"><label>Frostschutz (°C)</label>
-          <input type="number" step="0.5" value="${sbData.frost_c!=null?sbData.frost_c:7}" style="width:80px"
+          <input type="number" step="0.5" title="Diese Temperatur wird nie unterschritten" value="${sbData.frost_c!=null?sbData.frost_c:7}" style="width:80px"
                  onchange="sbData.frost_c=parseFloat(this.value);saveSb(false)"></div>`;
       (sbData.groups||[]).forEach((g,gi) => {
         const pres = sbPresence[g.id];
@@ -1249,15 +1269,15 @@
             <input type="text" value="${(g.name||'').replace(/"/g,'&quot;')}" style="width:180px"
                    onchange="sbData.groups[${gi}].name=this.value;saveSb(false)">
             <span class="sub">· Status: ${presTxt}</span>
-            <button class="btn" style="margin-left:auto" onclick="sbData.groups.splice(${gi},1);saveSb(true)">Gruppe entfernen</button></div>
+            <button class="btn" style="margin-left:auto" title="Diese Gruppe löschen" onclick="sbData.groups.splice(${gi},1);saveSb(true)">Gruppe entfernen</button></div>
           <div class="setrow"><label>Personen (alle abwesend → absenken)</label>
             <div style="flex:1">${(g.persons||[]).map((p,pi) =>
               `<span class="swchip" style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--alt);padding:2px 5px;margin:2px 4px 2px 0">
                  <span class="eid">${p}</span>
                  <button class="btn" title="Person entfernen" onclick="sbData.groups[${gi}].persons.splice(${pi},1);saveSb(true)">−</button></span>`).join("")}
-              <button class="btn" onclick="pickPerson(${gi})">+ Person</button></div></div>
+              <button class="btn" title="Anwesenheits-Entität hinzufügen (Person/Tracker/Zone)" onclick="pickPerson(${gi})">+ Person</button></div></div>
           <div class="setrow"><label>Komfort ab (optional, HH:MM)</label>
-            <input type="time" value="${g.comfort_time||''}" onchange="sbData.groups[${gi}].comfort_time=this.value;saveSb(false)">
+            <input type="time" title="Zielzeit: rechtzeitig vorheizen, sodass die Komforttemperatur dann erreicht ist" value="${g.comfort_time||''}" onchange="sbData.groups[${gi}].comfort_time=this.value;saveSb(false)">
             <span class="sub">vorausschauend vorheizen</span></div>
           <div style="margin:4px 0 2px;color:var(--brand);font-size:11px;text-transform:uppercase">Thermostate</div>`;
         (g.thermostats||[]).forEach((t,ti) => {
@@ -1266,17 +1286,17 @@
           h += `<div style="border:1px solid var(--alt);padding:4px 8px;margin-bottom:4px;display:flex;flex-wrap:wrap;align-items:center;gap:8px">
             <input type="text" value="${(t.name||'').replace(/"/g,'&quot;')}" placeholder="Raum" style="width:120px"
                    onchange="sbData.groups[${gi}].thermostats[${ti}].name=this.value;saveSb(false)">
-            ${cl} <button class="btn" onclick="pickClimate(${gi},${ti})">${t.climate?'Ändern':'Wählen'}</button>
-            <span class="sub">Komfort</span><input type="number" step="0.5" value="${t.comfort_c!=null?t.comfort_c:21}" style="width:64px"
+            ${cl} <button class="btn" title="Climate-/Thermostat-Entität wählen" onclick="pickClimate(${gi},${ti})">${t.climate?'Ändern':'Wählen'}</button>
+            <span class="sub">Komfort</span><input type="number" step="0.5" title="Solltemperatur bei Anwesenheit (°C)" value="${t.comfort_c!=null?t.comfort_c:21}" style="width:64px"
                    onchange="sbData.groups[${gi}].thermostats[${ti}].comfort_c=parseFloat(this.value);saveSb(false)">
-            <span class="sub">Eco</span><input type="number" step="0.5" value="${t.eco_c!=null?t.eco_c:17}" style="width:64px"
+            <span class="sub">Eco</span><input type="number" step="0.5" title="Abgesenkte Temperatur bei Abwesenheit (°C)" value="${t.eco_c!=null?t.eco_c:17}" style="width:64px"
                    onchange="sbData.groups[${gi}].thermostats[${ti}].eco_c=parseFloat(this.value);saveSb(false)">
             <span class="sub">${k}</span>
             <button class="btn" style="margin-left:auto" title="Thermostat entfernen" onclick="sbData.groups[${gi}].thermostats.splice(${ti},1);saveSb(true)">−</button></div>`;
         });
-        h += `<button class="btn" onclick="addTh(${gi})">+ Thermostat</button></div>`;
+        h += `<button class="btn" title="Raum-Thermostat zu dieser Gruppe hinzufügen" onclick="addTh(${gi})">+ Thermostat</button></div>`;
       });
-      h += `<button class="btn" onclick="addGroup()">+ Gruppe hinzufügen</button>`;
+      h += `<button class="btn" title="Neue Gruppe (Personen + ihre Räume)" onclick="addGroup()">+ Gruppe hinzufügen</button>`;
       el.innerHTML = h;
     }
     function addGroup() { sbData.groups.push({id:thGid(), name:"Gruppe "+(sbData.groups.length+1), persons:[], comfort_time:"", thermostats:[]}); saveSb(true); }

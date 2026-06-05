@@ -2,6 +2,13 @@
 
 ## 0.2.0
 
+- Strategy device rows: the stop condition is now a small 🛑 button on the device
+  row; once set it appears on an indented second line (checkbox bullet aligned
+  under the device name). Tooltips added across the pages (incl. "W/Einheit").
+- Savings: the explanation text now adapts to the selected baseline.
+- Dashboard: the power-flow frame height fits the diagram and grows for expanded
+  sub-power circles (no more cut-off when expanding consumers).
+
 - **Battery control**: the battery can take a charge-power setpoint (new wizard
   field) and then participates in PV-surplus as a **modulating load** (priority
   vs other loads configurable) — the Batterie-Optimierung strategy becomes
