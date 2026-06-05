@@ -12,11 +12,12 @@ import json
 import logging
 import os
 import time
+from datetime import datetime
 from typing import Any, Callable, Optional
 
 import aiosqlite
 
-from . import const, forecast, setup_catalog, strategies, suggest
+from . import const, forecast, setup_catalog, strategies, suggest, tariff
 from .aggregator import compute_balance, balance_from_config, _state_power_w
 from .models import (
     EnergyEntity, EnergyRole, ROLE_LABELS, ROLE_ORDER,
@@ -337,6 +338,22 @@ class Store:
         return self._live_by_id.get(entity_id) or \
             (self._ha_snapshot.get("state_by_id") or {}).get(entity_id) or {}
 
+    def entity_truthy(self, entity_id: str) -> bool:
+        """Whether an entity's state reads as 'on/active/connected/ready'."""
+        if not entity_id:
+            return False
+        s = str(self.live_state(entity_id).get("state", "")).strip().lower()
+        return s in ("on", "true", "yes", "1", "home", "present", "connected",
+                     "plugged", "plugged_in", "charging", "ready", "heat",
+                     "open", "active")
+
+    def tariff_cheap_now(self) -> dict[str, Any]:
+        """Universal 'is now a cheap tariff period?' from the registered price source."""
+        t = self.tariff()
+        pe = t.get("price_entity") or ""
+        state = self.live_state(pe) if pe else {}
+        return tariff.cheap_now(t, state, datetime.now())
+
     def presence_is_home(self, entity_id: str) -> Optional[bool]:
         """True/False for one presence entity, None if unknown/unavailable."""
         if not entity_id:
@@ -350,7 +367,13 @@ class Store:
 
     def strategies_overview(self) -> list[dict[str, Any]]:
         """Which energy-saving strategies are possible from the current config."""
-        return strategies.overview(self._config, self._settings, self.groups())
+        ov = strategies.overview(self._config, self._settings, self.groups())
+        info = self.tariff_cheap_now()
+        for s in ov:
+            if s["key"] == "tariff_shift":
+                s["cheap"] = bool(info.get("cheap"))
+                s["status"] = info.get("reason")
+        return ov
 
     # --- controllable devices (from the wizard) participating in strategies --
     def controllable_devices(self) -> list[dict[str, Any]]:
@@ -413,8 +436,9 @@ class Store:
                     cfg[f] = float(patch[f] or 0)
                 except (TypeError, ValueError):
                     pass
-        if "limit_entity" in patch:
-            cfg["limit_entity"] = str(patch["limit_entity"] or "")
+        for f in ("limit_entity", "ready_entity"):
+            if f in patch:
+                cfg[f] = str(patch[f] or "")
         self._save_settings()
         return True
 
@@ -436,7 +460,7 @@ class Store:
             cfg = {"self_consumption": False, "tariff_shift": False, "priority": 5,
                    "pv_threshold_w": 0, "min_runtime_min": 0, "min_off_min": 0,
                    "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1,
-                   "limit_entity": "", "limit_max": 0}
+                   "limit_entity": "", "limit_max": 0, "ready_entity": ""}
             cfg.update(sl.get(d["key"], {}))
             out.append({**d, "cfg": cfg, "satisfied": self._device_satisfied(cfg)})
         return out

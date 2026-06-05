@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from . import tariff as tariff_mod
+
 LOAD_KINDS = ("heat_pump", "water_heater", "ev_charger", "consumers")
 
 
@@ -38,10 +40,17 @@ def overview(config: dict[str, Any], settings: dict[str, Any],
              groups: list[dict[str, Any]]) -> list[dict[str, Any]]:
     surplus = _has_pv(config) and _has_grid(config)
     ctrl = _controllable_loads(config)
-    ev = [i for k, i in ctrl if k == "ev_charger"]
+    # Wallbox that can follow the surplus needs a modulating (setpoint) actuator.
+    ev_mod = [i for k, i in ctrl if k == "ev_charger" and (i.get("control") or {}).get("setpoint")]
     tariff = settings.get("tariff", {}) or {}
-    dynamic = tariff.get("mode") == "dynamic" and bool(tariff.get("price_entity"))
+    price_source = tariff_mod.has_price_source(tariff)
     has_thermo = any(g.get("persons") and g.get("thermostats") for g in (groups or []))
+    control_on = bool(settings.get("control_enabled"))
+    sl = settings.get("strategy_loads", {}) or {}
+
+    def opted(kind_prefix: str, flag: str) -> bool:
+        return any(isinstance(v, dict) and v.get(flag)
+                   and k.startswith(kind_prefix + ":") for k, v in sl.items())
 
     out: list[dict[str, Any]] = []
 
@@ -62,18 +71,21 @@ def overview(config: dict[str, Any], settings: dict[str, Any],
     miss = []
     if not surplus:
         miss.append("PV + Netz")
-    if not ev:
-        miss.append("Wallbox mit Steuerung")
-    add("ev_surplus", "Wallbox PV-Überschussladen", miss, False, False,
-        "E-Auto bevorzugt aus PV-Überschuss laden.")
+    if not ev_mod:
+        miss.append("Wallbox mit regelbarem Ladestrom (Sollwert-Entität)")
+    add("ev_surplus", "Wallbox PV-Überschussladen", miss, True,
+        control_on and opted("ev_charger", "self_consumption"),
+        "E-Auto dem PV-Überschuss folgend laden (Mindest-Ladestrom, „Auto angesteckt“-Guard).")
 
     miss = []
-    if not dynamic:
-        miss.append("dynamischer Tarif mit Preis-Entität")
+    if not price_source:
+        miss.append("Preisquelle (dynamischer Tarif oder HT/NT-Fenster)")
     if not ctrl:
         miss.append("steuerbare/verschiebbare Last")
-    add("tariff_shift", "Dynamischer Tarif – Lastverschiebung", miss, False, False,
-        "Verschiebbare Lasten in die günstigsten Stunden legen.")
+    add("tariff_shift", "Dynamischer Tarif – Lastverschiebung", miss, True,
+        control_on and price_source and any(
+            isinstance(v, dict) and v.get("tariff_shift") for v in sl.values()),
+        "Verschiebbare Lasten in günstige Zeiten legen (Preisvorschau, sonst HT/NT-Fenster).")
 
     batt_ctrl = any(isinstance(b, dict) and b.get("charge_power") for b in (config.get("battery") or []))
     miss = [] if batt_ctrl else ["steuerbaren Ladeleistungs-Sollwert der Batterie konfigurieren"]

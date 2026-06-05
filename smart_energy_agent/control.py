@@ -101,7 +101,11 @@ def decide_modulation(surplus_signed: float, mods: list[dict]) -> list[dict]:
     out = []
     for m in order:
         wpu = m["wpu"] or 1.0
-        target_w = max(m["min_w"], min(m["max_w"], m["cur_w"] + remaining))
+        raw = min(m["max_w"], m["cur_w"] + remaining)
+        # Below its minimum power the load switches OFF rather than forcing grid
+        # import to sustain it (correct for a wallbox minimum charge current).
+        # min_w defaults to 0 for simple loads, so they are unaffected.
+        target_w = raw if raw > 0 and raw >= m["min_w"] else 0.0
         remaining -= (target_w - m["cur_w"])
         out.append({"entity": m["entity"], "domain": m["domain"],
                     "unit": round(target_w / wpu, 2), "cur_unit": m["cur_unit"],
@@ -163,6 +167,10 @@ class ControlEngine:
             # A satisfied modulating load (limit reached) is driven to 0 so the
             # surplus is freed for the others.
             eff_max = 0.0 if d.get("satisfied") else max_w
+            # Wallbox: only charge while the vehicle is connected/ready.
+            ready = cfg.get("ready_entity")
+            if eff_max and ready and not self._store.entity_truthy(ready):
+                eff_max = 0.0
             out.append({"entity": eid, "domain": eid.split(".", 1)[0],
                         "cur_unit": cur_unit, "cur_w": cur_unit * wpu, "wpu": wpu,
                         "min_w": float(cfg.get("min_w", 0) or 0), "max_w": eff_max,
@@ -204,3 +212,94 @@ class ControlEngine:
         # Modulating loads absorb the remaining surplus every cycle.
         await self._modulate(surplus_signed)
         return action
+
+
+def decide_tariff_actions(
+    now: float, cheap: bool, loads: list[dict]
+) -> list[tuple[str, object, str]]:
+    """Plan tariff-shift actions: run deferrable loads while the tariff is cheap.
+
+    Returns ``(entity, command, reason)`` where command is ``"on"``/``"off"`` for
+    switchable loads or a numeric setpoint (entity's own unit) for modulating
+    loads. Respects min-runtime / min-off guards; a satisfied load is idled.
+    """
+    actions: list[tuple[str, object, str]] = []
+    for l in loads:
+        want = cheap and not l.get("satisfied")
+        if l["mode"] == "switch":
+            if want and not l["is_on"] and (now - l["last_off"]) >= l["min_off_s"]:
+                actions.append((l["entity"], "on", "günstiger Tarif"))
+            elif not want and l["is_on"] and (now - l["last_on"]) >= l["min_runtime_s"]:
+                actions.append((l["entity"], "off",
+                                "Ziel erreicht" if l.get("satisfied") else "Tarif nicht günstig"))
+        else:  # setpoint / modulating
+            target = l["max_unit"] if want else 0.0
+            if abs(target - l["cur_unit"]) >= 0.1:
+                actions.append((l["entity"], round(target, 2),
+                                "günstiger Tarif" if want else "Tarif/Ziel"))
+    return actions
+
+
+class TariffEngine:
+    """Runs deferrable ``tariff_shift`` loads during cheap tariff periods.
+
+    Universal: the cheap/expensive decision comes from ``store.tariff_cheap_now``
+    which adapts to whatever price information is registered (dynamic forecast,
+    threshold, or HT/NT window). Only touches devices that opted into tariff
+    shifting and are NOT also driven by the PV-surplus engine.
+    """
+
+    def __init__(self, store, call_service: Callable[..., Awaitable]):
+        self._store = store
+        self._call_service = call_service
+
+    def _loads(self) -> list[dict]:
+        out: list[dict] = []
+        for d in self._store.strategy_devices():
+            cfg = d["cfg"]
+            if not cfg.get("tariff_shift") or cfg.get("self_consumption"):
+                continue
+            mode = d.get("control_mode")
+            if mode == "switch" and d.get("switch"):
+                eid = d["switch"]
+                rt = self._store.runtime(eid)
+                state = str(self._store.live_state(eid).get("state", "")).lower()
+                out.append({
+                    "entity": eid, "mode": "switch",
+                    "is_on": state in ("on", "heat", "true"),
+                    "last_on": rt.get("last_on", 0.0), "last_off": rt.get("last_off", 0.0),
+                    "min_runtime_s": int(cfg.get("min_runtime_min", 0) or 0) * 60,
+                    "min_off_s": int(cfg.get("min_off_min", 0) or 0) * 60,
+                    "satisfied": bool(d.get("satisfied")),
+                })
+            elif mode == "setpoint" and d.get("setpoint"):
+                eid = d["setpoint"]
+                wpu = float(cfg.get("w_per_unit", 1) or 1) or 1.0
+                try:
+                    cur_unit = float(self._store.live_state(eid).get("state"))
+                except (TypeError, ValueError):
+                    cur_unit = 0.0
+                out.append({
+                    "entity": eid, "mode": "setpoint", "cur_unit": cur_unit,
+                    "max_unit": round(float(cfg.get("max_w", 0) or 0) / wpu, 2),
+                    "satisfied": bool(d.get("satisfied")),
+                })
+        return out
+
+    async def run_once(self, now: float) -> None:
+        if not self._store.control_enabled():
+            return
+        cheap = bool(self._store.tariff_cheap_now().get("cheap"))
+        for entity, command, reason in decide_tariff_actions(now, cheap, self._loads()):
+            domain = entity.split(".", 1)[0]
+            try:
+                if command in ("on", "off"):
+                    await self._call_service(
+                        domain, "turn_on" if command == "on" else "turn_off", entity)
+                    self._store.note_switch(entity, command == "on", reason)
+                    _LOGGER.info("Tariff: %s %s (%s)", command, entity, reason)
+                elif domain in ("number", "input_number"):
+                    await self._call_service(domain, "set_value", entity, {"value": command})
+                    _LOGGER.info("Tariff: %s -> %s (%s)", entity, command, reason)
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.warning("Tariff action failed for %s: %s", entity, err)

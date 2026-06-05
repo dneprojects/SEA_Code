@@ -16,7 +16,7 @@ def test_self_consumption_available_and_active():
     assert ov["self_consumption"]["available"] is True
     assert ov["self_consumption"]["active"] is True
     assert ov["tariff_shift"]["available"] is False
-    assert "dynamischer Tarif mit Preis-Entität" in ov["tariff_shift"]["missing"]
+    assert "Preisquelle (dynamischer Tarif oder HT/NT-Fenster)" in ov["tariff_shift"]["missing"]
 
 
 def test_everything_missing_when_empty():
@@ -37,4 +37,40 @@ def test_tariff_shift_available_with_dynamic_price_and_load():
     settings = {"tariff": {"mode": "dynamic", "price_entity": "sensor.price"}}
     ov = _ov(config, settings, [])
     assert ov["tariff_shift"]["available"] is True
-    assert ov["tariff_shift"]["engine_ready"] is False  # execution still to come
+    assert ov["tariff_shift"]["engine_ready"] is True
+    assert ov["tariff_shift"]["active"] is False  # no master switch / no opted load
+
+
+def test_tariff_shift_available_with_ht_nt_window():
+    config = {"consumers": [{"control": {"mode": "switch", "switch": "switch.x"}}]}
+    settings = {"tariff": {"mode": "ht_nt", "nt_start": "22:00", "nt_end": "06:00"}}
+    ov = _ov(config, settings, [])
+    assert ov["tariff_shift"]["available"] is True
+
+
+def test_tariff_shift_active_when_opted_and_master_on():
+    config = {"consumers": [{"id": "c1", "control": {"mode": "switch", "switch": "switch.x"}}]}
+    settings = {"control_enabled": True,
+                "tariff": {"mode": "dynamic", "price_entity": "sensor.price"},
+                "strategy_loads": {"consumers:c1": {"tariff_shift": True}}}
+    ov = _ov(config, settings, [])
+    assert ov["tariff_shift"]["active"] is True
+
+
+def test_ev_surplus_available_and_active():
+    config = {"pv": [{"powers": [{"entity": "sensor.pv"}]}], "grid": {"power": "sensor.grid"},
+              "ev_charger": [{"id": "wb1", "control": {"mode": "setpoint", "setpoint": "number.amp"}}]}
+    settings = {"control_enabled": True, "tariff": {},
+                "strategy_loads": {"ev_charger:wb1": {"self_consumption": True}}}
+    ov = _ov(config, settings, [])
+    assert ov["ev_surplus"]["available"] is True
+    assert ov["ev_surplus"]["engine_ready"] is True
+    assert ov["ev_surplus"]["active"] is True
+
+
+def test_ev_surplus_needs_setpoint_wallbox():
+    # A switch-only wallbox cannot follow the surplus -> not available.
+    config = {"pv": [{"powers": [{"entity": "sensor.pv"}]}], "grid": {"power": "sensor.grid"},
+              "ev_charger": [{"id": "wb1", "control": {"mode": "switch", "switch": "switch.wb"}}]}
+    ov = _ov(config, {"tariff": {}}, [])
+    assert ov["ev_surplus"]["available"] is False

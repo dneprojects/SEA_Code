@@ -50,6 +50,9 @@ SOLAR_FORECAST_INTERVAL = 900  # seconds between solar-forecast refreshes (15 mi
 # Thermostat absence-setback engine
 SETBACK_INTERVAL = 120     # seconds between setback decisions
 
+# Tariff load-shifting engine
+TARIFF_INTERVAL = 300     # seconds between tariff-shift decisions (5 min)
+
 # PV-surplus control engine
 CONTROL_INTERVAL = 60     # seconds between control decisions
 CONTROL_ON_MARGIN_W = 50  # surplus must exceed this to consider switching on

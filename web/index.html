@@ -1059,7 +1059,15 @@
       renderStrategies();
     }
     function deviceRows(mode, kindOnly) {
-      let devs = stratDevices.filter(d => kindOnly ? d.kind===kindOnly : d.kind!=='battery');
+      // battery has its own Batterie-Optimierung box; the wallbox has its own
+      // ev_surplus box, so exclude it from the generic PV-surplus list (but keep
+      // it selectable for tariff shifting = cheap-window charging).
+      let devs = stratDevices.filter(d => {
+        if (kindOnly) return d.kind===kindOnly;
+        if (d.kind==='battery') return false;
+        if (d.kind==='ev_charger' && mode==='self_consumption') return false;
+        return true;
+      });
       if (!devs.length)
         return "<p class='sub'>Keine passenden Geräte. Lege unter „Erzeuger/Verbraucher“ Geräte mit Steuerung an.</p>";
       return devs.map(d => {
@@ -1074,8 +1082,18 @@
               + num("min. Laufzeit","min_runtime_min",52,"Mindestlaufzeit vor dem Abschalten (min)")
             : num("Prio","priority",48,"Priorität: höhere Geräte bekommen den Überschuss zuerst")
               + num("max. Leistung W","max_w",72,"Maximale Leistungsaufnahme des Geräts (W)")
-              + num("W/Einheit","w_per_unit",60,"Watt pro Einheit der Sollwert-Entität: z. B. Wallbox ~690 W pro Ampere; bei einem Leistungs-Sollwert in Watt = 1");
+              + num("W/Einheit","w_per_unit",60,"Watt pro Einheit der Sollwert-Entität: z. B. Wallbox ~690 W pro Ampere; bei einem Leistungs-Sollwert in Watt = 1")
+              + (d.kind==='ev_charger'
+                  ? num("min. Leistung W","min_w",70,"Mindest-Ladeleistung; darunter schaltet die Wallbox ab (z. B. 6 A × 690 = 4140 W)") : "");
         }
+        const evLine = (mode==='self_consumption' && on && d.kind==='ev_charger')
+          ? `<div style="padding-left:24px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
+               <span class="sub">Auto angesteckt:</span>
+               ${cfg.ready_entity
+                  ? `<span class="eid">${cfg.ready_entity}</span>
+                     <button class="btn" title="Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickReady('${d.key}')">ändern</button>`
+                  : `<button class="btn" title="Entität wählen, die anzeigt ob ein Auto angesteckt/ladebereit ist (optional)" onclick="pickReady('${d.key}')">Entität wählen</button>`}
+             </div>` : '';
         const stopBtn = (mode==='self_consumption' && on)
           ? `<button class="btn" style="color:#000" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${d.key}')">■</button>` : '';
         const main = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -1087,11 +1105,14 @@
                <span class="sub">Stopp bei</span> <span class="eid">${cfg.limit_entity}</span> ≥
                <input type="number" title="Schwellwert" style="width:60px" value="${cfg.limit_max}" onchange="setLoad('${d.key}','limit_max',this.value)">
                <button class="btn" title="Stopp-Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickLimit('${d.key}')">ändern</button></div>` : '';
-        return `<div style="border-bottom:1px solid var(--alt);padding:3px 0">${main}${stopLine}</div>`;
+        return `<div style="border-bottom:1px solid var(--alt);padding:3px 0">${main}${evLine}${stopLine}</div>`;
       }).join("");
     }
     function pickLimit(key) {
       openPickerCb("value", "", "", eid => setLoad(key, 'limit_entity', eid));
+    }
+    function pickReady(key) {
+      openPickerCb("presence", "", "", eid => setLoad(key, 'ready_entity', eid));
     }
     async function setLoad(key, field, val) {
       try {
@@ -1123,11 +1144,19 @@
         return `<div class="sub" style="margin-bottom:4px">${st.desc||''} Benötigt aktive PV-Überschusssteuerung.</div>${miss}
           ${deviceRows('self_consumption','battery')}`;
       }
+      if (st.key === "ev_surplus") {
+        return `<div class="sub" style="margin-bottom:4px">${st.desc||''} Benötigt den Master-Schalter „PV-Überschuss-Eigenverbrauch“ (oben).</div>${miss}
+          <div class="panel-title" style="margin:8px 0 6px">Wallbox(en)</div>
+          ${deviceRows('self_consumption','ev_charger')}`;
+      }
       if (st.key === "tariff_shift") {
-        return `<div class="sub" style="margin-bottom:4px">${st.desc||''}</div>${miss}
+        const statusLine = st.status
+          ? `<div class="sub" style="margin-top:6px">Tarif jetzt:
+               <b style="color:${st.cheap?'#3f9b2f':'var(--muted)'}">${st.cheap?'günstig':'nicht günstig'}</b>
+               · ${st.status}</div>` : '';
+        return `<div class="sub" style="margin-bottom:4px">${st.desc||''} Benötigt den Master-Schalter „Steuerung aktiv“.</div>${miss}
           <div class="panel-title" style="margin:8px 0 6px">Verschiebbare Geräte</div>
-          ${deviceRows('tariff_shift')}
-          <div class="sub" style="margin-top:4px">Die automatische Verschiebung in günstige Stunden folgt.</div>`;
+          ${deviceRows('tariff_shift')}${statusLine}`;
       }
       if (st.key === "setback") {
         return `<label style="font-weight:bold;color:var(--fg)">

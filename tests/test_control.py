@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from smart_energy_agent.control import ConsumerDecision, decide_action, decide_modulation
+from smart_energy_agent.control import (
+    ConsumerDecision, decide_action, decide_modulation, decide_tariff_actions,
+)
 from smart_energy_agent.store import Store
 
 
@@ -41,6 +43,37 @@ def test_modulation_priority_split():
 def test_modulation_w_per_unit_wallbox_amperes():
     out = decide_modulation(3450, [_mod("number.amp", wpu=690, max_w=11040)])
     assert out[0]["unit"] == 5.0  # 3450 W / 690 W/A
+
+
+def test_modulation_off_below_minimum_power():
+    # Wallbox min charge power 4140 W: a 2000 W surplus is below min -> off (0),
+    # and the would-be power is freed (not forced from grid).
+    out = decide_modulation(2000, [_mod("number.amp", wpu=690, min_w=4140, max_w=11040)])
+    assert out[0]["unit"] == 0.0
+    # 5000 W surplus is above min -> charge ~7.25 A
+    out = decide_modulation(5000, [_mod("number.amp", wpu=690, min_w=4140, max_w=11040)])
+    assert out[0]["power_w"] == 5000.0
+
+
+def test_tariff_switches_on_when_cheap_and_off_when_not():
+    sw = {"entity": "switch.boiler", "mode": "switch", "is_on": False,
+          "last_on": 0, "last_off": 0, "min_runtime_s": 0, "min_off_s": 0, "satisfied": False}
+    on = decide_tariff_actions(1000, True, [sw])
+    assert on == [("switch.boiler", "on", "günstiger Tarif")]
+    sw_on = {**sw, "is_on": True}
+    off = decide_tariff_actions(1000, False, [sw_on])
+    assert off and off[0][1] == "off"
+    # cheap but satisfied (target reached) -> stays off
+    assert decide_tariff_actions(1000, True, [{**sw, "satisfied": True}]) == []
+
+
+def test_tariff_setpoint_to_max_when_cheap():
+    sp = {"entity": "number.x", "mode": "setpoint", "cur_unit": 0.0,
+          "max_unit": 16.0, "satisfied": False}
+    out = decide_tariff_actions(0, True, [sp])
+    assert out == [("number.x", 16.0, "günstiger Tarif")]
+    out = decide_tariff_actions(0, False, [{**sp, "cur_unit": 16.0}])
+    assert out == [("number.x", 0.0, "Tarif/Ziel")]
 
 
 def test_switch_decision_on_and_off():

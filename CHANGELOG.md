@@ -2,6 +2,17 @@
 
 ## 0.2.1
 
+- **New strategy – Wallbox PV-Überschussladen (`ev_surplus`)**: the wallbox now
+  follows the PV surplus via the unified modulation, with a **minimum charge
+  power** (below it the wallbox switches off instead of pulling from the grid)
+  and an optional **"vehicle connected"** guard entity. Excluded from the
+  generic PV-surplus box (own box), kept selectable for tariff shifting.
+- **New strategy – Dynamischer Tarif / Lastverschiebung (`tariff_shift`)**: a new
+  `TariffEngine` runs deferrable loads during cheap periods. **Universal price
+  model** (`tariff.py`) that adapts to whatever is registered: a dynamic price
+  entity's upcoming-price attribute (greedy cheapest fraction), else an absolute
+  threshold, else the static HT/NT window. The Strategien page shows the live
+  "cheap/expensive" status. Both engines are gated by the master control switch.
 - Entity picker: once an entity is selected, suggestions are narrowed to others
   with the **same name prefix** (same leading object-id tokens), so changing a
   pick stays within the same device/integration. Typing a search query lifts the

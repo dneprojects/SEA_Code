@@ -9,7 +9,7 @@ import time
 from typing import Any
 
 from . import const, discovery
-from .control import ControlEngine
+from .control import ControlEngine, TariffEngine
 from .ha_client import HAClient
 from .store import Store
 from .thermostat import ThermostatEngine
@@ -40,6 +40,7 @@ class SmartEnergyAgent:
         )
         self.web = WebServer(self.store, self.ha_status)
         self.control = ControlEngine(self.store, self.client.call_service)
+        self.tariff = TariffEngine(self.store, self.client.call_service)
         self.thermostat = ThermostatEngine(self.store, self.client.call_service)
 
     async def _on_connected(self) -> None:
@@ -121,6 +122,17 @@ class SmartEnergyAgent:
             except Exception as err:  # noqa: BLE001
                 logging.getLogger(__name__).warning("Control loop error: %s", err)
 
+    async def _tariff(self) -> None:
+        """Periodically run the tariff load-shifting engine (no-op if disabled)."""
+        while True:
+            await asyncio.sleep(const.TARIFF_INTERVAL)
+            if not self.client.connected:
+                continue
+            try:
+                await self.tariff.run_once(time.time())
+            except Exception as err:  # noqa: BLE001
+                logging.getLogger(__name__).warning("Tariff loop error: %s", err)
+
     async def _setback(self) -> None:
         """Periodically run the thermostat absence-setback engine (no-op if off)."""
         while True:
@@ -146,6 +158,7 @@ class SmartEnergyAgent:
         client_task = asyncio.create_task(self.client.run_forever())
         recorder_task = asyncio.create_task(self._recorder())
         control_task = asyncio.create_task(self._control())
+        tariff_task = asyncio.create_task(self._tariff())
         setback_task = asyncio.create_task(self._setback())
         forecast_task = asyncio.create_task(self._solar_forecast())
 
@@ -163,6 +176,7 @@ class SmartEnergyAgent:
             status_task.cancel()
             recorder_task.cancel()
             control_task.cancel()
+            tariff_task.cancel()
             setback_task.cancel()
             forecast_task.cancel()
             await self.client.stop()
