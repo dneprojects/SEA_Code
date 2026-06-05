@@ -6,8 +6,8 @@
   field used an undefined `number` unit group, so nothing ever matched. Added
   the `number` unit group (domains `number`/`input_number`); writable number
   entities can now be selected.
-- Banner redesigned: sun moved to the left, lightning bolt removed; the motif is
-  now sun → two PV modules (without pole) → car. Gradient unchanged.
+- Banner simplified: now shows only the sun (moved slightly right) — the PV
+  modules, car and lightning bolt are gone. Gradient unchanged.
 - **Persistent settings**: config + history now default to `/addon_config`
   instead of the add-on's private `/data` volume, so settings survive an
   uninstall/reinstall (HA wipes `/data` on uninstall). On update, existing
