@@ -161,8 +161,9 @@ class WebServer:
         unit_group = request.query.get("unit_group", "")
         kind = request.query.get("kind", "")
         query = request.query.get("q", "")
+        current = request.query.get("cur", "")
         return web.json_response(
-            {"candidates": self._store.suggestions(unit_group, kind, query)}
+            {"candidates": self._store.suggestions(unit_group, kind, query, current)}
         )
 
     async def _api_setup_config(self, request: web.Request) -> web.Response:

@@ -2,6 +2,10 @@
 
 ## 0.2.1
 
+- Entity picker: once an entity is selected, suggestions are narrowed to others
+  with the **same name prefix** (same leading object-id tokens), so changing a
+  pick stays within the same device/integration. Typing a search query lifts the
+  restriction to find other families.
 - Fix: the battery **charge-power setpoint** picker showed no candidates — its
   field used an undefined `number` unit group, so nothing ever matched. Added
   the `number` unit group (domains `number`/`input_number`); writable number

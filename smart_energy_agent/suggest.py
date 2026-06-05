@@ -17,10 +17,31 @@ PREFS_BONUS = 100.0
 HINT_BONUS = 10.0
 DEVICE_HINT_BONUS = 5.0
 QUERY_BONUS = 3.0
+PREFIX_BONUS = 20.0
 
 
 def _domain(entity_id: str) -> str:
     return entity_id.split(".", 1)[0] if "." in entity_id else entity_id
+
+
+def _obj_tokens(entity_id: str) -> list[str]:
+    """Object-id of an entity split into underscore-separated tokens.
+
+    ``sensor.byd_hvs_soc`` -> ``["byd", "hvs", "soc"]``. Entities from the same
+    device/integration share a leading run of these tokens.
+    """
+    obj = entity_id.split(".", 1)[1] if "." in entity_id else entity_id
+    return [t for t in obj.split("_") if t]
+
+
+def _shared_prefix_len(a: list[str], b: list[str]) -> int:
+    """Number of identical leading tokens shared by two token lists."""
+    n = 0
+    for x, y in zip(a, b):
+        if x != y:
+            break
+        n += 1
+    return n
 
 
 def _matches_unit_group(
@@ -46,9 +67,17 @@ def rank_for_slot(
     category_hints: Iterable[str] = (),
     prefs_entities: Iterable[str] = (),
     query: str = "",
+    current: str = "",
     limit: int = 25,
 ) -> list[dict[str, Any]]:
-    """Return candidate entities for a slot, ranked best-first."""
+    """Return candidate entities for a slot, ranked best-first.
+
+    When ``current`` (the already-selected entity) is given, candidates are
+    narrowed to those sharing its name prefix (same leading object-id tokens),
+    so changing a selection stays within the same device/integration family.
+    An active search ``query`` lifts this restriction so other families can
+    still be found by typing.
+    """
     meta_by = {e["entity_id"]: e for e in (entity_registry or []) if e.get("entity_id")}
     area_by_device = {
         d["id"]: d.get("area_id") for d in (device_registry or []) if d.get("id")
@@ -65,6 +94,7 @@ def rank_for_slot(
     hints = tuple(slot.get("hints") or ()) + tuple(category_hints)
     prefs = frozenset(prefs_entities)
     q = (query or "").strip().lower()
+    cur_tokens = _obj_tokens(current) if current else []
 
     out: list[dict[str, Any]] = []
     for st in states:
@@ -86,9 +116,18 @@ def rank_for_slot(
         if q and q not in hay:
             continue
 
+        # When an entity is already selected, restrict to the same name prefix
+        # (same leading object-id tokens). A search query lifts the restriction.
+        shared = _shared_prefix_len(_obj_tokens(eid), cur_tokens) if cur_tokens else 0
+        if cur_tokens and not shared and not q:
+            continue
+
         did = meta.get("device_id")
         score = 0.0
         reasons: list[str] = []
+        if shared:
+            score += PREFIX_BONUS * shared
+            reasons.append("gleicher Namensprefix")
         if eid in prefs:
             score += PREFS_BONUS
             reasons.append("aus Energy-Dashboard")

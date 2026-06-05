@@ -84,6 +84,38 @@ def test_query_filters_by_name() -> None:
     assert [c["entity_id"] for c in cands] == ["sensor.shelly_pm3_ch2"]
 
 
+def _prefix_fixture():
+    pairs = [
+        _state("sensor.pv_ac_power", "PV AC", dc="power", unit="W"),
+        _state("sensor.pv_dc_power", "PV DC", dc="power", unit="W"),
+        _state("sensor.wp_leistung", "WP", dc="power", unit="W"),
+    ]
+    return [s for s, _m in pairs], [m for _s, m in pairs]
+
+
+def test_current_restricts_to_same_name_prefix() -> None:
+    states, ent_reg = _prefix_fixture()
+    cands = rank_for_slot(states, ent_reg, [], [], slot=POWER,
+                          current="sensor.pv_ac_power")
+    # only entities sharing the "pv" leading token survive
+    assert {c["entity_id"] for c in cands} == {"sensor.pv_ac_power", "sensor.pv_dc_power"}
+    assert all("gleicher Namensprefix" in c["reason"] for c in cands)
+
+
+def test_current_prefix_lifted_by_search_query() -> None:
+    states, ent_reg = _prefix_fixture()
+    # an explicit search overrides the prefix restriction so other families show
+    cands = rank_for_slot(states, ent_reg, [], [], slot=POWER,
+                          current="sensor.pv_ac_power", query="wp")
+    assert [c["entity_id"] for c in cands] == ["sensor.wp_leistung"]
+
+
+def test_no_current_returns_all() -> None:
+    states, ent_reg = _prefix_fixture()
+    cands = rank_for_slot(states, ent_reg, [], [], slot=POWER)
+    assert len(cands) == 3
+
+
 # --- prefill (energy dashboard -> instances) --------------------------------
 
 PREFS = {

@@ -705,7 +705,7 @@
       const el = document.getElementById("picker-list");
       el.innerHTML = "<div class='sub'>lädt…</div>";
       let cands = [];
-      try { cands = (await fetch(api("/api/setup/suggest")+"?unit_group="+encodeURIComponent(ctx.ug)+"&kind="+encodeURIComponent(ctx.kind||"")+"&q="+encodeURIComponent(q)).then(r=>r.json())).candidates || []; }
+      try { cands = (await fetch(api("/api/setup/suggest")+"?unit_group="+encodeURIComponent(ctx.ug)+"&kind="+encodeURIComponent(ctx.kind||"")+"&q="+encodeURIComponent(q)+"&cur="+encodeURIComponent(cur||"")).then(r=>r.json())).candidates || []; }
       catch(e) {}
       if (pickerCtx !== ctx) return;  // popup changed meanwhile
       const valFmt = (c) => c.state!=null ? fmtState(c.state, c.unit) : "";

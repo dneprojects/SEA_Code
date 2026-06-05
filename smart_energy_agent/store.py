@@ -1123,7 +1123,9 @@ class Store:
             "has_prefs": bool(self._energy_prefs.get("energy_sources")),
         }
 
-    def suggestions(self, unit_group: str, kind: str = "", query: str = "") -> list[dict[str, Any]]:
+    def suggestions(
+        self, unit_group: str, kind: str = "", query: str = "", current: str = "",
+    ) -> list[dict[str, Any]]:
         if unit_group not in setup_catalog.UNIT_GROUPS or not self._ha_snapshot:
             return []
         return suggest.rank_for_slot(
@@ -1135,6 +1137,7 @@ class Store:
             category_hints=setup_catalog.kind_hints(kind) if kind else [],
             prefs_entities=suggest.prefs_entity_set(self._energy_prefs),
             query=query,
+            current=current,
         )
 
     def _entity_items(
