@@ -292,7 +292,7 @@
         <div class="panel-title">Tarife — Bezugspreis &amp; Einspeisevergütung</div>
         <p class="sub" id="t-prefill-hint" style="margin:0 0 6px"></p>
         <div class="setrow"><label>Tarifmodell</label>
-          <select id="t-mode" title="Statischer Preis, HT/NT oder dynamischer Preis aus einer HA-Entität" onchange="tariffModeChanged()">
+          <select id="t-mode" title="Statischer Preis, HT/NT oder dynamischer Preis aus einer HA-Entität" onchange="onTariffModeChange()">
             <option value="static">Statisch (fester Preis)</option>
             <option value="ht_nt">HT/NT (Hoch-/Niedertarif)</option>
             <option value="dynamic">Dynamisch (HA-Entität)</option>
@@ -974,6 +974,9 @@
       document.getElementById("t-htnt").style.display = m==="ht_nt" ? "block" : "none";
       document.getElementById("t-dynamic").style.display = m==="dynamic" ? "block" : "none";
     }
+    // The dropdown change persists the mode immediately (loadTariff also calls
+    // tariffModeChanged, but only for visibility — so no save loop there).
+    function onTariffModeChange() { tariffModeChanged(); saveTariff(); }
     async function loadTariff() {
       let s = {};
       try { s = await fetch(api("/api/settings")).then(r=>r.json()); } catch(e) {}
@@ -1017,6 +1020,8 @@
           headers:{"Content-Type":"application/json"}, body:JSON.stringify({tariff}) });
         msg.textContent = "gespeichert"; setTimeout(()=>msg.textContent="", 2500);
         loadTariff();
+        // The price source feeds tariff_shift availability — refresh strategies.
+        loadConsumers();
       } catch(e) { msg.textContent = "Fehler beim Speichern"; }
     }
 

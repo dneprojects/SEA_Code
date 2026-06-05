@@ -116,6 +116,15 @@ def test_no_current_returns_all() -> None:
     assert len(cands) == 3
 
 
+def test_price_unit_group_matches_common_dynamic_tariff_sensors() -> None:
+    from smart_energy_agent.suggest import _matches_unit_group as m
+    assert m("sensor", "monetary", "EUR/kWh", "price") is True   # Nordpool/Tibber
+    assert m("sensor", None, "ct/kWh", "price") is True          # generic ct/kWh
+    assert m("sensor", None, "öre/kWh", "price") is True         # Nordic
+    assert m("number", None, None, "price") is True              # manual price helper
+    assert m("sensor", "power", "W", "price") is False           # not a price
+
+
 # --- prefill (energy dashboard -> instances) --------------------------------
 
 PREFS = {

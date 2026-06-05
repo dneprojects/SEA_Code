@@ -43,10 +43,14 @@ UNIT_GROUPS: dict[str, dict[str, set[str]]] = {
     # Broad numeric value (stop conditions: vehicle SoC, temperature, ...).
     "value": {"device_classes": set(), "units": set(),
               "domains": {"sensor", "number", "input_number"}},
-    # Electricity price sensor (ct/kWh or currency/kWh).
+    # Electricity price sensor — universal: any monetary entity, OR a price-per-
+    # kWh/MWh unit in common currencies, OR a number/input_number helper.
     "price": {"device_classes": {"monetary"},
-              "units": {"ct/kWh", "Cent/kWh", "EUR/kWh", "€/kWh", "ct", "EUR"},
-              "domains": {"input_number"}},
+              "units": {"ct/kWh", "Cent/kWh", "cent/kWh", "c/kWh", "¢/kWh", "p/kWh",
+                        "EUR/kWh", "€/kWh", "EUR/MWh", "€/MWh", "GBP/kWh", "£/kWh",
+                        "öre/kWh", "Öre/kWh", "SEK/kWh", "NOK/kWh", "DKK/kWh",
+                        "USD/kWh", "$/kWh", "ct", "Cent", "EUR", "¢"},
+              "domains": {"input_number", "number"}},
 }
 
 # Name hints for price entities (used by the price picker ranking).

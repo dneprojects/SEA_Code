@@ -2,6 +2,14 @@
 
 ## 0.2.1
 
+- Fix persistence/refresh of the tariff & strategy settings:
+  - the **tariff mode** dropdown now saves immediately (previously the choice was
+    lost unless "Speichern" was clicked), and saving the tariff refreshes the
+    strategy availability (a dynamic price source enables `tariff_shift` live).
+  - the **price-entity picker** is now universal — it matches common dynamic
+    tariff sensors (monetary device class, ct/kWh·EUR/kWh·öre/kWh·EUR/MWh… units,
+    and number/input_number helpers), so the price entity is actually selectable.
+  - added a round-trip persistence test (settings, strategy-loads, wizard config).
 - **New strategy – Wallbox PV-Überschussladen (`ev_surplus`)**: the wallbox now
   follows the PV surplus via the unified modulation, with a **minimum charge
   power** (below it the wallbox switches off instead of pulling from the grid)
