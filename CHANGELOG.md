@@ -2,6 +2,10 @@
 
 ## 0.2.1
 
+- Fix: the battery **charge-power setpoint** picker showed no candidates — its
+  field used an undefined `number` unit group, so nothing ever matched. Added
+  the `number` unit group (domains `number`/`input_number`); writable number
+  entities can now be selected.
 - Banner redesigned: sun moved to the left, lightning bolt removed; the motif is
   now sun → two PV modules (without pole) → car. Gradient unchanged.
 - **Persistent settings**: config + history now default to `/addon_config`

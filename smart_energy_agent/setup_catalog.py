@@ -33,6 +33,8 @@ UNIT_GROUPS: dict[str, dict[str, set[str]]] = {
     "switch": {"device_classes": set(), "units": set(), "domains": {"switch", "input_boolean"}},
     # Setpoint actuator: a number or a climate entity.
     "setpoint": {"device_classes": set(), "units": set(), "domains": {"number", "climate"}},
+    # Writable number actuator (e.g. battery charge-power setpoint).
+    "number": {"device_classes": set(), "units": set(), "domains": {"number", "input_number"}},
     "climate": {"device_classes": set(), "units": set(), "domains": {"climate"}},
     # Presence/occupancy source (person, device_tracker, zone, occupancy, ...).
     "presence": {"device_classes": {"occupancy", "presence", "motion"},
