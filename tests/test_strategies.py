@@ -23,7 +23,16 @@ def test_everything_missing_when_empty():
     ov = _ov({}, {"tariff": {}}, [])
     assert ov["self_consumption"]["available"] is False
     assert ov["setback"]["available"] is False
-    assert ov["battery_opt"]["available"] is False  # needs a control entity (not yet)
+    assert ov["tariff_shift"]["available"] is False
+
+
+def test_ev_and_battery_strategies_merged_into_self_consumption():
+    # ev_surplus / battery_opt no longer exist as separate strategies.
+    ov = _ov({}, {"tariff": {}}, [])
+    assert "ev_surplus" not in ov
+    assert "battery_opt" not in ov
+    assert ov["self_consumption"]["name"] == "PV-Überschuss: Eigenverbrauch und Speicherung"
+    assert ov["tariff_shift"]["name"] == "Dynamischer Tarif: Lastverschiebung"
 
 
 def test_setback_available_with_group():
@@ -57,20 +66,10 @@ def test_tariff_shift_active_when_opted_and_master_on():
     assert ov["tariff_shift"]["active"] is True
 
 
-def test_ev_surplus_available_and_active():
+def test_self_consumption_available_with_wallbox_or_battery():
+    # The wallbox/battery now count as controllable loads for self_consumption.
     config = {"pv": [{"powers": [{"entity": "sensor.pv"}]}], "grid": {"power": "sensor.grid"},
               "ev_charger": [{"id": "wb1", "control": {"mode": "setpoint", "setpoint": "number.amp"}}]}
-    settings = {"control_enabled": True, "tariff": {},
-                "strategy_loads": {"ev_charger:wb1": {"self_consumption": True}}}
-    ov = _ov(config, settings, [])
-    assert ov["ev_surplus"]["available"] is True
-    assert ov["ev_surplus"]["engine_ready"] is True
-    assert ov["ev_surplus"]["active"] is True
-
-
-def test_ev_surplus_needs_setpoint_wallbox():
-    # A switch-only wallbox cannot follow the surplus -> not available.
-    config = {"pv": [{"powers": [{"entity": "sensor.pv"}]}], "grid": {"power": "sensor.grid"},
-              "ev_charger": [{"id": "wb1", "control": {"mode": "switch", "switch": "switch.wb"}}]}
-    ov = _ov(config, {"tariff": {}}, [])
-    assert ov["ev_surplus"]["available"] is False
+    ov = _ov(config, {"control_enabled": True, "tariff": {}}, [])
+    assert ov["self_consumption"]["available"] is True
+    assert ov["self_consumption"]["active"] is True

@@ -41,16 +41,11 @@ def overview(config: dict[str, Any], settings: dict[str, Any],
     surplus = _has_pv(config) and _has_grid(config)
     ctrl = _controllable_loads(config)
     # Wallbox that can follow the surplus needs a modulating (setpoint) actuator.
-    ev_mod = [i for k, i in ctrl if k == "ev_charger" and (i.get("control") or {}).get("setpoint")]
     tariff = settings.get("tariff", {}) or {}
     price_source = tariff_mod.has_price_source(tariff)
     has_thermo = any(g.get("persons") and g.get("thermostats") for g in (groups or []))
     control_on = bool(settings.get("control_enabled"))
     sl = settings.get("strategy_loads", {}) or {}
-
-    def opted(kind_prefix: str, flag: str) -> bool:
-        return any(isinstance(v, dict) and v.get(flag)
-                   and k.startswith(kind_prefix + ":") for k, v in sl.items())
 
     out: list[dict[str, Any]] = []
 
@@ -59,39 +54,27 @@ def overview(config: dict[str, Any], settings: dict[str, Any],
                     "missing": missing, "engine_ready": engine_ready,
                     "active": bool(active), "desc": desc})
 
+    # PV surplus: one strategy covering ALL controllable devices — switchable and
+    # modulating loads, the wallbox AND the battery (storage) — by priority.
     miss = []
     if not surplus:
         miss.append("PV + Netz konfigurieren")
     if not ctrl:
         miss.append("mind. einen steuerbaren Verbraucher (Schalt-/Sollwert-Entität)")
-    add("self_consumption", "PV-Überschuss-Eigenverbrauch", miss, True,
-        settings.get("control_enabled"),
-        "Schaltbare/regelbare Lasten bei PV-Überschuss zuschalten.")
-
-    miss = []
-    if not surplus:
-        miss.append("PV + Netz")
-    if not ev_mod:
-        miss.append("Wallbox mit regelbarem Ladestrom (Sollwert-Entität)")
-    add("ev_surplus", "Wallbox PV-Überschussladen", miss, True,
-        control_on and opted("ev_charger", "self_consumption"),
-        "E-Auto dem PV-Überschuss folgend laden (Mindest-Ladestrom, „Auto angesteckt“-Guard).")
+    add("self_consumption", "PV-Überschuss: Eigenverbrauch und Speicherung", miss, True,
+        control_on,
+        "Alle steuerbaren Geräte – inkl. Wallbox und Batterie – folgen dem PV-Überschuss (nach Priorität).")
 
     miss = []
     if not price_source:
         miss.append("Preisquelle (dynamischer Tarif oder HT/NT-Fenster)")
     if not ctrl:
         miss.append("steuerbare/verschiebbare Last")
-    add("tariff_shift", "Dynamischer Tarif – Lastverschiebung", miss, True,
+    add("tariff_shift", "Dynamischer Tarif: Lastverschiebung", miss, True,
         control_on and price_source and any(
             isinstance(v, dict) and v.get("tariff_shift") for v in sl.values()),
-        "Verschiebbare Lasten in günstige Zeiten legen (Preisvorschau, sonst HT/NT-Fenster).")
-
-    batt_ctrl = any(isinstance(b, dict) and b.get("charge_power") for b in (config.get("battery") or []))
-    miss = [] if batt_ctrl else ["steuerbaren Ladeleistungs-Sollwert der Batterie konfigurieren"]
-    add("battery_opt", "Batterie-Optimierung", miss, batt_ctrl,
-        settings.get("control_enabled") and batt_ctrl,
-        "Batterie nimmt PV-Überschuss als regelbare Last auf (Priorität gegenüber anderen Lasten einstellbar).")
+        "Verschiebbare Lasten und Speicher (Batterie/thermisch) in günstige Zeiten legen – "
+        "besonders bei sehr niedrigen oder negativen Preisen.")
 
     miss = [] if has_thermo else ["Thermostat-Gruppe mit Personen + Räumen anlegen"]
     add("setback", "Temperaturabsenkung bei Abwesenheit", miss, True,

@@ -2,6 +2,11 @@
 
 ## 0.2.1
 
+- Strategy list tidy-up: the separate "Wallbox PV-Überschussladen" and
+  "Batterie-Optimierung" strategies are **removed** — both are already covered by
+  the unified surplus list. Renamed: **"PV-Überschuss: Eigenverbrauch und
+  Speicherung"** and **"Dynamischer Tarif: Lastverschiebung"**. The per-device
+  settings button is now a small **gear icon (⚙)**.
 - Tariff load-shifting follow-ups:
   - the **"spätester Start" deadline now also applies to tariff shifting** — a
     deferrable load (e.g. washing machine) is force-started by its deadline even

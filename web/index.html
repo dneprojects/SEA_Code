@@ -1123,7 +1123,7 @@
           <span class="sub" title="Priorität 1–10: höhere Geräte bekommen den Überschuss zuerst / werden zuerst zugeschaltet">Prio</span>
           <input type="number" min="1" max="10" style="width:48px" value="${cfg.priority}" onchange="setLoad('${d.key}','priority',this.value)">
           <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${d.satisfied?' · <b style=\"color:#3f9b2f\">Ziel erreicht</b>':''}${cfg.latest_start?' · ⏱ '+cfg.latest_start:''}</span>
-          <button class="btn" style="margin-left:auto" title="Geräte-Einstellungen öffnen" onclick="showView('setup')">Einstellungen →</button>
+          <button class="btn" style="margin-left:auto;padding:1px 7px" title="Geräte-Einstellungen öffnen" onclick="showView('setup')">⚙</button>
         </div>`;
       }).join("");
     }
@@ -1140,7 +1140,7 @@
           <label title="In günstige Zeiten verschieben" style="min-width:170px">
             <input type="checkbox" ${cfg.tariff_shift?'checked':''} onchange="setLoad('${d.key}','tariff_shift',this.checked)"> ${d.name}</label>
           <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${cfg.latest_start?' · ⏱ spätestens '+cfg.latest_start:''}</span>
-          <button class="btn" style="margin-left:auto" title="Geräte-Einstellungen öffnen (Deadline „spätester Start“ etc.)" onclick="showView('setup')">Einstellungen →</button>
+          <button class="btn" style="margin-left:auto;padding:1px 7px" title="Geräte-Einstellungen öffnen (Deadline „spätester Start“ etc.)" onclick="showView('setup')">⚙</button>
         </div>`;
       }).join("");
     }
@@ -1176,10 +1176,6 @@
           ${miss}
           <div class="panel-title" style="margin:10px 0 6px">Geräte (nach Priorität)</div>
           ${surplusDeviceList()}`;
-      }
-      if (st.key === "battery_opt" || st.key === "ev_surplus") {
-        return `<div class="sub" style="margin-bottom:4px">${st.desc||''}</div>${miss}
-          <div class="sub" style="margin-top:4px">Auswahl &amp; Priorität in der Liste „PV-Überschuss-Eigenverbrauch“; Geräte-Einstellungen unter „Erzeuger/Verbraucher“.</div>`;
       }
       if (st.key === "tariff_shift") {
         const statusLine = st.status
