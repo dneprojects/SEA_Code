@@ -67,6 +67,31 @@ def test_tariff_switches_on_when_cheap_and_off_when_not():
     assert decide_tariff_actions(1000, True, [{**sw, "satisfied": True}]) == []
 
 
+def test_tariff_deadline_forces_on_even_when_not_cheap():
+    sw = {"entity": "switch.wm", "mode": "switch", "is_on": False, "last_on": 0, "last_off": 0,
+          "min_runtime_s": 0, "min_off_s": 0, "satisfied": False, "deadline_min": 600, "now_min": 630}
+    assert decide_tariff_actions(1000, False, [sw]) == [("switch.wm", "on", "Deadline – Start erzwungen")]
+
+
+def test_tariff_no_force_before_deadline_when_not_cheap():
+    sw = {"entity": "switch.wm", "mode": "switch", "is_on": False, "last_on": 0, "last_off": 0,
+          "min_runtime_s": 0, "min_off_s": 0, "satisfied": False, "deadline_min": 600, "now_min": 500}
+    assert decide_tariff_actions(1000, False, [sw]) == []
+
+
+def test_battery_stop_uses_soc_and_threshold_guard():
+    s = Store()
+    s._config = {"battery": [{"id": "b1", "name": "Akku", "power": "sensor.bp",
+                              "soc": "sensor.soc", "charge_power": "number.bc"}]}
+    s._live_by_id = {"sensor.soc": {"state": "82"}}
+    d = {x["key"]: x for x in s.strategy_devices()}["battery:b1"]
+    assert d["cfg"]["limit_entity"] == "sensor.soc"   # SoC auto-filled as stop signal
+    assert d["satisfied"] is False                     # threshold 0 -> stop disabled
+    s._settings["strategy_loads"] = {"battery:b1": {"limit_max": 80}}
+    d2 = {x["key"]: x for x in s.strategy_devices()}["battery:b1"]
+    assert d2["satisfied"] is True                      # 82 >= 80
+
+
 def test_tariff_setpoint_to_max_when_cheap():
     sp = {"entity": "number.x", "mode": "setpoint", "cur_unit": 0.0,
           "max_unit": 16.0, "satisfied": False}

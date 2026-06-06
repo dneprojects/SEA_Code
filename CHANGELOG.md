@@ -2,6 +2,15 @@
 
 ## 0.2.1
 
+- Tariff load-shifting follow-ups:
+  - the **"spätester Start" deadline now also applies to tariff shifting** — a
+    deferrable load (e.g. washing machine) is force-started by its deadline even
+    if the tariff never got cheap. The deadline shows in the list (⏱ spätestens …).
+  - the tariff list gained the **"Einstellungen →"** buttons (right-aligned, as in
+    the surplus list).
+  - **battery stop is the SoC** (already known) — the device block now asks only
+    for the threshold ("Stopp bei SoC ≥ … %"), no entity picker. A threshold of 0
+    disables the stop. For other devices the set-stop button is small/icon-only.
 - Strategy UI reworked per feedback:
   - **One unified PV-surplus list**: all controllable devices (incl. wallbox AND
     battery) now live in the "PV-Überschuss-Eigenverbrauch" box, **sorted by

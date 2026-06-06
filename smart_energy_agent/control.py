@@ -25,6 +25,21 @@ from . import const
 _LOGGER = logging.getLogger(__name__)
 
 
+def _hhmm_to_min(value: object) -> Optional[int]:
+    """'HH:MM' -> minute-of-day, or None if unset/invalid."""
+    try:
+        h, m = str(value).split(":")[:2]
+        return int(h) * 60 + int(m)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _deadline_due(deadline_min: Optional[int], now_min: int) -> bool:
+    """Whether a latest-start deadline has been reached (within the force window)."""
+    return (deadline_min is not None
+            and deadline_min <= now_min < deadline_min + const.DEADLINE_FORCE_WINDOW_MIN)
+
+
 @dataclass
 class ConsumerDecision:
     entity_id: str
@@ -54,10 +69,9 @@ def decide_action(
     # Deadline override: a deferrable load that must start by its "latest start"
     # time is force-started even without surplus, within a window after the
     # deadline. Highest precedence so the appliance reliably runs in time.
-    win = const.DEADLINE_FORCE_WINDOW_MIN
     due = [c for c in consumers
-           if not c.is_on and not c.satisfied and c.deadline_min is not None
-           and c.deadline_min <= c.now_min < c.deadline_min + win
+           if not c.is_on and not c.satisfied
+           and _deadline_due(c.deadline_min, c.now_min)
            and (now - c.last_off) >= c.min_off_s]
     if due:
         due.sort(key=lambda c: -c.priority)
@@ -135,14 +149,6 @@ class ControlEngine:
         self._store = store
         self._call_service = call_service
 
-    @staticmethod
-    def _hhmm_to_min(value: str) -> Optional[int]:
-        try:
-            h, m = str(value).split(":")[:2]
-            return int(h) * 60 + int(m)
-        except (ValueError, AttributeError):
-            return None
-
     def _build(self) -> list[ConsumerDecision]:
         """Build decisions from the wizard-configured devices that opted into
         PV-surplus self-consumption and are switchable."""
@@ -170,7 +176,7 @@ class ControlEngine:
                 min_runtime_s=int(cfg.get("min_runtime_min", 0) or 0) * 60,
                 min_off_s=int(cfg.get("min_off_min", 0) or 0) * 60,
                 satisfied=bool(d.get("satisfied")),
-                deadline_min=self._hhmm_to_min(cfg.get("latest_start", "")),
+                deadline_min=_hhmm_to_min(cfg.get("latest_start", "")),
                 now_min=now_min,
             ))
         return out
@@ -244,7 +250,9 @@ class ControlEngine:
 def decide_tariff_actions(
     now: float, cheap: bool, loads: list[dict]
 ) -> list[tuple[str, object, str]]:
-    """Plan tariff-shift actions: run deferrable loads while the tariff is cheap.
+    """Plan tariff-shift actions: run deferrable loads while the tariff is cheap,
+    OR once their latest-start deadline is reached (then run regardless of price,
+    so e.g. a washing machine still finishes in time).
 
     Returns ``(entity, command, reason)`` where command is ``"on"``/``"off"`` for
     switchable loads or a numeric setpoint (entity's own unit) for modulating
@@ -252,10 +260,13 @@ def decide_tariff_actions(
     """
     actions: list[tuple[str, object, str]] = []
     for l in loads:
-        want = cheap and not l.get("satisfied")
+        due = _deadline_due(l.get("deadline_min"), l.get("now_min", 0))
+        want = (cheap or due) and not l.get("satisfied")
+        forced = due and not cheap
         if l["mode"] == "switch":
             if want and not l["is_on"] and (now - l["last_off"]) >= l["min_off_s"]:
-                actions.append((l["entity"], "on", "günstiger Tarif"))
+                actions.append((l["entity"], "on",
+                                "Deadline – Start erzwungen" if forced else "günstiger Tarif"))
             elif not want and l["is_on"] and (now - l["last_on"]) >= l["min_runtime_s"]:
                 actions.append((l["entity"], "off",
                                 "Ziel erreicht" if l.get("satisfied") else "Tarif nicht günstig"))
@@ -281,6 +292,8 @@ class TariffEngine:
         self._call_service = call_service
 
     def _loads(self) -> list[dict]:
+        lt = time.localtime()
+        now_min = lt.tm_hour * 60 + lt.tm_min
         out: list[dict] = []
         for d in self._store.strategy_devices():
             cfg = d["cfg"]
@@ -298,6 +311,8 @@ class TariffEngine:
                     "min_runtime_s": int(cfg.get("min_runtime_min", 0) or 0) * 60,
                     "min_off_s": int(cfg.get("min_off_min", 0) or 0) * 60,
                     "satisfied": bool(d.get("satisfied")),
+                    "deadline_min": _hhmm_to_min(cfg.get("latest_start", "")),
+                    "now_min": now_min,
                 })
             elif mode == "setpoint" and d.get("setpoint"):
                 eid = d["setpoint"]

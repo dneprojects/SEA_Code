@@ -409,6 +409,7 @@ class Store:
                 "key": f"battery:{inst.get('id')}", "kind": "battery", "kind_label": blabel,
                 "name": inst.get("name", blabel), "control_mode": "setpoint",
                 "switch": "", "setpoint": inst.get("charge_power", ""),
+                "soc": inst.get("soc", ""),   # SoC entity = the natural stop signal
                 "power_w": _state_power_w(self.live_state(inst.get("power"))) if inst.get("power") else None,
             })
         return out
@@ -442,12 +443,19 @@ class Store:
         return True
 
     def _device_satisfied(self, cfg: dict[str, Any]) -> bool:
-        """True if a device reached its stop limit (e.g. vehicle SoC / temperature)."""
+        """True if a device reached its stop limit (e.g. vehicle SoC / temperature).
+
+        A threshold of 0 (or below) means the stop condition is disabled.
+        """
         le = cfg.get("limit_entity")
-        if not le:
+        try:
+            limit = float(cfg.get("limit_max"))
+        except (TypeError, ValueError):
+            return False
+        if not le or limit <= 0:
             return False
         try:
-            return float(self.live_state(le).get("state")) >= float(cfg.get("limit_max"))
+            return float(self.live_state(le).get("state")) >= limit
         except (TypeError, ValueError):
             return False
 
@@ -461,6 +469,10 @@ class Store:
                    "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1,
                    "limit_entity": "", "limit_max": 0, "ready_entity": "", "latest_start": ""}
             cfg.update(sl.get(d["key"], {}))
+            # The battery's stop signal is always its SoC — fill it in automatically
+            # so the UI only asks for the threshold (active once limit_max > 0).
+            if d.get("kind") == "battery" and not cfg.get("limit_entity") and d.get("soc"):
+                cfg["limit_entity"] = d["soc"]
             out.append({**d, "cfg": cfg, "satisfied": self._device_satisfied(cfg)})
         return out
 

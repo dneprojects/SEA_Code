@@ -708,11 +708,16 @@
         ? `<div style="margin-top:4px"><span class="sub">Auto angesteckt:</span> ${cfg.ready_entity
             ? `<span class="eid">${cfg.ready_entity}</span> <button class="btn" title="Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickReady('${key}')">ändern</button>`
             : `<button class="btn" title="Entität wählen, die anzeigt ob ein Auto angesteckt/ladebereit ist (optional)" onclick="pickReady('${key}')">Entität wählen</button>`}</div>` : '';
-      const stopLine = cfg.limit_entity
-        ? `<div style="margin-top:4px"><span class="sub">Stopp bei</span> <span class="eid">${cfg.limit_entity}</span> ≥
-             <input type="number" title="Schwellwert" style="width:60px" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)">
-             <button class="btn" title="Stopp-Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickLimit('${key}')">ändern</button></div>`
-        : `<div style="margin-top:4px"><button class="btn" style="color:#000" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${key}')">■ Stopp-Bedingung</button></div>`;
+      // The battery's stop is always its SoC (already known) — only ask the
+      // threshold. Other devices pick a stop entity; the set-button is icon-only.
+      const stopLine = d.kind==='battery'
+        ? `<div style="margin-top:4px"><span class="sub">Stopp bei SoC ≥</span>
+             <input type="number" title="Bei diesem Ladezustand (%) stoppt das Laden; 0 = aus" style="width:56px" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)"> %</div>`
+        : (cfg.limit_entity
+          ? `<div style="margin-top:4px"><span class="sub">Stopp bei</span> <span class="eid">${cfg.limit_entity}</span> ≥
+               <input type="number" title="Schwellwert" style="width:60px" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)">
+               <button class="btn" title="Stopp-Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickLimit('${key}')">ändern</button></div>`
+          : `<div style="margin-top:4px"><button class="btn" style="color:#000;padding:1px 7px" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${key}')">■</button></div>`);
       const inner = `<span class="swhead" style="display:block;margin-top:6px">PV-Überschuss-Steuerung</span>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${fields}</div>${evLine}${stopLine}`;
       return cell(inner, "swfull");
@@ -1118,58 +1123,25 @@
           <span class="sub" title="Priorität 1–10: höhere Geräte bekommen den Überschuss zuerst / werden zuerst zugeschaltet">Prio</span>
           <input type="number" min="1" max="10" style="width:48px" value="${cfg.priority}" onchange="setLoad('${d.key}','priority',this.value)">
           <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${d.satisfied?' · <b style=\"color:#3f9b2f\">Ziel erreicht</b>':''}${cfg.latest_start?' · ⏱ '+cfg.latest_start:''}</span>
-          <button class="btn" title="Geräte-Einstellungen öffnen" onclick="showView('setup')">Einstellungen →</button>
+          <button class="btn" style="margin-left:auto" title="Geräte-Einstellungen öffnen" onclick="showView('setup')">Einstellungen →</button>
         </div>`;
       }).join("");
     }
-    function deviceRows(mode, kindOnly) {
-      // battery has its own Batterie-Optimierung box; the wallbox has its own
-      // ev_surplus box, so exclude it from the generic PV-surplus list (but keep
-      // it selectable for tariff shifting = cheap-window charging).
-      let devs = stratDevices.filter(d => {
-        if (kindOnly) return d.kind===kindOnly;
-        if (d.kind==='battery') return false;
-        if (d.kind==='ev_charger' && mode==='self_consumption') return false;
-        return true;
-      });
+    // Tariff load-shifting list: deferrable loads (wallbox allowed; battery
+    // excluded). Only participation here; the deadline „spätester Start“ and
+    // other knobs live in the device block under Erzeuger/Verbraucher.
+    function deviceRows(mode) {
+      const devs = (stratDevices||[]).filter(d => d.kind!=='battery');
       if (!devs.length)
         return "<p class='sub'>Keine passenden Geräte. Lege unter „Erzeuger/Verbraucher“ Geräte mit Steuerung an.</p>";
       return devs.map(d => {
-        const cfg = d.cfg, on = mode==='self_consumption' ? cfg.self_consumption : cfg.tariff_shift;
-        const sw = d.control_mode==='switch';
-        const num = (lbl,f,w,tip) => `<span class="sub" title="${tip}">${lbl}</span><input type="number" title="${tip}" style="width:${w}px" value="${cfg[f]}" onchange="setLoad('${d.key}','${f}',this.value)">`;
-        let extra = "";
-        if (mode==='self_consumption' && on) {
-          extra = sw
-            ? num("Prio","priority",48,"Priorität 1–10: höhere Geräte werden zuerst zugeschaltet")
-              + num("PV-Schwelle W","pv_threshold_w",70,"Mindest-Überschuss zum Einschalten (W)")
-              + num("min. Laufzeit","min_runtime_min",52,"Mindestlaufzeit vor dem Abschalten (min)")
-            : num("Prio","priority",48,"Priorität: höhere Geräte bekommen den Überschuss zuerst")
-              + num("max. Leistung W","max_w",72,"Maximale Leistungsaufnahme des Geräts (W)")
-              + num("W/Einheit","w_per_unit",60,"Watt pro Einheit der Sollwert-Entität: z. B. Wallbox ~690 W pro Ampere; bei einem Leistungs-Sollwert in Watt = 1")
-              + (d.kind==='ev_charger'
-                  ? num("min. Leistung W","min_w",70,"Mindest-Ladeleistung; darunter schaltet die Wallbox ab (z. B. 6 A × 690 = 4140 W)") : "");
-        }
-        const evLine = (mode==='self_consumption' && on && d.kind==='ev_charger')
-          ? `<div style="padding-left:24px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
-               <span class="sub">Auto angesteckt:</span>
-               ${cfg.ready_entity
-                  ? `<span class="eid">${cfg.ready_entity}</span>
-                     <button class="btn" title="Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickReady('${d.key}')">ändern</button>`
-                  : `<button class="btn" title="Entität wählen, die anzeigt ob ein Auto angesteckt/ladebereit ist (optional)" onclick="pickReady('${d.key}')">Entität wählen</button>`}
-             </div>` : '';
-        const stopBtn = (mode==='self_consumption' && on)
-          ? `<button class="btn" style="color:#000" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${d.key}')">■</button>` : '';
-        const main = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-          <label title="In dieser Strategie verwenden"><input type="checkbox" ${on?'checked':''} onchange="setLoad('${d.key}','${mode}',this.checked)"> ${d.name}</label>
-          <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${d.satisfied?' · <b style=\"color:#3f9b2f\">Ziel erreicht</b>':''}</span>
-          ${extra} ${stopBtn}</div>`;
-        const stopLine = (mode==='self_consumption' && on && cfg.limit_entity)
-          ? `<div style="padding-left:24px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px">
-               <span class="sub">Stopp bei</span> <span class="eid">${cfg.limit_entity}</span> ≥
-               <input type="number" title="Schwellwert" style="width:60px" value="${cfg.limit_max}" onchange="setLoad('${d.key}','limit_max',this.value)">
-               <button class="btn" title="Stopp-Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickLimit('${d.key}')">ändern</button></div>` : '';
-        return `<div style="border-bottom:1px solid var(--alt);padding:3px 0">${main}${evLine}${stopLine}</div>`;
+        const cfg = d.cfg, sw = d.control_mode==='switch';
+        return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--alt);padding:4px 0">
+          <label title="In günstige Zeiten verschieben" style="min-width:170px">
+            <input type="checkbox" ${cfg.tariff_shift?'checked':''} onchange="setLoad('${d.key}','tariff_shift',this.checked)"> ${d.name}</label>
+          <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${cfg.latest_start?' · ⏱ spätestens '+cfg.latest_start:''}</span>
+          <button class="btn" style="margin-left:auto" title="Geräte-Einstellungen öffnen (Deadline „spätester Start“ etc.)" onclick="showView('setup')">Einstellungen →</button>
+        </div>`;
       }).join("");
     }
     function pickLimit(key) {
