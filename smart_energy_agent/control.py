@@ -16,6 +16,7 @@ are ever touched, and only when the master switch (control_enabled) is on.
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
@@ -39,6 +40,8 @@ class ConsumerDecision:
     min_runtime_s: int
     min_off_s: int
     satisfied: bool = False
+    deadline_min: Optional[int] = None   # latest-start time as minute-of-day
+    now_min: int = 0                      # current local minute-of-day
 
 
 def decide_action(
@@ -47,6 +50,18 @@ def decide_action(
     """Return (entity_id, "on"|"off", reason) for one action, or None."""
     on_margin = const.CONTROL_ON_MARGIN_W
     off_margin = const.CONTROL_OFF_MARGIN_W
+
+    # Deadline override: a deferrable load that must start by its "latest start"
+    # time is force-started even without surplus, within a window after the
+    # deadline. Highest precedence so the appliance reliably runs in time.
+    win = const.DEADLINE_FORCE_WINDOW_MIN
+    due = [c for c in consumers
+           if not c.is_on and not c.satisfied and c.deadline_min is not None
+           and c.deadline_min <= c.now_min < c.deadline_min + win
+           and (now - c.last_off) >= c.min_off_s]
+    if due:
+        due.sort(key=lambda c: -c.priority)
+        return (due[0].entity_id, "on", "Deadline – Start erzwungen")
 
     # A satisfied load (target reached, e.g. vehicle SoC / temperature) is shed
     # first so the surplus is freed for other consumers.
@@ -120,9 +135,19 @@ class ControlEngine:
         self._store = store
         self._call_service = call_service
 
+    @staticmethod
+    def _hhmm_to_min(value: str) -> Optional[int]:
+        try:
+            h, m = str(value).split(":")[:2]
+            return int(h) * 60 + int(m)
+        except (ValueError, AttributeError):
+            return None
+
     def _build(self) -> list[ConsumerDecision]:
         """Build decisions from the wizard-configured devices that opted into
         PV-surplus self-consumption and are switchable."""
+        lt = time.localtime()
+        now_min = lt.tm_hour * 60 + lt.tm_min
         out: list[ConsumerDecision] = []
         for d in self._store.strategy_devices():
             cfg = d["cfg"]
@@ -145,6 +170,8 @@ class ControlEngine:
                 min_runtime_s=int(cfg.get("min_runtime_min", 0) or 0) * 60,
                 min_off_s=int(cfg.get("min_off_min", 0) or 0) * 60,
                 satisfied=bool(d.get("satisfied")),
+                deadline_min=self._hhmm_to_min(cfg.get("latest_start", "")),
+                now_min=now_min,
             ))
         return out
 

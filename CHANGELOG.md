@@ -2,6 +2,19 @@
 
 ## 0.2.1
 
+- Strategy UI reworked per feedback:
+  - **One unified PV-surplus list**: all controllable devices (incl. wallbox AND
+    battery) now live in the "PV-Überschuss-Eigenverbrauch" box, **sorted by
+    priority** (high → low). The separate Wallbox/Batterie boxes no longer carry
+    their own device lists. On the strategy page you only pick devices and set
+    priority.
+  - **Device-specific settings moved to the device block** under
+    "Erzeuger/Verbraucher" (a new "PV-Überschuss-Steuerung" panel per device):
+    PV threshold, min runtime/off, max starts, max/min power, W-per-unit, the
+    wallbox "vehicle connected" entity and the stop condition.
+  - **New "spätester Start" deadline** for deferrable loads (e.g. washing
+    machine): if no surplus came by then, the device is **force-started** (from
+    the grid if needed) within a 2 h window after the deadline.
 - Fix "Aktueller Bezugspreis – (Entität liefert noch keinen Wert)" for dynamic
   tariffs: the current price now reads the entity's live/snapshot value
   immediately (no longer waits for the next hourly state change), the price

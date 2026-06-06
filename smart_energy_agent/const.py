@@ -60,6 +60,9 @@ TARIFF_INTERVAL = 300     # seconds between tariff-shift decisions (5 min)
 CONTROL_INTERVAL = 60     # seconds between control decisions
 CONTROL_ON_MARGIN_W = 50  # surplus must exceed this to consider switching on
 CONTROL_OFF_MARGIN_W = 50 # import (negative surplus) beyond this triggers switch off
+# A deferrable load with a "latest start" deadline is force-started (even without
+# surplus) once the deadline is reached, within this window after it (minutes).
+DEADLINE_FORCE_WINDOW_MIN = 120
 # Domains we can switch on/off in this phase (simple on/off loads).
 CONTROLLABLE_DOMAINS = ("switch", "input_boolean", "light")
 

@@ -435,7 +435,7 @@ class Store:
                     cfg[f] = float(patch[f] or 0)
                 except (TypeError, ValueError):
                     pass
-        for f in ("limit_entity", "ready_entity"):
+        for f in ("limit_entity", "ready_entity", "latest_start"):
             if f in patch:
                 cfg[f] = str(patch[f] or "")
         self._save_settings()
@@ -459,7 +459,7 @@ class Store:
             cfg = {"self_consumption": False, "tariff_shift": False, "priority": 5,
                    "pv_threshold_w": 0, "min_runtime_min": 0, "min_off_min": 0,
                    "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1,
-                   "limit_entity": "", "limit_max": 0, "ready_entity": ""}
+                   "limit_entity": "", "limit_max": 0, "ready_entity": "", "latest_start": ""}
             cfg.update(sl.get(d["key"], {}))
             out.append({**d, "cfg": cfg, "satisfied": self._device_satisfied(cfg)})
         return out

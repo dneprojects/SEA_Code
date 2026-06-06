@@ -538,10 +538,15 @@
     }
     let pickerCtx = null;           // {path, ug, kind} of the entity picker popup
     let pickerTimer = null;
+    let stratByKey = {};   // device key -> strategy device (cfg) for the setup page
+    async function fetchStratDevices() {
+      try { stratDevices = (await fetch(api("/api/strategy-loads")).then(r=>r.json())).devices || []; } catch(e) {}
+    }
     async function loadSetup() {
       try { setupData = await fetch(api("/api/setup/catalog")).then(r=>r.json()); }
       catch(e) { setupData = { grid:{fields:[]}, kinds:[], config:{} }; }
       if (!setupData.config) setupData.config = {};
+      await fetchStratDevices();
       renderSetup();
     }
     // --- path helpers operating on setupData.config ---
@@ -564,6 +569,7 @@
         if (r.config) setupData.config = r.config;
         flash("setup-msg", "gespeichert");
       } catch(e) { flash("setup-msg", "Fehler beim Speichern"); }
+      await fetchStratDevices();   // a new device becomes controllable -> show its params
       if (rerender !== false) renderSetup();
     }
     const openInstances = new Set(["grid"]);
@@ -589,6 +595,7 @@
     // --- render ---
     function renderSetup() {
       const d = setupData || {}; const el = document.getElementById("setup"); if (!el) return;
+      stratByKey = {}; (stratDevices||[]).forEach(sd => { stratByKey[sd.key] = sd; });
       let html = gridDetails(d.grid || {fields:[]});
       (d.kinds||[]).forEach(kind => {
         const list = setupData.config[kind.key] || [];
@@ -624,6 +631,9 @@
         `<input type="text" value="${esc(inst.name)}" onchange="setVal('${base}/name',this.value)" style="width:200px">`);
       body += (kind.fields||[]).map(f => fieldHtml(base+"/"+f.key, f, kind.key)).join("");
       if (kind.control) body += controlHtml(base, inst, kind.key);
+      // Device-specific PV-surplus control settings (if this device is controllable).
+      const sd = stratByKey[kind.key+":"+inst.id];
+      if (sd) body += stratParamsPanel(kind.key+":"+inst.id, sd);
       return `<details class="swdev"${open?' open':''} ontoggle="onToggleDev('${inst.id}',this.open)">
         <summary><b class="swname">${esc(inst.name)}</b> <span class="sub">${deviceInfo(kind,inst)}</span>
           <button class="btn swdel" title="Gerät entfernen" onclick="event.stopPropagation();removeInstance('${kind.key}',${idx})">Entfernen</button></summary>
@@ -677,6 +687,35 @@
       if (m==='switch') inner += ' ' + entInline(base+'/control/switch', 'switch', kindKey);
       if (m==='setpoint') inner += ' ' + entInline(base+'/control/setpoint', 'setpoint', kindKey);
       return spanRow("Steuerung", inner);
+    }
+    // Device-specific PV-surplus control parameters, shown inside the device block.
+    // Participation + priority live on the Strategien page; everything else here.
+    function stratParamsPanel(key, d) {
+      const cfg = d.cfg, sw = d.control_mode==='switch';
+      const num = (lbl,f,w,tip) => `<span class="sub" title="${tip}">${lbl}</span>`
+        + `<input type="number" title="${tip}" style="width:${w}px" value="${cfg[f]}" onchange="setLoad('${key}','${f}',this.value)">`;
+      let fields = sw
+        ? num("PV-Schwelle W","pv_threshold_w",70,"Mindest-Überschuss zum Einschalten (W)")
+          + num("min. Laufzeit","min_runtime_min",52,"Mindestlaufzeit vor dem Abschalten (min)")
+          + num("min. Auszeit","min_off_min",52,"Mindest-Auszeit vor Wiedereinschalten (min)")
+          + num("max. Starts/Tag","max_starts_per_day",46,"0 = unbegrenzt")
+          + `<span class="sub" title="Spätester Start – wird notfalls aus dem Netz erzwungen">spätester Start</span>`
+          + `<input type="time" title="Spätester Start – wird zur Deadline notfalls aus dem Netz erzwungen" value="${cfg.latest_start||''}" onchange="setLoad('${key}','latest_start',this.value)">`
+        : num("max. Leistung W","max_w",72,"Maximale Leistungsaufnahme des Geräts (W)")
+          + num("W/Einheit","w_per_unit",54,"Watt pro Einheit der Sollwert-Entität: Wallbox ~690 W/A; Leistungssollwert in W = 1")
+          + num("min. Leistung W","min_w",70,"Mindestleistung; darunter wird abgeschaltet (z. B. Wallbox 6 A × 690 = 4140 W)");
+      const evLine = (d.kind==='ev_charger')
+        ? `<div style="margin-top:4px"><span class="sub">Auto angesteckt:</span> ${cfg.ready_entity
+            ? `<span class="eid">${cfg.ready_entity}</span> <button class="btn" title="Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickReady('${key}')">ändern</button>`
+            : `<button class="btn" title="Entität wählen, die anzeigt ob ein Auto angesteckt/ladebereit ist (optional)" onclick="pickReady('${key}')">Entität wählen</button>`}</div>` : '';
+      const stopLine = cfg.limit_entity
+        ? `<div style="margin-top:4px"><span class="sub">Stopp bei</span> <span class="eid">${cfg.limit_entity}</span> ≥
+             <input type="number" title="Schwellwert" style="width:60px" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)">
+             <button class="btn" title="Stopp-Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickLimit('${key}')">ändern</button></div>`
+        : `<div style="margin-top:4px"><button class="btn" style="color:#000" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${key}')">■ Stopp-Bedingung</button></div>`;
+      const inner = `<span class="swhead" style="display:block;margin-top:6px">PV-Überschuss-Steuerung</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${fields}</div>${evLine}${stopLine}`;
+      return cell(inner, "swfull");
     }
     // --- mutations ---
     function setVal(path, val) { setByPath(path, val); saveConfig(); }
@@ -1063,6 +1102,26 @@
       try { stratDevices = (await fetch(api("/api/strategy-loads")).then(r=>r.json())).devices || []; } catch(e) {}
       renderStrategies();
     }
+    // Unified PV-surplus device list: ALL controllable devices (incl. wallbox &
+    // battery), sorted by priority (high → low). Only participation + priority
+    // here; the device-specific knobs live in the device block under Erzeuger/Verbraucher.
+    function surplusDeviceList() {
+      const devs = (stratDevices||[]).slice()
+        .sort((a,b) => (Number(b.cfg.priority)||0) - (Number(a.cfg.priority)||0));
+      if (!devs.length)
+        return "<p class='sub'>Keine steuerbaren Geräte. Lege unter „Erzeuger/Verbraucher“ Geräte mit Steuerung an.</p>";
+      return devs.map(d => {
+        const cfg = d.cfg, sw = d.control_mode==='switch';
+        return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--alt);padding:4px 0">
+          <label title="In der PV-Überschuss-Steuerung verwenden" style="min-width:170px">
+            <input type="checkbox" ${cfg.self_consumption?'checked':''} onchange="setLoad('${d.key}','self_consumption',this.checked)"> ${d.name}</label>
+          <span class="sub" title="Priorität 1–10: höhere Geräte bekommen den Überschuss zuerst / werden zuerst zugeschaltet">Prio</span>
+          <input type="number" min="1" max="10" style="width:48px" value="${cfg.priority}" onchange="setLoad('${d.key}','priority',this.value)">
+          <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${d.satisfied?' · <b style=\"color:#3f9b2f\">Ziel erreicht</b>':''}${cfg.latest_start?' · ⏱ '+cfg.latest_start:''}</span>
+          <button class="btn" title="Geräte-Einstellungen öffnen" onclick="showView('setup')">Einstellungen →</button>
+        </div>`;
+      }).join("");
+    }
     function deviceRows(mode, kindOnly) {
       // battery has its own Batterie-Optimierung box; the wallbox has its own
       // ev_surplus box, so exclude it from the generic PV-surplus list (but keep
@@ -1124,7 +1183,8 @@
         await fetch(api("/api/strategy-loads"), { method:"POST",
           headers:{"Content-Type":"application/json"}, body:JSON.stringify({key, patch:{[field]:val}}) });
       } catch(e) {}
-      loadConsumers();
+      await loadConsumers();          // refreshes stratDevices + strategy badges
+      if (setupData) renderSetup();   // refresh the device-block params on the setup page
     }
     function stratBadge(st) {
       if (st.active) return '<span class="badge" style="background:#3f9b2f">aktiv</span>';
@@ -1140,19 +1200,14 @@
         return `<label style="font-weight:bold;color:var(--fg)">
             <input type="checkbox" id="ctrl-master" onchange="toggleControl()"> PV-Überschusssteuerung aktiv</label>
           <span class="sub" id="ctrl-status" style="margin-left:8px"></span>
-          <div class="sub" style="margin:4px 0">Schaltbare Geräte werden bei PV-Überschuss zu-/abgeschaltet. Solange aus, wird nichts geschaltet.</div>
+          <div class="sub" style="margin:4px 0">Alle steuerbaren Geräte (auch Wallbox &amp; Batterie) folgen dem PV-Überschuss – höhere Priorität zuerst. Geräte-Einstellungen unter „Erzeuger/Verbraucher“. Solange aus, wird nichts geschaltet.</div>
           ${miss}
-          <div class="panel-title" style="margin:10px 0 6px">Geräte im PV-Überschuss</div>
-          ${deviceRows('self_consumption')}`;
+          <div class="panel-title" style="margin:10px 0 6px">Geräte (nach Priorität)</div>
+          ${surplusDeviceList()}`;
       }
-      if (st.key === "battery_opt") {
-        return `<div class="sub" style="margin-bottom:4px">${st.desc||''} Benötigt aktive PV-Überschusssteuerung.</div>${miss}
-          ${deviceRows('self_consumption','battery')}`;
-      }
-      if (st.key === "ev_surplus") {
-        return `<div class="sub" style="margin-bottom:4px">${st.desc||''} Benötigt den Master-Schalter „PV-Überschuss-Eigenverbrauch“ (oben).</div>${miss}
-          <div class="panel-title" style="margin:8px 0 6px">Wallbox(en)</div>
-          ${deviceRows('self_consumption','ev_charger')}`;
+      if (st.key === "battery_opt" || st.key === "ev_surplus") {
+        return `<div class="sub" style="margin-bottom:4px">${st.desc||''}</div>${miss}
+          <div class="sub" style="margin-top:4px">Auswahl &amp; Priorität in der Liste „PV-Überschuss-Eigenverbrauch“; Geräte-Einstellungen unter „Erzeuger/Verbraucher“.</div>`;
       }
       if (st.key === "tariff_shift") {
         const statusLine = st.status

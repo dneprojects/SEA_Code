@@ -89,6 +89,24 @@ def test_switch_decision_on_and_off():
     assert off and off[1] == "off"
 
 
+def test_deadline_forces_start_without_surplus():
+    # 10:30 now, deadline 10:00, no surplus -> forced on within the window
+    c = _cd("switch.wm", is_on=False, deadline_min=600, now_min=630)
+    assert decide_action(0, 0, [c]) == ("switch.wm", "on", "Deadline – Start erzwungen")
+
+
+def test_deadline_not_forced_before_or_after_window():
+    before = _cd("switch.wm", is_on=False, deadline_min=600, now_min=540)
+    assert decide_action(0, 0, [before]) is None          # before the deadline
+    after = _cd("switch.wm", is_on=False, deadline_min=600, now_min=800)
+    assert decide_action(0, 0, [after]) is None            # past the force window
+
+
+def test_deadline_skipped_when_satisfied():
+    c = _cd("switch.wm", is_on=False, satisfied=True, deadline_min=600, now_min=630)
+    assert decide_action(0, 0, [c]) is None
+
+
 def test_satisfied_load_shed_first_and_not_turned_on():
     on_sat = _cd("switch.wb", is_on=True, satisfied=True, nominal_power_w=2000)
     out = decide_action(100, 3000, [on_sat])   # big surplus, but target reached -> off
