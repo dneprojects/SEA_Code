@@ -163,6 +163,35 @@ def decide_grid_charge(
     return False
 
 
+def decide_grid_discharge(
+    price_ct: Optional[float], discharge_min_ct: float,
+    soc: Optional[float], soc_min: float,
+) -> bool:
+    """Whether to force-discharge the battery now (dynamic-tariff arbitrage).
+
+    Discharge when the price is at/above ``discharge_min_ct`` (0 = disabled) and
+    the SoC is still above the reserve floor ``soc_min``.
+    """
+    if soc is None or discharge_min_ct <= 0:
+        return False
+    if soc <= soc_min:
+        return False  # keep the reserve
+    return price_ct is not None and price_ct >= discharge_min_ct
+
+
+def battery_tariff_mode(
+    price_ct: Optional[float], charge_max_ct: float, discharge_min_ct: float,
+    soc: Optional[float], soc_min: float, soc_max: float,
+) -> Optional[str]:
+    """Tariff-driven battery action: 'charge', 'discharge', or None (idle/surplus).
+    Charging takes precedence if both conditions somehow apply."""
+    if decide_grid_charge(price_ct, charge_max_ct, soc, soc_min, soc_max):
+        return "charge"
+    if decide_grid_discharge(price_ct, discharge_min_ct, soc, soc_min):
+        return "discharge"
+    return None
+
+
 class ControlEngine:
     """Builds decision input from the store and executes one action per cycle."""
 
@@ -239,22 +268,27 @@ class ControlEngine:
             ready = cfg.get("ready_entity")
             if eff_max and ready and not self._store.entity_truthy(ready):
                 eff_max = 0.0
-            # Battery: grid-charge from the dynamic tariff (cheap/negative price or
-            # below the reserve floor) takes precedence over surplus modulation.
-            force_full = False
-            if grid_charge and decide_grid_charge(
-                self._store.current_price_ct(),
-                float(self._store.tariff().get("charge_max_ct", 0) or 0),
-                self._battery_soc(d),
-                float(cfg.get("grid_soc_min", 0) or 0),
-                float(cfg.get("grid_soc_max", 100) or 100),
-            ):
-                force_full = True
-                eff_max = max_w
+            # Battery on the dynamic tariff: charge (cheap/negative or below the
+            # reserve), discharge (expensive), or None → follow PV surplus.
+            batt_mode = None
+            if grid_charge:
+                t = self._store.tariff()
+                batt_mode = battery_tariff_mode(
+                    self._store.current_price_ct(),
+                    float(t.get("charge_max_ct", 0) or 0),
+                    float(t.get("discharge_min_ct", 0) or 0),
+                    self._battery_soc(d),
+                    float(cfg.get("grid_soc_min", 0) or 0),
+                    float(cfg.get("grid_soc_max", 100) or 100),
+                )
+                if batt_mode in ("charge", "discharge"):
+                    eff_max = max_w   # full power; charge-stop "satisfied" doesn't apply here
             out.append({"entity": eid, "domain": eid.split(".", 1)[0],
                         "cur_unit": cur_unit, "cur_w": cur_unit * wpu, "wpu": wpu,
                         "min_w": float(cfg.get("min_w", 0) or 0), "max_w": eff_max,
-                        "priority": int(cfg.get("priority", 5)), "force_full": force_full})
+                        "priority": int(cfg.get("priority", 5)),
+                        "is_batt": is_batt, "batt_mode": batt_mode,
+                        "discharge": d.get("discharge", "")})
         return out
 
     async def _set_unit(self, m: dict, unit: float, label: str) -> None:
@@ -266,14 +300,42 @@ class ControlEngine:
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("Modulation failed for %s: %s", m["entity"], err)
 
+    async def _set_value(self, entity: str, wpu: float, power_w: float, label: str) -> None:
+        """Set a number actuator (in its own unit) if it changed meaningfully."""
+        if not entity:
+            return
+        domain = entity.split(".", 1)[0]
+        if domain not in ("number", "input_number"):
+            return
+        unit = round(power_w / (wpu or 1.0), 2)
+        try:
+            cur = float(self._store.live_state(entity).get("state"))
+        except (TypeError, ValueError):
+            cur = None
+        if cur is not None and abs(unit - cur) < 0.1:
+            return
+        try:
+            await self._call_service(domain, "set_value", entity, {"value": unit})
+            _LOGGER.info("Control: %s -> %s (%s)", entity, unit, label)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Set failed for %s: %s", entity, err)
+
     async def _modulate(self, surplus_signed: float) -> None:
         mods = self._mods()
-        # Grid-charging batteries are driven to full power (from the grid), and
-        # kept out of the surplus allocation below.
-        forced = [m for m in mods if m.get("force_full")]
-        for m in forced:
-            await self._set_unit(m, round(m["max_w"] / (m["wpu"] or 1.0), 2), "Netzladen (Tarif)")
-        normal = [m for m in mods if not m.get("force_full")]
+        # Batteries with a tariff mode are handled explicitly (charge / forced
+        # discharge); only idle batteries join the surplus allocation.
+        normal = [m for m in mods if not m.get("is_batt")]
+        for m in [m for m in mods if m.get("is_batt")]:
+            mode, disc, wpu = m.get("batt_mode"), m.get("discharge", ""), m["wpu"]
+            if mode == "charge":
+                await self._set_unit(m, round(m["max_w"] / (wpu or 1.0), 2), "Netzladen (Tarif)")
+                await self._set_value(disc, wpu, 0.0, "Entladen aus")
+            elif mode == "discharge":
+                await self._set_value(disc, wpu, m["max_w"], "Entladen (Tarif)")
+                await self._set_unit(m, 0.0, "Laden aus (Entladen)")
+            else:
+                await self._set_value(disc, wpu, 0.0, "Entladen aus")
+                normal.append(m)   # idle battery follows the PV surplus
         for a in decide_modulation(surplus_signed, normal):
             if abs(a["unit"] - a["cur_unit"]) < 0.1:
                 continue

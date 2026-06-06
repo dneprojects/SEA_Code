@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 
 from smart_energy_agent.control import (
-    ConsumerDecision, ControlEngine, decide_action, decide_grid_charge,
-    decide_modulation, decide_tariff_actions,
+    ConsumerDecision, ControlEngine, battery_tariff_mode, decide_action,
+    decide_grid_charge, decide_grid_discharge, decide_modulation, decide_tariff_actions,
 )
 from smart_energy_agent.store import Store
 
@@ -130,6 +130,39 @@ def test_engine_no_grid_charge_at_positive_price():
                      "sensor.soc": {"state": "50"}, "number.bc": {"state": "0"}}
     asyncio.run(ControlEngine(s, cs)._modulate(0.0))
     assert ("number.bc", {"value": 5000.0}) not in calls   # no grid-charge at 12 ct
+
+
+def test_grid_discharge_threshold_and_reserve():
+    assert decide_grid_discharge(40.0, 30.0, 60, 20) is True
+    assert decide_grid_discharge(25.0, 30.0, 60, 20) is False   # below threshold
+    assert decide_grid_discharge(40.0, 30.0, 20, 20) is False   # at reserve floor
+    assert decide_grid_discharge(40.0, 0.0, 60, 20) is False    # disabled (0)
+    assert decide_grid_discharge(40.0, 30.0, None, 20) is False  # unknown SoC
+
+
+def test_battery_tariff_mode_precedence():
+    assert battery_tariff_mode(-2.0, 0.0, 30.0, 50, 0, 100) == "charge"     # cheap/negative
+    assert battery_tariff_mode(40.0, 0.0, 30.0, 50, 20, 100) == "discharge"  # expensive
+    assert battery_tariff_mode(15.0, 0.0, 30.0, 50, 20, 100) is None         # mid -> surplus
+
+
+def test_engine_force_discharges_battery_at_expensive_price():
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((entity, data))
+
+    s = Store()
+    s._config = {"battery": [{"id": "b1", "name": "Akku", "power": "sensor.bp", "soc": "sensor.soc",
+                              "charge_power": "number.bc", "discharge_power": "number.bd"}]}
+    s._settings["tariff"] = {"mode": "dynamic", "price_entity": "sensor.price",
+                             "charge_max_ct": 0.0, "discharge_min_ct": 35.0}
+    s._settings["strategy_loads"] = {"battery:b1": {"self_consumption": True, "tariff_shift": True,
+                                                    "max_w": 5000, "w_per_unit": 1, "grid_soc_min": 20}}
+    s._live_by_id = {"sensor.price": {"state": "42", "attributes": {"unit_of_measurement": "ct/kWh"}},
+                     "sensor.soc": {"state": "60"}, "number.bc": {"state": "0"}, "number.bd": {"state": "0"}}
+    asyncio.run(ControlEngine(s, cs)._modulate(0.0))
+    assert ("number.bd", {"value": 5000.0}) in calls   # forced discharge to full power
 
 
 def test_battery_stop_uses_soc_and_threshold_guard():

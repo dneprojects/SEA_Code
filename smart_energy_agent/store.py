@@ -67,6 +67,7 @@ class Store:
                 "price_entity": "",        # HA sensor (ct/kWh) for dynamic mode
                 "feed_in_ct": 8.0,         # feed-in compensation (ct/kWh)
                 "charge_max_ct": 0.0,      # grid-charge storage only at price <= this (0 = negative/free)
+                "discharge_min_ct": 0.0,   # forced battery discharge at price >= this (0 = disabled)
             },
             # Absence temperature setback (concept 6.6), grouped by persons+rooms.
             # groups: [{id, name, persons:[eid], comfort_time:"HH:MM",
@@ -204,7 +205,8 @@ class Store:
             tp = patch["tariff"]
             if tp.get("mode") in ("static", "ht_nt", "dynamic"):
                 t["mode"] = tp["mode"]
-            for f in ("price_ct", "ht_price_ct", "nt_price_ct", "feed_in_ct", "charge_max_ct"):
+            for f in ("price_ct", "ht_price_ct", "nt_price_ct", "feed_in_ct",
+                      "charge_max_ct", "discharge_min_ct"):
                 if f in tp:
                     try:
                         t[f] = float(tp[f]) if tp[f] not in (None, "") else 0.0
@@ -410,6 +412,7 @@ class Store:
                 "key": f"battery:{inst.get('id')}", "kind": "battery", "kind_label": blabel,
                 "name": inst.get("name", blabel), "control_mode": "setpoint",
                 "switch": "", "setpoint": inst.get("charge_power", ""),
+                "discharge": inst.get("discharge_power", ""),  # forced-discharge actuator (arbitrage)
                 "soc": inst.get("soc", ""),   # SoC entity = the natural stop signal
                 "power_w": _state_power_w(self.live_state(inst.get("power"))) if inst.get("power") else None,
             })

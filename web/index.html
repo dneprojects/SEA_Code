@@ -319,6 +319,8 @@
           <div class="setrow"><span class="sub">Aktueller Wert wird laufend aus dieser HA-Entität gelesen.</span></div>
           <div class="setrow"><label title="Speicher (Batterie) wird aus dem Netz geladen, solange der Preis ≤ diesem Wert liegt. 0 = nur bei gratis/negativem Preis. Pro Batterie zusätzlich Min-/Max-Ziel-SoC.">Speicher netzladen bei ≤ (ct/kWh)</label>
             <input type="number" id="t-chargemax" step="0.1" style="width:80px"> <span class="sub">0 = nur negativ/gratis</span></div>
+          <div class="setrow"><label title="Batterie wird erzwungen entladen (bis zum Reserve-SoC), solange der Preis ≥ diesem Wert liegt. 0 = aus. Benötigt eine Entladeleistungs-Sollwert-Entität an der Batterie.">Speicher entladen bei ≥ (ct/kWh)</label>
+            <input type="number" id="t-dischargemin" step="0.1" style="width:80px"> <span class="sub">0 = aus</span></div>
         </div>
         <div class="setrow"><label>Einspeisevergütung (ct/kWh)</label>
           <input type="number" id="t-feedin" step="0.1"></div>
@@ -722,10 +724,10 @@
           : `<div style="margin-top:4px"><button class="btn" style="color:#000;padding:1px 7px" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${key}')">■</button></div>`);
       // Battery only: grid-charge from the dynamic tariff with a target SoC band.
       const gridLine = d.kind==='battery'
-        ? `<div style="margin-top:6px"><label title="Bei günstigem/negativem Tarif aus dem Netz laden. Die Preis-Schwelle ist global unter „Einstellungen → Grundeinstellungen → Tarife“.">
-             <input type="checkbox" ${cfg.tariff_shift?'checked':''} onchange="setLoad('${key}','tariff_shift',this.checked)"> Netzladen bei günstigem/negativem Tarif</label>
+        ? `<div style="margin-top:6px"><label title="Tarifgesteuertes Netzladen (günstig/negativ) und erzwungenes Entladen (teuer). Die Preis-Schwellen sind global unter „Einstellungen → Grundeinstellungen → Tarife“; Entladen benötigt eine Entladeleistungs-Sollwert-Entität.">
+             <input type="checkbox" ${cfg.tariff_shift?'checked':''} onchange="setLoad('${key}','tariff_shift',this.checked)"> Tarifgesteuertes Laden/Entladen aus dem Netz</label>
            ${cfg.tariff_shift ? `<div style="margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-             <span class="sub" title="Reserve: unter diesem SoC aus dem Netz nachladen (0 = aus)">Ziel-SoC</span>
+             <span class="sub" title="Reserve-SoC: nicht darunter entladen; darunter aus dem Netz nachladen (0 = aus)">Reserve-/Ziel-SoC</span>
              <input type="number" style="width:50px" value="${cfg.grid_soc_min}" onchange="setLoad('${key}','grid_soc_min',this.value)"> %
              <span class="sub">bis</span>
              <input type="number" title="Bis zu diesem SoC netzladen" style="width:50px" value="${cfg.grid_soc_max}" onchange="setLoad('${key}','grid_soc_max',this.value)"> %</div>` : ''}</div>`
@@ -1050,6 +1052,7 @@
       document.getElementById("t-entity").value = entity;
       renderPriceEntity();
       document.getElementById("t-chargemax").value = t.charge_max_ct!=null ? t.charge_max_ct : 0;
+      document.getElementById("t-dischargemin").value = t.discharge_min_ct!=null ? t.discharge_min_ct : 0;
       document.getElementById("t-feedin").value = feedin;
       const ph = document.getElementById("t-prefill-hint");
       ph.textContent = (s.has_prefs && (pf.price_ct!=null || pf.feed_in_ct!=null || pf.price_entity))
@@ -1071,6 +1074,7 @@
         price_entity: document.getElementById("t-entity").value,
         feed_in_ct: document.getElementById("t-feedin").value,
         charge_max_ct: document.getElementById("t-chargemax").value,
+        discharge_min_ct: document.getElementById("t-dischargemin").value,
       };
       const msg = document.getElementById("t-msg");
       try {

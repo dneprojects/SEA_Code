@@ -2,6 +2,13 @@
 
 ## 0.2.1
 
+- **Battery arbitrage – forced discharge at expensive prices**: a new battery
+  actuator "Entladeleistungs-Sollwert (erzwungen)" lets the battery discharge on
+  the dynamic tariff. New ceiling "Speicher entladen bei ≥ (ct/kWh)" (0 = off):
+  when the price is at/above it and the SoC is above the reserve floor, the
+  battery is driven to full discharge; charge/discharge/surplus are mutually
+  exclusive (one controller). The battery's tariff toggle now governs both
+  grid-charge and forced discharge, sharing the reserve-/target-SoC band.
 - **Battery grid-charging on the dynamic tariff**: the battery can now charge
   from the grid in cheap/negative price windows. A global price ceiling
   "Speicher netzladen bei ≤ (ct/kWh)" (default **0** = only free/negative) plus a
