@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from smart_energy_agent.control import (
-    ConsumerDecision, decide_action, decide_modulation, decide_tariff_actions,
+    ConsumerDecision, ControlEngine, decide_action, decide_grid_charge,
+    decide_modulation, decide_tariff_actions,
 )
 from smart_energy_agent.store import Store
 
@@ -77,6 +80,56 @@ def test_tariff_no_force_before_deadline_when_not_cheap():
     sw = {"entity": "switch.wm", "mode": "switch", "is_on": False, "last_on": 0, "last_off": 0,
           "min_runtime_s": 0, "min_off_s": 0, "satisfied": False, "deadline_min": 600, "now_min": 500}
     assert decide_tariff_actions(1000, False, [sw]) == []
+
+
+def test_grid_charge_threshold_soc_and_reserve():
+    # default threshold 0 -> only free/negative prices
+    assert decide_grid_charge(-2.0, 0.0, 50, 0, 100) is True
+    assert decide_grid_charge(5.0, 0.0, 50, 0, 100) is False
+    # custom 8 ct ceiling
+    assert decide_grid_charge(6.0, 8.0, 50, 0, 100) is True
+    # stop at the max target
+    assert decide_grid_charge(-2.0, 0.0, 90, 0, 90) is False
+    # reserve floor: top up from grid at any price below soc_min
+    assert decide_grid_charge(25.0, 0.0, 10, 20, 100) is True
+    # unknown SoC -> never
+    assert decide_grid_charge(-5.0, 0.0, None, 0, 100) is False
+
+
+def test_engine_grid_charges_battery_at_negative_price():
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((entity, data))
+
+    s = Store()
+    s._config = {"battery": [{"id": "b1", "name": "Akku", "power": "sensor.bp",
+                              "soc": "sensor.soc", "charge_power": "number.bc"}]}
+    s._settings["tariff"] = {"mode": "dynamic", "price_entity": "sensor.price", "charge_max_ct": 0.0}
+    s._settings["strategy_loads"] = {"battery:b1": {"self_consumption": True, "tariff_shift": True,
+                                                    "max_w": 5000, "w_per_unit": 1, "grid_soc_max": 90}}
+    s._live_by_id = {"sensor.price": {"state": "-3", "attributes": {"unit_of_measurement": "ct/kWh"}},
+                     "sensor.soc": {"state": "50"}, "number.bc": {"state": "0"}}
+    asyncio.run(ControlEngine(s, cs)._modulate(0.0))
+    assert ("number.bc", {"value": 5000.0}) in calls   # grid-charged to full power
+
+
+def test_engine_no_grid_charge_at_positive_price():
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((entity, data))
+
+    s = Store()
+    s._config = {"battery": [{"id": "b1", "name": "Akku", "power": "sensor.bp",
+                              "soc": "sensor.soc", "charge_power": "number.bc"}]}
+    s._settings["tariff"] = {"mode": "dynamic", "price_entity": "sensor.price", "charge_max_ct": 0.0}
+    s._settings["strategy_loads"] = {"battery:b1": {"self_consumption": True, "tariff_shift": True,
+                                                    "max_w": 5000, "w_per_unit": 1}}
+    s._live_by_id = {"sensor.price": {"state": "12", "attributes": {"unit_of_measurement": "ct/kWh"}},
+                     "sensor.soc": {"state": "50"}, "number.bc": {"state": "0"}}
+    asyncio.run(ControlEngine(s, cs)._modulate(0.0))
+    assert ("number.bc", {"value": 5000.0}) not in calls   # no grid-charge at 12 ct
 
 
 def test_battery_stop_uses_soc_and_threshold_guard():

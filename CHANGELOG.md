@@ -2,6 +2,15 @@
 
 ## 0.2.1
 
+- **Battery grid-charging on the dynamic tariff**: the battery can now charge
+  from the grid in cheap/negative price windows. A global price ceiling
+  "Speicher netzladen bei ≤ (ct/kWh)" (default **0** = only free/negative) plus a
+  per-battery **target SoC band** (min reserve … max). Below the reserve floor it
+  tops up at any price; otherwise it charges to the max target only when the
+  price is at/under the ceiling (positive-price grid charging loses money to
+  round-trip losses, hence the conservative default). The ControlEngine owns the
+  battery in both surplus and grid-charge modes (no conflict with the tariff
+  engine). Thermal storage already shifts via tariff load-shifting.
 - Strategy list tidy-up: the separate "Wallbox PV-Überschussladen" and
   "Batterie-Optimierung" strategies are **removed** — both are already covered by
   the unified surplus list. Renamed: **"PV-Überschuss: Eigenverbrauch und

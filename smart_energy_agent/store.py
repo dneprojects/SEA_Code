@@ -66,6 +66,7 @@ class Store:
                 "nt_end": "06:00",         # off-peak window end
                 "price_entity": "",        # HA sensor (ct/kWh) for dynamic mode
                 "feed_in_ct": 8.0,         # feed-in compensation (ct/kWh)
+                "charge_max_ct": 0.0,      # grid-charge storage only at price <= this (0 = negative/free)
             },
             # Absence temperature setback (concept 6.6), grouped by persons+rooms.
             # groups: [{id, name, persons:[eid], comfort_time:"HH:MM",
@@ -203,7 +204,7 @@ class Store:
             tp = patch["tariff"]
             if tp.get("mode") in ("static", "ht_nt", "dynamic"):
                 t["mode"] = tp["mode"]
-            for f in ("price_ct", "ht_price_ct", "nt_price_ct", "feed_in_ct"):
+            for f in ("price_ct", "ht_price_ct", "nt_price_ct", "feed_in_ct", "charge_max_ct"):
                 if f in tp:
                     try:
                         t[f] = float(tp[f]) if tp[f] not in (None, "") else 0.0
@@ -430,7 +431,8 @@ class Store:
                     cfg[f] = int(patch[f] or 0)
                 except (TypeError, ValueError):
                     pass
-        for f in ("min_w", "max_w", "w_per_unit", "limit_max"):  # modulating / stop limit
+        for f in ("min_w", "max_w", "w_per_unit", "limit_max",
+                  "grid_soc_min", "grid_soc_max"):  # modulating / stop / grid-charge
             if f in patch:
                 try:
                     cfg[f] = float(patch[f] or 0)
@@ -467,7 +469,8 @@ class Store:
             cfg = {"self_consumption": False, "tariff_shift": False, "priority": 5,
                    "pv_threshold_w": 0, "min_runtime_min": 0, "min_off_min": 0,
                    "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1,
-                   "limit_entity": "", "limit_max": 0, "ready_entity": "", "latest_start": ""}
+                   "limit_entity": "", "limit_max": 0, "ready_entity": "", "latest_start": "",
+                   "grid_soc_min": 0, "grid_soc_max": 100}
             cfg.update(sl.get(d["key"], {}))
             # The battery's stop signal is always its SoC — fill it in automatically
             # so the UI only asks for the threshold (active once limit_max > 0).

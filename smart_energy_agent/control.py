@@ -142,6 +142,27 @@ def decide_modulation(surplus_signed: float, mods: list[dict]) -> list[dict]:
     return out
 
 
+def decide_grid_charge(
+    price_ct: Optional[float], charge_max_ct: float,
+    soc: Optional[float], soc_min: float, soc_max: float,
+) -> bool:
+    """Whether to charge storage from the grid now (dynamic-tariff strategy).
+
+    Two reasons: (1) below the reserve floor ``soc_min`` → top up at any price;
+    (2) the current price is at/under ``charge_max_ct`` (default 0 = only free or
+    negative prices) and the SoC is still below the ``soc_max`` target. Charging
+    a battery from a positive-price grid usually loses money to round-trip
+    losses, hence the conservative default.
+    """
+    if soc is None:
+        return False
+    if soc_min > 0 and soc < soc_min:
+        return True
+    if price_ct is not None and price_ct <= charge_max_ct and soc < soc_max:
+        return True
+    return False
+
+
 class ControlEngine:
     """Builds decision input from the store and executes one action per cycle."""
 
@@ -181,13 +202,27 @@ class ControlEngine:
             ))
         return out
 
+    def _battery_soc(self, d: dict) -> Optional[float]:
+        s = d.get("soc")
+        if not s:
+            return None
+        try:
+            return float(self._store.live_state(s).get("state"))
+        except (TypeError, ValueError):
+            return None
+
     def _mods(self) -> list[dict]:
-        """Modulating (setpoint) self-consumption loads with current setpoint."""
+        """Modulating (setpoint) loads with current setpoint. Includes PV-surplus
+        loads plus batteries enabled for tariff grid-charging."""
         out = []
         for d in self._store.strategy_devices():
             cfg = d["cfg"]
             eid = d.get("setpoint")
-            if d.get("control_mode") != "setpoint" or not eid or not cfg.get("self_consumption"):
+            if d.get("control_mode") != "setpoint" or not eid:
+                continue
+            is_batt = d.get("kind") == "battery"
+            grid_charge = is_batt and bool(cfg.get("tariff_shift"))
+            if not cfg.get("self_consumption") and not grid_charge:
                 continue
             max_w = float(cfg.get("max_w", 0) or 0)
             if max_w <= 0:
@@ -204,14 +239,42 @@ class ControlEngine:
             ready = cfg.get("ready_entity")
             if eff_max and ready and not self._store.entity_truthy(ready):
                 eff_max = 0.0
+            # Battery: grid-charge from the dynamic tariff (cheap/negative price or
+            # below the reserve floor) takes precedence over surplus modulation.
+            force_full = False
+            if grid_charge and decide_grid_charge(
+                self._store.current_price_ct(),
+                float(self._store.tariff().get("charge_max_ct", 0) or 0),
+                self._battery_soc(d),
+                float(cfg.get("grid_soc_min", 0) or 0),
+                float(cfg.get("grid_soc_max", 100) or 100),
+            ):
+                force_full = True
+                eff_max = max_w
             out.append({"entity": eid, "domain": eid.split(".", 1)[0],
                         "cur_unit": cur_unit, "cur_w": cur_unit * wpu, "wpu": wpu,
                         "min_w": float(cfg.get("min_w", 0) or 0), "max_w": eff_max,
-                        "priority": int(cfg.get("priority", 5))})
+                        "priority": int(cfg.get("priority", 5)), "force_full": force_full})
         return out
 
+    async def _set_unit(self, m: dict, unit: float, label: str) -> None:
+        if abs(unit - m["cur_unit"]) < 0.1 or m["domain"] not in ("number", "input_number"):
+            return
+        try:
+            await self._call_service(m["domain"], "set_value", m["entity"], {"value": unit})
+            _LOGGER.info("Control: %s -> %s (%s)", m["entity"], unit, label)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Modulation failed for %s: %s", m["entity"], err)
+
     async def _modulate(self, surplus_signed: float) -> None:
-        for a in decide_modulation(surplus_signed, self._mods()):
+        mods = self._mods()
+        # Grid-charging batteries are driven to full power (from the grid), and
+        # kept out of the surplus allocation below.
+        forced = [m for m in mods if m.get("force_full")]
+        for m in forced:
+            await self._set_unit(m, round(m["max_w"] / (m["wpu"] or 1.0), 2), "Netzladen (Tarif)")
+        normal = [m for m in mods if not m.get("force_full")]
+        for a in decide_modulation(surplus_signed, normal):
             if abs(a["unit"] - a["cur_unit"]) < 0.1:
                 continue
             if a["domain"] not in ("number", "input_number"):
@@ -297,7 +360,9 @@ class TariffEngine:
         out: list[dict] = []
         for d in self._store.strategy_devices():
             cfg = d["cfg"]
-            if not cfg.get("tariff_shift") or cfg.get("self_consumption"):
+            # Batteries are grid-charged by the ControlEngine (SoC-aware), not here.
+            if (not cfg.get("tariff_shift") or cfg.get("self_consumption")
+                    or d.get("kind") == "battery"):
                 continue
             mode = d.get("control_mode")
             if mode == "switch" and d.get("switch"):
