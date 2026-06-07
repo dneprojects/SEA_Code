@@ -233,7 +233,7 @@
         </div>
         <div class="panel-title" style="font-size:13px;margin:8px 0 4px">Leistung (W)</div>
         <div class="legend" id="chart-legend"></div>
-        <p class="sub" style="margin:0 0 4px">Leistungen (abwählbar in der Legende) · durchgezogen = Verlauf · gestrichelt = Prognose</p>
+        <p class="sub" style="margin:0 0 4px">Leistungen (abwählbar in der Legende) · durchgezogen = Verlauf · gestrichelt = Prognose · <b>Zeitbereich mit der Maus aufziehen</b> (Zurücksetzen über 24 h/7 Tage/30 Tage)</p>
         <div class="chart-wrap"><div id="chart"></div></div>
         <p class="sub" style="margin:14px 0 0">Detail der oben ausgewählten Geräte – je Sensor-Klasse ein Plot (jede Größe auf ihren eigenen Wertebereich skaliert).</p>
         <div id="detail-plots"></div>
@@ -979,6 +979,43 @@
         ? new Date(ts*1000).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})
         : new Date(ts*1000).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
     }
+    // Drag a horizontal range on a chart SVG to zoom into that time window.
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    function attachBrush(svg, tMin, tMax) {
+      const W=900, x0=58, x1=884;
+      const H = (svg.viewBox.baseVal && svg.viewBox.baseVal.height) || 300;
+      const yTop=12, yBot=H-28, span=(tMax-tMin)||1;
+      const clampX = x => Math.max(x0, Math.min(x1, x));
+      const toX = ev => { const r=svg.getBoundingClientRect(); return clampX((ev.clientX-r.left)/r.width*W); };
+      const tAt = x => Math.round(tMin + (x-x0)/(x1-x0)*span);
+      svg.style.cursor = "crosshair";
+      svg.addEventListener("mousedown", ev => {
+        if (ev.button!==0) return;
+        const sx = toX(ev);
+        const rect = document.createElementNS(SVG_NS, "rect");
+        rect.setAttribute("y", yTop); rect.setAttribute("height", String(yBot-yTop));
+        rect.setAttribute("fill", "#2f5f8f"); rect.setAttribute("opacity", "0.18");
+        rect.setAttribute("pointer-events", "none"); rect.setAttribute("x", String(sx)); rect.setAttribute("width", "0");
+        svg.appendChild(rect);
+        let cx = sx;
+        const move = e => { cx = toX(e); const a=Math.min(sx,cx), b=Math.max(sx,cx);
+          rect.setAttribute("x", String(a)); rect.setAttribute("width", String(b-a)); };
+        const up = () => {
+          window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up);
+          if (rect.parentNode) svg.removeChild(rect);
+          const a=Math.min(sx,cx), b=Math.max(sx,cx);
+          if (b-a >= 6) { const t0=tAt(a), t1=tAt(b);
+            if (t1-t0 >= 60) {
+              winFrom=t0; winTo=t1;
+              document.querySelectorAll("#range-seg button").forEach(btn=>btn.classList.remove("active"));
+              loadHistory();
+            }
+          }
+        };
+        window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
+        ev.preventDefault();
+      });
+    }
     function renderChart() {
       const el = document.getElementById("chart");
       const xfmt = xfmtFor(winFrom, winTo);
@@ -994,6 +1031,7 @@
         document.getElementById("detail-plots").innerHTML = ""; return;
       }
       el.innerHTML = svgMultiChart(ser, winFrom, winTo, xfmt, fmtY, 300);
+      const sv = el.querySelector("svg"); if (sv) attachBrush(sv, winFrom, winTo);
       renderDetailPlots();
     }
     // One plot per sensor class (unit) for the entities of the selected devices.
@@ -1026,6 +1064,7 @@
           + `<div class="legend">${leg.join("")}</div>`
           + `<div class="chart-wrap">${svgMultiChart(ser, winFrom, winTo, xfmt, yfmt, 180)}</div></div>`;
       }).join("");
+      box.querySelectorAll("svg").forEach(sv => attachBrush(sv, winFrom, winTo));
     }
 
     // ---------- Einsparung ----------

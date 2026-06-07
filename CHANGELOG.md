@@ -2,6 +2,9 @@
 
 ## 0.2.1
 
+- Verlauf: **drag a time range with the mouse** on any plot to zoom into it
+  (a selection rectangle follows the drag); the range buttons (24 h/7 d/30 d)
+  reset. All plots share the same window.
 - Menu reordered: Dashboard, Verlauf, Strategien, Einsparung, Geräte,
   Einstellungen. Device gear buttons now open just that device's settings block
   (all others collapsed).
