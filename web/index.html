@@ -177,10 +177,10 @@
   <div class="layout">
     <nav class="sidebar">
       <a href="#" data-view="dashboard" class="active" onclick="showView('dashboard');return false;">Dashboard</a>
-      <a href="#" data-view="devices" onclick="showView('devices');return false;">Geräte</a>
       <a href="#" data-view="history" onclick="showView('history');return false;">Verlauf</a>
-      <a href="#" data-view="savings" onclick="showView('savings');return false;">Einsparung</a>
       <a href="#" data-view="consumers" onclick="showView('consumers');return false;">Strategien</a>
+      <a href="#" data-view="savings" onclick="showView('savings');return false;">Einsparung</a>
+      <a href="#" data-view="devices" onclick="showView('devices');return false;">Geräte</a>
       <a href="#" class="parent" onclick="showView('basic');return false;">Einstellungen</a>
       <a href="#" class="sub" data-view="basic" onclick="showView('basic');return false;">Grundeinstellungen</a>
       <a href="#" class="sub" data-view="setup" onclick="showView('setup');return false;">Erzeuger/Verbraucher</a>
@@ -578,6 +578,13 @@
     }
     const openInstances = new Set(["grid"]);
     function onToggleDev(id, open) { if (open) openInstances.add(id); else openInstances.delete(id); }
+    // Jump to one device's settings: collapse all others, open just this one.
+    // `ref` is either a strategy key ("kind:id") or a plain instance id.
+    function openDeviceSettings(ref) {
+      const id = String(ref).includes(":") ? String(ref).slice(String(ref).indexOf(":")+1) : ref;
+      openInstances.clear(); openInstances.add(id);
+      showView("setup");   // loadSetup() -> renderSetup() respects openInstances
+    }
     function reqStar(f) { return f.optional ? '' : ' <span style="color:#9c3a2f">*</span>'; }
     function cell(c, cls) { return `<div class="${cls||''}">${c}</div>`; }
     function spanRow(label, content) { return cell(label) + cell(content, "swspan"); }
@@ -1141,7 +1148,7 @@
           <span class="sub" title="Priorität 1–10: höhere Geräte bekommen den Überschuss zuerst / werden zuerst zugeschaltet">Prio</span>
           <input type="number" min="1" max="10" style="width:48px" value="${cfg.priority}" onchange="setLoad('${d.key}','priority',this.value)">
           <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${d.satisfied?' · <b style=\"color:#3f9b2f\">Ziel erreicht</b>':''}${cfg.latest_start?' · ⏱ '+cfg.latest_start:''}</span>
-          <button class="btn" style="margin-left:auto;padding:1px 7px" title="Geräte-Einstellungen öffnen" onclick="showView('setup')">⚙</button>
+          <button class="btn" style="margin-left:auto;padding:1px 7px" title="Geräte-Einstellungen öffnen" onclick="openDeviceSettings('${d.key}')">⚙</button>
         </div>`;
       }).join("");
     }
@@ -1158,7 +1165,7 @@
           <label title="In günstige Zeiten verschieben" style="min-width:170px">
             <input type="checkbox" ${cfg.tariff_shift?'checked':''} onchange="setLoad('${d.key}','tariff_shift',this.checked)"> ${d.name}</label>
           <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${cfg.latest_start?' · ⏱ spätestens '+cfg.latest_start:''}</span>
-          <button class="btn" style="margin-left:auto;padding:1px 7px" title="Geräte-Einstellungen öffnen (Deadline „spätester Start“ etc.)" onclick="showView('setup')">⚙</button>
+          <button class="btn" style="margin-left:auto;padding:1px 7px" title="Geräte-Einstellungen öffnen (Deadline „spätester Start“ etc.)" onclick="openDeviceSettings('${d.key}')">⚙</button>
         </div>`;
       }).join("");
     }
