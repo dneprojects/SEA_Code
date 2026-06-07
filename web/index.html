@@ -232,18 +232,10 @@
           <button class="btn" onclick="applyHistRange()">Anwenden</button>
         </div>
         <div class="legend" id="chart-legend"></div>
-        <p class="sub" style="margin:0 0 4px">Durchgezogen = Verlauf · gestrichelt = Prognose</p>
+        <p class="sub" style="margin:0 0 4px">Leistungen (abwählbar in der Legende) · durchgezogen = Verlauf · gestrichelt = Prognose</p>
         <div class="chart-wrap"><div id="chart"></div></div>
-
-        <div class="controls" style="margin-top:14px">
-          <span class="sub">Gerät im Detail:</span>
-          <select id="hist-device" onchange="loadEntityHistory()"></select>
-        </div>
-        <div id="entity-wrap" style="display:none">
-          <p class="sub" style="margin:0 0 4px">Verlauf der Geräte-Entitäten (z. B. SoC, Temperatur). Jede Größe auf ihren eigenen Wertebereich skaliert.</p>
-          <div class="legend" id="entity-legend"></div>
-          <div class="chart-wrap"><div id="entity-chart"></div></div>
-        </div>
+        <p class="sub" style="margin:14px 0 0">Detail der oben ausgewählten Geräte – je Sensor-Klasse ein Plot (jede Größe auf ihren eigenen Wertebereich skaliert).</p>
+        <div id="detail-plots"></div>
       </section>
 
       <!-- Einsparung -->
@@ -369,14 +361,17 @@
   <script>
     const api = (p) => p.replace(/^\//, "");
     let view = "dashboard";
-    const SERIES = [
-      { key:"pv_w", label:"PV", color:"#d9a52b" },
+    // Balance series come from the app recorder (aggregates not tied to one
+    // device). Per-device power series are added on top from HA's recorder.
+    const BAL_SERIES = [
       { key:"house_load_w", label:"Haus", color:"#2f5f8f" },
       { key:"grid_w", label:"Netz", color:"#7a8a99" },
-      { key:"battery_w", label:"Batterie", color:"#d97a2b" },
       { key:"surplus_w", label:"Überschuss", color:"#3f9b2f" },
     ];
-    const visible = { pv_w:true, house_load_w:true, grid_w:true, battery_w:true, surplus_w:true };
+    const DEV_COLORS = ["#d9a52b","#d97a2b","#a05ab0","#c0392e","#0a9396","#8e44ad","#16a085","#e67e22"];
+    let visible = { house_load_w:true, grid_w:true, surplus_w:true };
+    let histDevices = [];     // [{key,name,entities:[{entity_id,label,unit,cls}]}]
+    let devHist = {};         // {entity_id: [{t,v}]}
 
     function fmtW(w) {
       if (w === null || w === undefined) return "–";
@@ -884,63 +879,58 @@
             house_load_w: (p.load_w!=null?p.load_w:p.watt), surplus_w:clampSurplus(p.surplus_w) })); }
         catch(e) {}
       }
+      // configured devices + their entity history (per-device powers + detail)
+      try { histDevices = (await fetch(api("/api/history-devices")).then(r=>r.json())).devices || []; }
+      catch(e) { histDevices = []; }
+      histDevices.forEach(d => { if (visible[d.key]===undefined) visible[d.key] = true; });
+      const eids = [...new Set(histDevices.flatMap(d => d.entities.map(e=>e.entity_id)))];
+      devHist = {};
+      if (eids.length) {
+        const to = Math.floor(Date.now()/1000);
+        try { devHist = (await fetch(api("/api/entity-history")+"?ids="+encodeURIComponent(eids.join(","))+"&from="+winFrom+"&to="+to).then(r=>r.json())).series || {}; }
+        catch(e) { devHist = {}; }
+      }
       document.getElementById("hist-from").value = fmtLocalInput(winFrom);
       document.getElementById("hist-to").value = fmtLocalInput(winTo);
       renderLegend(); renderChart();
-      loadHistDevices(); loadEntityHistory();   // device-detail history
     }
 
-    // ---------- per-device entity history ----------
-    let histDevices = [];     // [{key,name,entities:[{entity_id,label,unit}]}]
-    let entHist = {};         // {entity_id: [{t,v}]}
-    const ENT_COLORS = ["#d9a52b","#2f5f8f","#7a8a99","#d97a2b","#3f9b2f","#a05ab0","#c0392e","#0a9396"];
     function fmtNum(v) { return Math.abs(v)>=100 ? Math.round(v) : (Math.round(v*10)/10); }
-    async function loadHistDevices() {
-      const cur = document.getElementById("hist-device").value;
-      try { histDevices = (await fetch(api("/api/history-devices")).then(r=>r.json())).devices || []; }
-      catch(e) { histDevices = []; }
-      document.getElementById("hist-device").innerHTML =
-        '<option value="">— Gerät wählen —</option>' +
-        histDevices.map(d => `<option value="${d.key}"${d.key===cur?" selected":""}>${d.name}</option>`).join("");
+    function devColor(key) { const i = histDevices.findIndex(d=>d.key===key); return DEV_COLORS[(i<0?0:i)%DEV_COLORS.length]; }
+    function normPower(unit, v) { return (unit && unit.toLowerCase()==="kw") ? v*1000 : v; }
+    // Sum several entity series (step interpolation over the union of timestamps).
+    function sumSeries(arrs) {
+      arrs = arrs.filter(a => a && a.length);
+      if (!arrs.length) return [];
+      if (arrs.length===1) return arrs[0];
+      const times = [...new Set(arrs.flat().map(p=>p.t))].sort((a,b)=>a-b);
+      const idx = arrs.map(()=>0), last = arrs.map(()=>null), out=[];
+      for (const t of times) {
+        let s=0, any=false;
+        arrs.forEach((a,i)=>{ while(idx[i]<a.length && a[idx[i]].t<=t){ last[i]=a[idx[i]].v; idx[i]++; } if(last[i]!=null){ s+=last[i]; any=true; } });
+        if (any) out.push({t, v:s});
+      }
+      return out;
     }
-    async function loadEntityHistory() {
-      const key = document.getElementById("hist-device").value;
-      const dev = histDevices.find(d => d.key===key);
-      const wrap = document.getElementById("entity-wrap");
-      if (!dev) { entHist = {}; wrap.style.display = "none"; return; }
-      wrap.style.display = "block";
-      const ids = dev.entities.map(e => e.entity_id);
-      const to = Math.floor(Date.now()/1000);
-      try { entHist = (await fetch(api("/api/entity-history")+"?ids="+encodeURIComponent(ids.join(","))+"&from="+winFrom+"&to="+to).then(r=>r.json())).series || {}; }
-      catch(e) { entHist = {}; }
-      renderEntityChart(dev);
+    function devPowerPts(d) {
+      return sumSeries(d.entities.filter(e=>e.cls==="power").map(e =>
+        (devHist[e.entity_id]||[]).map(p=>({t:p.t, v:normPower(e.unit, p.v)}))));
     }
-    function renderEntityChart(dev) {
-      const W=900, H=200, padL=8, padR=8, padT=10, padB=4;
-      const t0=winFrom, t1=Math.floor(Date.now()/1000), span=(t1-t0)||1;
-      const xOf = t => padL + (t-t0)/span*(W-padL-padR);
-      let paths="", legend="";
-      dev.entities.forEach((e,i) => {
-        const col = ENT_COLORS[i%ENT_COLORS.length];
-        const pts = (entHist[e.entity_id]||[]).filter(p => p.t>=t0);
-        let lastTxt = "–";
-        if (pts.length) {
-          const vs = pts.map(p=>p.v); let mn=Math.min(...vs), mx=Math.max(...vs);
-          if (mn===mx) { mn-=1; mx+=1; }
-          const yOf = v => padT + (1-(v-mn)/(mx-mn))*(H-padT-padB);
-          paths += `<path d="${pts.map((p,j)=>(j?"L":"M")+xOf(p.t).toFixed(1)+" "+yOf(p.v).toFixed(1)).join(" ")}" fill="none" stroke="${col}" stroke-width="1.6" opacity="0.9"/>`;
-          lastTxt = fmtNum(vs[vs.length-1]) + (e.unit?(" "+e.unit):"");
-        }
-        legend += `<span><span class="sw" style="background:${col}"></span>${e.label}: <b>${lastTxt}</b></span>`;
-      });
-      document.getElementById("entity-chart").innerHTML =
-        `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:200px">${paths}</svg>`;
-      document.getElementById("entity-legend").innerHTML = legend;
+    function classTitle(unit, cls) {
+      const u = (unit||"").toLowerCase();
+      if (u.indexOf("°c")>=0 || u.indexOf("°f")>=0) return "Temperatur"+(unit?" ("+unit+")":"");
+      if (u==="%") return cls==="soc" ? "Ladezustand (%)" : "Prozent (%)";
+      if (u==="w"||u==="kw") return "Leistung (W)";
+      if (u==="a") return "Strom (A)";
+      if (u==="v") return "Spannung (V)";
+      if (unit) return unit;
+      return ({soc:"Ladezustand", setpoint:"Sollwerte", power:"Leistung"})[cls] || "Sonstige";
     }
+    function legChip(key,color,label){ return `<span class="${visible[key]?"":"off"}" onclick="toggleSeries('${key}')"><span class="sw" style="background:${color}"></span>${label}</span>`; }
     function renderLegend() {
-      document.getElementById("chart-legend").innerHTML = SERIES.map(s =>
-        `<span class="${visible[s.key]?"":"off"}" onclick="toggleSeries('${s.key}')">
-           <span class="sw" style="background:${s.color}"></span>${s.label}</span>`).join("");
+      const bal = BAL_SERIES.map(s=>legChip(s.key,s.color,s.label)).join("");
+      const dev = histDevices.map(d=>legChip(d.key, devColor(d.key), d.name)).join("");
+      document.getElementById("chart-legend").innerHTML = bal + dev;
     }
     function toggleSeries(k) { visible[k] = !visible[k]; renderLegend(); renderChart(); }
     function niceTicks(min, max, count) {
@@ -952,23 +942,22 @@
       for (let v = Math.ceil(min/step)*step; v <= max + 1e-9; v += step) ticks.push(v);
       return ticks;
     }
-    // Time-based chart: solid history + dashed forecast (same colors), grid + axes.
-    function svgTimeChart(hist, fc, series, tMin, tMax, xfmt) {
-      const W=900, H=300, L=58, Rm=16, T=12, B=28;
+    // Generic time chart. series: [{color, dashed, pts:[{t,v}]}]; yfmt formats the axis.
+    function svgMultiChart(series, tMin, tMax, xfmt, yfmt, height) {
+      const W=900, H=height||300, L=58, Rm=16, T=12, B=28;
       const x0=L, x1=W-Rm, y0=T, y1=H-B;
-      const keys = series.map(s=>s.key);
-      let vmin=0, vmax=0;
-      const scan = arr => arr.forEach(d => keys.forEach(k => { const v=d[k]; if (v!=null){ if(v<vmin)vmin=v; if(v>vmax)vmax=v; } }));
-      scan(hist); scan(fc);
+      let vmin=0, vmax=0, has=false;
+      series.forEach(s => s.pts.forEach(p => { if (p.v!=null) {
+        if (!has){ vmin=vmax=p.v; has=true; } if (p.v<vmin)vmin=p.v; if (p.v>vmax)vmax=p.v; } }));
+      if (!has) { vmin=0; vmax=1; }
       if (vmax===vmin) vmax = vmin+1;
       const span = (tMax-tMin)||1;
-      const X = ts => x0 + (ts-tMin)/span*(x1-x0);
+      const X = t => x0 + (t-tMin)/span*(x1-x0);
       const Y = v => y1 - (v-vmin)/(vmax-vmin)*(y1-y0);
-      const fmtY = v => Math.abs(v)>=1000 ? (v/1000).toFixed(1)+" kW" : Math.round(v)+" W";
       let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block">`;
       niceTicks(vmin, vmax, 5).forEach(v => { const yy=Y(v);
         svg += `<line x1="${x0}" y1="${yy}" x2="${x1}" y2="${yy}" stroke="${v===0?'#cfcfcf':'#eee'}" stroke-width="1"/>`
-          + `<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="#6b6c6e">${fmtY(v)}</text>`; });
+          + `<text x="${x0-6}" y="${yy+3}" text-anchor="end" font-size="10" fill="#6b6c6e">${yfmt(v)}</text>`; });
       const XT=6;
       for (let t=0; t<XT; t++) { const ts=tMin+span*t/(XT-1), xx=X(ts);
         svg += `<line x1="${xx}" y1="${y0}" x2="${xx}" y2="${y1}" stroke="#f2f2f2" stroke-width="1"/>`
@@ -977,22 +966,62 @@
       if (now>=tMin && now<=tMax) { const nx=X(now);
         svg += `<line x1="${nx}" y1="${y0}" x2="${nx}" y2="${y1}" stroke="#bbb" stroke-width="1" stroke-dasharray="3 3"/>`; }
       svg += `<line x1="${x0}" y1="${y0}" x2="${x0}" y2="${y1}" stroke="#d6d6d6" stroke-width="1"/>`;
-      const drawPath = (arr, key, color, dashed) => { let pts="", started=false;
-        arr.forEach(d => { const v=d[key]; if (v==null||d.ts<tMin||d.ts>tMax){started=false;return;}
-          pts += (started?" L":"M")+X(d.ts).toFixed(1)+" "+Y(v).toFixed(1); started=true; });
-        return pts ? `<path d="${pts}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round"${dashed?' stroke-dasharray="5 4"':''}/>` : ""; };
-      series.forEach(s => { svg += drawPath(hist, s.key, s.color, false) + drawPath(fc, s.key, s.color, true); });
+      series.forEach(s => { let d="", started=false;
+        s.pts.forEach(p => { if (p.v==null||p.t<tMin||p.t>tMax){started=false;return;}
+          d += (started?" L":"M")+X(p.t).toFixed(1)+" "+Y(p.v).toFixed(1); started=true; });
+        if (d) svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="1.8" stroke-linejoin="round"${s.dashed?' stroke-dasharray="5 4"':''}/>`; });
       return svg + `</svg>`;
+    }
+    function xfmtFor(tMin, tMax) {
+      const wide = (tMax-tMin) > 3*86400;
+      return ts => wide
+        ? new Date(ts*1000).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})
+        : new Date(ts*1000).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
     }
     function renderChart() {
       const el = document.getElementById("chart");
-      if (!histData.length && !fcData.length) {
-        el.innerHTML = "<p style='color:var(--muted);padding:20px'>Noch keine Daten — der Recorder zeichnet alle 30 s auf.</p>"; return; }
-      const wide = (winTo-winFrom) > 3*86400;
-      const xfmt = ts => wide
-        ? new Date(ts*1000).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})
-        : new Date(ts*1000).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
-      el.innerHTML = svgTimeChart(histData, fcData, SERIES.filter(s=>visible[s.key]), winFrom, winTo, xfmt);
+      const xfmt = xfmtFor(winFrom, winTo);
+      const fmtY = v => Math.abs(v)>=1000 ? (v/1000).toFixed(1)+" kW" : Math.round(v)+" W";
+      const ser = [];
+      BAL_SERIES.forEach(s => { if (!visible[s.key]) return;
+        ser.push({color:s.color, pts: histData.map(d=>({t:d.ts, v:d[s.key]})).filter(p=>p.v!=null)});
+        ser.push({color:s.color, dashed:true, pts: fcData.map(d=>({t:d.ts, v:d[s.key]})).filter(p=>p.v!=null)});
+      });
+      histDevices.forEach(d => { if (visible[d.key]) ser.push({color:devColor(d.key), pts: devPowerPts(d)}); });
+      if (!ser.some(s=>s.pts.length)) {
+        el.innerHTML = "<p style='color:var(--muted);padding:20px'>Noch keine Daten — der Recorder zeichnet alle 30 s auf.</p>";
+        document.getElementById("detail-plots").innerHTML = ""; return;
+      }
+      el.innerHTML = svgMultiChart(ser, winFrom, winTo, xfmt, fmtY, 300);
+      renderDetailPlots();
+    }
+    // One plot per sensor class (unit) for the entities of the selected devices.
+    // Cumulative energies are not shown.
+    function renderDetailPlots() {
+      const box = document.getElementById("detail-plots");
+      const t1 = Math.floor(Date.now()/1000), xfmt = xfmtFor(winFrom, t1);
+      const groups = {};   // groupKey -> {unit, cls, items:[{dev,ent}]}
+      histDevices.filter(d=>visible[d.key]).forEach(d => d.entities.forEach(e => {
+        if (e.cls==="energy") return;
+        const gk = e.unit || ("cls:"+e.cls);
+        (groups[gk] = groups[gk] || {unit:e.unit, cls:e.cls, items:[]}).items.push({dev:d, ent:e});
+      }));
+      const keys = Object.keys(groups);
+      if (!keys.length) { box.innerHTML = "<p class='sub' style='margin-top:6px'>Keine zusätzlichen Größen für die ausgewählten Geräte.</p>"; return; }
+      box.innerHTML = keys.map(gk => {
+        const g = groups[gk], ser = [], leg = [];
+        g.items.forEach((it,i) => {
+          const col = DEV_COLORS[i%DEV_COLORS.length];
+          const pts = (devHist[it.ent.entity_id]||[]).filter(p=>p.t>=winFrom);
+          ser.push({color:col, pts});
+          const last = pts.length ? fmtNum(pts[pts.length-1].v)+(it.ent.unit?(" "+it.ent.unit):"") : "–";
+          leg.push(`<span><span class="sw" style="background:${col}"></span>${it.dev.name} · ${it.ent.label}: <b>${last}</b></span>`);
+        });
+        const yfmt = v => fmtNum(v)+(g.unit?(" "+g.unit):"");
+        return `<div style="margin-top:12px"><div class="panel-title" style="font-size:13px;margin:0 0 4px">${classTitle(g.unit, g.cls)}</div>`
+          + `<div class="legend">${leg.join("")}</div>`
+          + `<div class="chart-wrap">${svgMultiChart(ser, winFrom, t1, xfmt, yfmt, 180)}</div></div>`;
+      }).join("");
     }
 
     // ---------- Einsparung ----------

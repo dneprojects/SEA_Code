@@ -5,10 +5,13 @@
 - Menu reordered: Dashboard, Verlauf, Strategien, Einsparung, Geräte,
   Einstellungen. Device gear buttons now open just that device's settings block
   (all others collapsed).
-- Verlauf: a **per-device detail history**. Pick a device to plot the history of
-  its entities (SoC, temperature, setpoints, power, …) from HA's recorder — each
-  series auto-scaled to its own range. New HA history fetch (`get_history`) +
-  `/api/history-devices` and `/api/entity-history`.
+- Verlauf reworked: the **top plot now also shows every device's power**
+  (consumers, wallbox, battery …) as toggleable series next to the balance
+  (Haus/Netz/Überschuss). For the devices selected (enabled) in the top legend, a
+  **set of detail plots** appears below — **one plot per sensor class** (all
+  temperatures together, all SoC together, …) from HA's recorder, each auto-scaled
+  to its own range. **Cumulative energies (kWh) are not shown.** New HA history
+  fetch (`get_history`) + `/api/history-devices` and `/api/entity-history`.
 - **Battery arbitrage – forced discharge at expensive prices**: a new battery
   actuator "Entladeleistungs-Sollwert (erzwungen)" lets the battery discharge on
   the dynamic tariff. New ceiling "Speicher entladen bei ≥ (ct/kWh)" (0 = off):

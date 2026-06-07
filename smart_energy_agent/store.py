@@ -491,42 +491,44 @@ class Store:
 
         out: list[dict[str, Any]] = []
 
-        def add(key: str, name: str, pairs: list[tuple[str, Any]]) -> None:
-            ents = [{"entity_id": e, "label": lbl, "unit": unit(e)} for lbl, e in pairs if e]
+        def add(key: str, name: str, triples: list[tuple[str, Any, str]]) -> None:
+            ents = [{"entity_id": e, "label": lbl, "unit": unit(e), "cls": cls}
+                    for lbl, e, cls in triples if e]
             if ents:
                 out.append({"key": key, "name": name, "entities": ents})
 
         g = cfg.get("grid") or {}
-        add("grid", "Netz", [("Netzleistung", g.get("power")),
-                             ("Bezug", g.get("import_power")), ("Einspeisung", g.get("export_power"))])
+        add("grid", "Netz", [("Netzleistung", g.get("power"), "power"),
+                             ("Bezug", g.get("import_power"), "power"),
+                             ("Einspeisung", g.get("export_power"), "power")])
         for kind in ("pv", "battery", "heat_pump", "water_heater", "ev_charger", "consumers"):
             spec = setup_catalog.find_kind(kind)
             klabel = spec["label"] if spec else kind
             for inst in cfg.get(kind) or []:
                 if not isinstance(inst, dict):
                     continue
-                pairs: list[tuple[str, Any]] = []
+                t: list[tuple[str, Any, str]] = []
                 if inst.get("power"):   # battery: single power entity (+/- charge)
-                    pairs.append(("Leistung", inst["power"]))
+                    t.append(("Leistung", inst["power"], "power"))
                 for p in (inst.get("powers") or []):
                     if p.get("entity"):
-                        pairs.append((p.get("name") or "Leistung", p["entity"]))
+                        t.append((p.get("name") or "Leistung", p["entity"], "power"))
                 for e in (inst.get("energies") or []) + (inst.get("energy") or []):
                     if isinstance(e, dict) and e.get("entity"):
-                        pairs.append((e.get("name") or "Energie", e["entity"]))
+                        t.append((e.get("name") or "Energie", e["entity"], "energy"))
                 if inst.get("soc"):
-                    pairs.append(("SoC", inst["soc"]))
+                    t.append(("SoC", inst["soc"], "soc"))
                 if inst.get("charge_power"):
-                    pairs.append(("Ladesollwert", inst["charge_power"]))
+                    t.append(("Ladesollwert", inst["charge_power"], "setpoint"))
                 if inst.get("discharge_power"):
-                    pairs.append(("Entladesollwert", inst["discharge_power"]))
+                    t.append(("Entladesollwert", inst["discharge_power"], "setpoint"))
                 for c in (inst.get("circuits") or []):
                     nm = c.get("name") or "Kreis"
                     if c.get("temp"):
-                        pairs.append((nm + " Temp", c["temp"]))
+                        t.append((nm + " Temp", c["temp"], "temp"))
                     if c.get("setpoint"):
-                        pairs.append((nm + " Soll", c["setpoint"]))
-                add(f"{kind}:{inst.get('id')}", inst.get("name") or klabel, pairs)
+                        t.append((nm + " Soll", c["setpoint"], "setpoint"))
+                add(f"{kind}:{inst.get('id')}", inst.get("name") or klabel, t)
         return out
 
     def group_present(self, group: dict[str, Any]) -> Optional[bool]:
