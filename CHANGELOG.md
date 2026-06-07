@@ -10,7 +10,10 @@
   (Haus/Netz/Überschuss). For the devices selected (enabled) in the top legend, a
   **set of detail plots** appears below — **one plot per sensor class** (all
   temperatures together, all SoC together, …) from HA's recorder, each auto-scaled
-  to its own range. **Cumulative energies (kWh) are not shown.** New HA history
+  to its own range. All plots share the **same time window** as the top plot.
+  **Cumulative energies (kWh) and the measured device power are not repeated**
+  below (the power is already in the top plot) — only additional quantities like
+  the forced charge/discharge setpoint appear in the detail plots. New HA history
   fetch (`get_history`) + `/api/history-devices` and `/api/entity-history`.
 - **Battery arbitrage – forced discharge at expensive prices**: a new battery
   actuator "Entladeleistungs-Sollwert (erzwungen)" lets the battery discharge on

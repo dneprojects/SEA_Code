@@ -1000,10 +1000,13 @@
     // Cumulative energies are not shown.
     function renderDetailPlots() {
       const box = document.getElementById("detail-plots");
-      const t1 = Math.floor(Date.now()/1000), xfmt = xfmtFor(winFrom, t1);
+      const xfmt = xfmtFor(winFrom, winTo);   // same time window as the top plot
       const groups = {};   // groupKey -> {unit, cls, items:[{dev,ent}]}
       histDevices.filter(d=>visible[d.key]).forEach(d => d.entities.forEach(e => {
-        if (e.cls==="energy") return;
+        // Skip cumulative energy, and the measured device power that is already
+        // in the top plot — only ADDITIONAL quantities here (SoC, temperature,
+        // setpoints like the forced charge/discharge power, …).
+        if (e.cls==="energy" || e.cls==="power") return;
         const gk = e.unit || ("cls:"+e.cls);
         (groups[gk] = groups[gk] || {unit:e.unit, cls:e.cls, items:[]}).items.push({dev:d, ent:e});
       }));
@@ -1021,7 +1024,7 @@
         const yfmt = v => fmtNum(v)+(g.unit?(" "+g.unit):"");
         return `<div style="margin-top:12px"><div class="panel-title" style="font-size:13px;margin:0 0 4px">${classTitle(g.unit, g.cls)}</div>`
           + `<div class="legend">${leg.join("")}</div>`
-          + `<div class="chart-wrap">${svgMultiChart(ser, winFrom, t1, xfmt, yfmt, 180)}</div></div>`;
+          + `<div class="chart-wrap">${svgMultiChart(ser, winFrom, winTo, xfmt, yfmt, 180)}</div></div>`;
       }).join("");
     }
 
