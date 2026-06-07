@@ -8,7 +8,8 @@ is persisted via the store and survives restarts.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Awaitable, Callable, Optional
 
 from aiohttp import web
 
@@ -27,9 +28,13 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class WebServer:
-    def __init__(self, store: Store, ha_status: dict[str, Any]) -> None:
+    def __init__(
+        self, store: Store, ha_status: dict[str, Any],
+        history_fn: Optional[Callable[..., Awaitable[dict[str, Any]]]] = None,
+    ) -> None:
         self._store = store
         self._ha_status = ha_status
+        self._history_fn = history_fn
         self._app = web.Application()
         self._app.router.add_get("/", self._index)
         self._app.router.add_get("/api/summary", self._api_summary)
@@ -38,6 +43,8 @@ class WebServer:
         self._app.router.add_get("/api/roles", self._api_roles)
         self._app.router.add_post("/api/override", self._api_override)
         self._app.router.add_get("/api/history", self._api_history)
+        self._app.router.add_get("/api/history-devices", self._api_history_devices)
+        self._app.router.add_get("/api/entity-history", self._api_entity_history)
         self._app.router.add_get("/api/savings", self._api_savings)
         self._app.router.add_get("/api/forecast", self._api_forecast)
         self._app.router.add_get("/api/settings", self._api_settings_get)
@@ -129,6 +136,59 @@ class WebServer:
         rng = q.get("range", "24h")
         series = await self._store.history(_RANGES.get(rng, 86400))
         return web.json_response({"range": rng, "series": series})
+
+    async def _api_history_devices(self, _request: web.Request) -> web.Response:
+        return web.json_response({"devices": self._store.history_entities()})
+
+    @staticmethod
+    def _point(p: dict[str, Any]) -> Optional[tuple[int, float]]:
+        """Parse one HA history point -> (epoch_seconds, value), or None."""
+        try:
+            v = float(p.get("s", p.get("state")))
+        except (TypeError, ValueError):
+            return None
+        t = p.get("lu", p.get("last_updated", p.get("last_changed")))
+        if t is None:
+            return None
+        try:
+            ts = int(float(t))
+        except (TypeError, ValueError):
+            try:
+                ts = int(datetime.fromisoformat(str(t)).timestamp())
+            except ValueError:
+                return None
+        return ts, v
+
+    async def _api_entity_history(self, request: web.Request) -> web.Response:
+        if self._history_fn is None:
+            return web.json_response({"series": {}})
+        ids = [x for x in request.query.get("ids", "").split(",") if x]
+        try:
+            frm = int(request.query["from"])
+        except (KeyError, ValueError):
+            return web.json_response({"error": "from required"}, status=400)
+        try:
+            to = int(request.query.get("to", "0")) or None
+        except ValueError:
+            to = None
+        start_iso = datetime.fromtimestamp(frm, timezone.utc).isoformat()
+        end_iso = datetime.fromtimestamp(to, timezone.utc).isoformat() if to else None
+        try:
+            raw = await self._history_fn(ids, start_iso, end_iso)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Entity history fetch failed: %s", err)
+            raw = {}
+        series: dict[str, list[dict[str, float]]] = {}
+        for eid, points in (raw or {}).items():
+            pts = []
+            for p in (points or []):
+                if not isinstance(p, dict):
+                    continue
+                parsed = self._point(p)
+                if parsed:
+                    pts.append({"t": parsed[0], "v": parsed[1]})
+            series[eid] = pts
+        return web.json_response({"series": series})
 
     async def _api_savings(self, request: web.Request) -> web.Response:
         rng = request.query.get("range", "day")

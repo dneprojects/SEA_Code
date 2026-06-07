@@ -2,6 +2,13 @@
 
 ## 0.2.1
 
+- Menu reordered: Dashboard, Verlauf, Strategien, Einsparung, Geräte,
+  Einstellungen. Device gear buttons now open just that device's settings block
+  (all others collapsed).
+- Verlauf: a **per-device detail history**. Pick a device to plot the history of
+  its entities (SoC, temperature, setpoints, power, …) from HA's recorder — each
+  series auto-scaled to its own range. New HA history fetch (`get_history`) +
+  `/api/history-devices` and `/api/entity-history`.
 - **Battery arbitrage – forced discharge at expensive prices**: a new battery
   actuator "Entladeleistungs-Sollwert (erzwungen)" lets the battery discharge on
   the dynamic tariff. New ceiling "Speicher entladen bei ≥ (ct/kWh)" (0 = off):

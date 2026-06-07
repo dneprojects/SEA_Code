@@ -235,6 +235,26 @@ class HAClient:
         """
         return await self._command("energy/get_prefs") or {}
 
+    async def get_history(
+        self, entity_ids: list[str], start_iso: str, end_iso: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """Recorded history for the given entities via HA's recorder.
+
+        Returns ``{entity_id: [{"s": state, "lu": last_updated_epoch}, ...]}``.
+        """
+        if not entity_ids:
+            return {}
+        payload: dict[str, Any] = {
+            "start_time": start_iso,
+            "entity_ids": list(entity_ids),
+            "minimal_response": True,
+            "no_attributes": True,
+            "significant_changes_only": False,
+        }
+        if end_iso:
+            payload["end_time"] = end_iso
+        return await self._command("history/history_during_period", **payload) or {}
+
     async def call_service(
         self, domain: str, service: str, entity_id: str,
         data: Optional[dict[str, Any]] = None,

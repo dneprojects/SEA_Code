@@ -38,7 +38,7 @@ class SmartEnergyAgent:
             on_state_changed=self._on_state_changed,
             on_connected=self._on_connected,
         )
-        self.web = WebServer(self.store, self.ha_status)
+        self.web = WebServer(self.store, self.ha_status, history_fn=self.client.get_history)
         self.control = ControlEngine(self.store, self.client.call_service)
         self.tariff = TariffEngine(self.store, self.client.call_service)
         self.thermostat = ThermostatEngine(self.store, self.client.call_service)
