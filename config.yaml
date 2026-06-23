@@ -14,7 +14,6 @@ url: "https://github.com/dneprojects/SEA_App"
 image: "ghcr.io/dneprojects/smart_energy_agent"
 arch:
   - aarch64
-  - amd64
 init: false
 ingress: true
 ingress_port: 7790
