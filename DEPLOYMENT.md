@@ -37,13 +37,27 @@ git remote add origin https://github.com/dneprojects/SEA_Code.git
 git push -u origin main
 ```
 
-### 2. Token for the install repo
+### 2. Auth for the install repo (GitHub App — auto-rotating, no expiry to manage)
 The Action pushes to a **different** repo (SEA_App); the built-in `GITHUB_TOKEN`
-is not enough. Create a fine-grained token:
-- GitHub → Settings → Developer settings → Fine-grained tokens
-- Repository access: only `dneprojects/SEA_App`; permission **Contents: Read and write**
-- In **SEA_Code** → Settings → Secrets and variables → Actions → secret
-  `APP_REPO_TOKEN` = the token.
+is not enough. Instead of a personal token that expires, use a **GitHub App** —
+the workflow mints a short-lived installation token per run
+(`actions/create-github-app-token`), so there is no long-lived secret to rotate.
+
+One-time setup:
+1. GitHub → Settings → Developer settings → **GitHub Apps** → **New GitHub App**.
+   - Name e.g. `sea-publish-bot`; Homepage URL anything; **uncheck** "Webhook → Active".
+   - Repository permissions: **Contents: Read and write** (nothing else needed).
+   - "Where can this app be installed?": Only this account. → **Create**.
+2. On the App page: note the **App ID**; under "Private keys" → **Generate a private key**
+   (downloads a `.pem`).
+3. **Install** the App (App page → Install App → your account) and grant it access
+   to **only `dneprojects/SEA_App`**.
+4. In **SEA_Code** → Settings → Secrets and variables → Actions, add two secrets:
+   - `APP_ID` = the App ID (number)
+   - `APP_PRIVATE_KEY` = the full contents of the `.pem` file
+
+The workflow's `publish-metadata` job generates the token from these and uses it
+to push the metadata; the token expires ~1 h after the run on its own.
 
 Building/pushing images to GHCR uses the built-in `GITHUB_TOKEN` (jobs have
 `packages: write` and `id-token: write`).

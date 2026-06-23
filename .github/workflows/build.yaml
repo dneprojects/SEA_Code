@@ -180,11 +180,20 @@ jobs:
         with:
           path: src
 
+      - name: Generate install-repo token (GitHub App)
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: SEA_App
+
       - name: Check out install repo (SEA_App)
         uses: actions/checkout@v5
         with:
           repository: ${{ env.APP_REPO }}
-          token: ${{ secrets.APP_REPO_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
           path: app
 
       - name: Switch to target branch
