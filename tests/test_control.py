@@ -83,24 +83,39 @@ def test_surplus_signal_charging_battery_policy_difference():
     assert surplus_signal(0, 1700, True) == 1700
 
 
-def _heater_store(grid_w, batt_w, heater_setpoint_w, *, loads_first=False, pv_w=0.0):
+def test_surplus_signal_min_soc_holds_charge_until_reserve():
+    # loads-first, battery charging 1700 W, grid ~0, min_soc 50 %.
+    # Below the reserve the battery keeps charging (battery-first behaviour).
+    assert surplus_signal(0, 1700, True, soc=40, min_soc=50) == 0
+    # At/above the reserve loads may divert the charge power.
+    assert surplus_signal(0, 1700, True, soc=50, min_soc=50) == 1700
+    # min_soc has no effect in battery-first mode.
+    assert surplus_signal(0, 1700, False, soc=90, min_soc=50) == 0
+    # Discharge stays subtracted regardless of the reserve.
+    assert surplus_signal(0, -900, True, soc=10, min_soc=50) == -900
+
+
+def _heater_store(grid_w, batt_w, heater_setpoint_w, *, loads_first=False, pv_w=0.0,
+                  batt_soc=None, min_soc=0.0):
     s = Store()
     s._config = {
         "grid": {"power": "sensor.g"},
         "pv": [{"id": "p1", "name": "PV", "powers": [{"entity": "sensor.pv"}]}],
-        "battery": [{"id": "b1", "name": "Akku", "power": "sensor.bp"}],
+        "battery": [{"id": "b1", "name": "Akku", "power": "sensor.bp", "soc": "sensor.soc"}],
         "water_heater": [{"id": "w1", "name": "Heizstab",
                           "powers": [{"entity": "sensor.hzp"}],
                           "control": {"setpoint": "number.hz"}}],
     }
     s._settings["control_enabled"] = True
     s._settings["surplus_loads_first"] = loads_first
+    s._settings["surplus_battery_min_soc"] = min_soc
     s._settings["strategy_loads"] = {
         "water_heater:w1": {"self_consumption": True, "max_w": 3000, "w_per_unit": 1},
     }
     s._live_by_id = {
         "sensor.g": {"state": str(grid_w)},
         "sensor.bp": {"state": str(batt_w)},
+        "sensor.soc": ({"state": str(batt_soc)} if batt_soc is not None else {}),
         "sensor.pv": {"state": str(pv_w)},
         "sensor.hzp": {"state": str(heater_setpoint_w)},
         "number.hz": {"state": str(heater_setpoint_w)},
@@ -157,6 +172,28 @@ def test_engine_battery_first_keeps_charging_over_heater():
     s = _heater_store(grid_w=0, batt_w=1700, heater_setpoint_w=0, loads_first=False, pv_w=2000)
     asyncio.run(ControlEngine(s, cs).run_once(0.0))
     assert not any(e == "number.hz" for e, _ in calls)
+
+
+def test_engine_min_soc_keeps_charging_below_reserve_then_diverts():
+    # loads-first with a 60 % reserve. At 40 % SoC the battery keeps charging
+    # (heater stays off); at 60 % the heater may divert the charge power.
+    below, above = [], []
+
+    async def cs_below(domain, service, entity, data=None):
+        below.append((entity, data))
+
+    async def cs_above(domain, service, entity, data=None):
+        above.append((entity, data))
+
+    s1 = _heater_store(grid_w=0, batt_w=1700, heater_setpoint_w=0,
+                       loads_first=True, pv_w=2000, batt_soc=40, min_soc=60)
+    asyncio.run(ControlEngine(s1, cs_below).run_once(0.0))
+    assert not any(e == "number.hz" for e, _ in below)
+
+    s2 = _heater_store(grid_w=0, batt_w=1700, heater_setpoint_w=0,
+                       loads_first=True, pv_w=2000, batt_soc=60, min_soc=60)
+    asyncio.run(ControlEngine(s2, cs_above).run_once(0.0))
+    assert ("number.hz", {"value": 1700.0}) in above
 
 
 def test_tariff_switches_on_when_cheap_and_off_when_not():

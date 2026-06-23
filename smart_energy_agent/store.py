@@ -61,6 +61,10 @@ class Store:
             # Either way a discharging battery is never counted as surplus, so
             # controllable loads are never powered from the battery.
             "surplus_loads_first": False,
+            # Charge-priority floor (%): in "loads first" mode the battery keeps
+            # its charging power until the SoC reaches this reserve before loads
+            # may divert it. 0 = off. No effect in "battery first" mode.
+            "surplus_battery_min_soc": 0.0,
 
             # Electricity tariff: purchase price + feed-in compensation.
             "tariff": {
@@ -203,6 +207,13 @@ class Store:
                 self._settings["retention_days"] = int(rd) if rd not in (None, "") else None
             except (TypeError, ValueError):
                 pass
+        if "surplus_battery_min_soc" in patch:
+            ms = patch["surplus_battery_min_soc"]
+            try:
+                self._settings["surplus_battery_min_soc"] = (
+                    max(0.0, min(100.0, float(ms))) if ms not in (None, "") else 0.0)
+            except (TypeError, ValueError):
+                pass
         if patch.get("strategy") in STRATEGY_VALUES:
             self._settings["strategy"] = patch["strategy"]
         if "pv_forecast_entity" in patch:
@@ -236,6 +247,14 @@ class Store:
         """True = controllable loads have priority over battery charging on PV
         surplus; False (default) = battery first."""
         return bool(self._settings.get("surplus_loads_first", False))
+
+    def surplus_battery_min_soc(self) -> float:
+        """SoC reserve (%) the battery charges to before 'loads first' may divert
+        its charge power. 0 = off."""
+        try:
+            return float(self._settings.get("surplus_battery_min_soc", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
 
     # --- tariff --------------------------------------------------------------
     def tariff(self) -> dict[str, Any]:

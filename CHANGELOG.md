@@ -12,6 +12,10 @@
   `surplus_loads_first`): *Batterie zuerst* (default) gives loads only the
   export overflow, *Verbraucher zuerst* lets loads take PV directly (battery
   charges with the rest). Either way loads never run from the battery.
+  Additional **„Batterie-Mindest-SoC (%)"** (`surplus_battery_min_soc`, 0 = off):
+  in *Verbraucher zuerst* the battery keeps its charging power until the SoC
+  reaches this reserve, so the storage is filled first before loads may divert
+  the charge power.
 
 - Verlauf: **drag a time range with the mouse** on any plot to zoom into it
   (a selection rectangle follows the drag); the range buttons (24 h/7 d/30 d)

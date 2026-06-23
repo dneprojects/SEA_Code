@@ -294,6 +294,10 @@
             <option value="0">Batterie zuerst (Speicher füllen)</option>
             <option value="1">Verbraucher zuerst (PV direkt nutzen)</option></select>
           <span class="sub">Verbraucher laufen nie aus der Batterie</span></div>
+        <div class="setrow"><label>Batterie-Mindest-SoC (%)</label>
+          <input type="number" id="set-minsoc" min="0" max="100" style="width:80px"
+            title="Nur bei „Verbraucher zuerst“: Bis zu diesem Ladezustand lädt die Batterie zuerst, bevor Verbraucher (Heizstab etc.) ihr die Ladeleistung wegnehmen dürfen. 0 = aus.">
+          <span class="sub">0 = aus — nur relevant bei „Verbraucher zuerst“</span></div>
         <div class="setrow"><button class="btn" title="Grundeinstellungen speichern" onclick="saveSettings()">Speichern</button>
           <span id="set-msg" class="sub"></span></div>
 
@@ -1145,6 +1149,7 @@
       document.getElementById("set-ret").value = (s.retention_days==null?"":s.retention_days);
       document.getElementById("set-pvfc").value = s.pv_forecast_entity||"";
       document.getElementById("set-loadsfirst").value = s.surplus_loads_first ? "1" : "0";
+      document.getElementById("set-minsoc").value = (s.surplus_battery_min_soc || 0);
       const info = [
         ["Version", s.version||"–"],
         ["HA-Verbindung", s.ha_connected ? ("verbunden ("+(s.ha_version||"")+")") : "nicht verbunden"],
@@ -1160,6 +1165,7 @@
         retention_days: document.getElementById("set-ret").value || null,
         pv_forecast_entity: document.getElementById("set-pvfc").value,
         surplus_loads_first: document.getElementById("set-loadsfirst").value === "1",
+        surplus_battery_min_soc: document.getElementById("set-minsoc").value || 0,
       };
       const msg = document.getElementById("set-msg");
       try {
