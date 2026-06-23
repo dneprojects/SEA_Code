@@ -7,7 +7,7 @@ description: >-
   Detects energy-related HA entities (power, energy, PV, grid, battery,
   consumers), classifies them and shows them live. Foundation for the later
   tariff- and PV-optimized control. (Phase 1: monitoring and curation.)
-url: "https://github.com/dneprojects/SAE_App"
+url: "https://github.com/dneprojects/SEA_App"
 # Preferred reference: the generic multi-arch manifest image published by the
 # CI workflow (publish-multi-arch-manifest). The Supervisor resolves the right
 # architecture from the manifest.

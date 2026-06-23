@@ -1,4 +1,4 @@
-# Deployment: SEA_Code → SAE_App (Home Assistant App)
+# Deployment: SEA_Code → SEA_App (Home Assistant App)
 
 Home Assistant now calls "add-ons" **apps**. Publishing uses **prebuilt
 multi-arch images** (the recommended way) via the current Home Assistant builder
@@ -11,7 +11,7 @@ Two repositories:
   GitHub Action. On a build it builds one image per architecture, publishes a
   **generic multi-arch manifest** to GHCR, and writes the app metadata to the
   install repo.
-- **SAE_App** (public): the HA app repository users add in HA. Contains
+- **SEA_App** (public): the HA app repository users add in HA. Contains
   `repository.yaml` + a `smart_energy_agent/` folder with `config.yaml`
   (referencing the generic GHCR image), README, icons. Populated by the Action.
 
@@ -19,15 +19,15 @@ Two repositories:
 Build in SEA_Code ──> GitHub Action
    ├─ build-image (aarch64, amd64) ─> ghcr.io/dneprojects/{arch}-smart_energy_agent
    ├─ publish-multi-arch-manifest  ─> ghcr.io/dneprojects/smart_energy_agent  (← image: in config.yaml)
-   └─ publish-metadata             ─> SAE_App/smart_energy_agent/
-HA user ── adds SAE_App URL ──> installs ──> HA pulls the manifest image
+   └─ publish-metadata             ─> SEA_App/smart_energy_agent/
+HA user ── adds SEA_App URL ──> installs ──> HA pulls the manifest image
 ```
 
 ## One-time setup
 
 ### 1. Create the repos
 - `dneprojects/SEA_Code` — push this folder into it.
-- `dneprojects/SAE_App` — **public**, may start empty.
+- `dneprojects/SEA_App` — **public**, may start empty.
 
 ```bash
 git init -b main
@@ -38,10 +38,10 @@ git push -u origin main
 ```
 
 ### 2. Token for the install repo
-The Action pushes to a **different** repo (SAE_App); the built-in `GITHUB_TOKEN`
+The Action pushes to a **different** repo (SEA_App); the built-in `GITHUB_TOKEN`
 is not enough. Create a fine-grained token:
 - GitHub → Settings → Developer settings → Fine-grained tokens
-- Repository access: only `dneprojects/SAE_App`; permission **Contents: Read and write**
+- Repository access: only `dneprojects/SEA_App`; permission **Contents: Read and write**
 - In **SEA_Code** → Settings → Secrets and variables → Actions → secret
   `APP_REPO_TOKEN` = the token.
 
@@ -62,7 +62,7 @@ to the SmartHub Release Manager:
 - **Manual:** "Run workflow" with target **Beta** or **Public**.
 - **Release:** a published release builds Public.
 
-| Channel | SAE_App branch | Slug                      | Name                      | Image                                         |
+| Channel | SEA_App branch | Slug                      | Name                      | Image                                         |
 |---------|----------------|---------------------------|---------------------------|-----------------------------------------------|
 | Public  | `main`         | `smart_energy_agent`      | Smart Energy Agent        | `ghcr.io/dneprojects/smart_energy_agent`      |
 | Beta    | `beta`         | `smart_energy_agent_beta` | Smart Energy Agent (Beta) | `ghcr.io/dneprojects/smart_energy_agent_beta` |
@@ -77,7 +77,7 @@ carries `…-beta.<run>` so HA recognizes each new beta as an update.
 2. In **SEA_Code** create a **release** with a tag (e.g. `v0.2.0`) — or run the
    Action manually via "Run workflow" → Public.
 3. The Action builds `aarch64` + `amd64`, publishes the manifest, and commits the
-   metadata to SAE_App.
+   metadata to SEA_App.
 
 ### Make the GHCR packages public (one-time)
 GitHub → profile → **Packages**: the generic package `smart_energy_agent`
@@ -86,7 +86,7 @@ GitHub → profile → **Packages**: the generic package `smart_energy_agent`
 
 ## Install in Home Assistant
 Settings → Add-ons/Apps → Store → ⋮ → **Repositories** →
-`https://github.com/dneprojects/SAE_App` → install "Smart Energy Agent".
+`https://github.com/dneprojects/SEA_App` → install "Smart Energy Agent".
 
 ## Versioning
 The source of truth is `version` in `config.yaml`. Bump version → release/tag (or

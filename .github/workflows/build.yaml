@@ -27,7 +27,7 @@ permissions:
   contents: read
 
 env:
-  APP_REPO: dneprojects/SAE_App
+  APP_REPO: dneprojects/SEA_App
   ADDON_DIR: smart_energy_agent
 
 jobs:
@@ -165,7 +165,7 @@ jobs:
           registry-prefix: ${{ needs.prepare.outputs.registry_prefix }}
 
   publish-metadata:
-    name: Publish to SAE_App
+    name: Publish to SEA_App
     needs: [prepare, manifest]
     runs-on: ubuntu-latest
     env:
@@ -180,7 +180,7 @@ jobs:
         with:
           path: src
 
-      - name: Check out install repo (SAE_App)
+      - name: Check out install repo (SEA_App)
         uses: actions/checkout@v5
         with:
           repository: ${{ env.APP_REPO }}
