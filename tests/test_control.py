@@ -7,6 +7,7 @@ import asyncio
 from smart_energy_agent.control import (
     ConsumerDecision, ControlEngine, battery_tariff_mode, decide_action,
     decide_grid_charge, decide_grid_discharge, decide_modulation, decide_tariff_actions,
+    surplus_signal,
 )
 from smart_energy_agent.store import Store
 
@@ -56,6 +57,106 @@ def test_modulation_off_below_minimum_power():
     # 5000 W surplus is above min -> charge ~7.25 A
     out = decide_modulation(5000, [_mod("number.amp", wpu=690, min_w=4140, max_w=11040)])
     assert out[0]["power_w"] == 5000.0
+
+
+def test_surplus_signal_no_battery_equals_minus_grid():
+    # Without a battery (batt_w == 0) both policies reduce to the old -grid_w.
+    assert surplus_signal(-200, 0, False) == 200    # export -> surplus
+    assert surplus_signal(-200, 0, True) == 200
+    assert surplus_signal(300, 0, False) == -300    # import -> deficit
+    assert surplus_signal(300, 0, True) == -300
+
+
+def test_surplus_signal_discharging_battery_is_never_surplus():
+    # Battery discharging 900 W holds the grid at ~0; a naive -grid_w would read
+    # 0 (no throttle). Both policies must instead see a deficit so loads back off
+    # and are never run from the battery.
+    assert surplus_signal(0, -900, False) == -900
+    assert surplus_signal(0, -900, True) == -900
+
+
+def test_surplus_signal_charging_battery_policy_difference():
+    # PV surplus 1700 W fully absorbed by battery charging, grid ~0.
+    # battery-first: loads stay off (battery keeps the charge).
+    assert surplus_signal(0, 1700, False) == 0
+    # loads-first: loads may take the charging power directly (no round-trip).
+    assert surplus_signal(0, 1700, True) == 1700
+
+
+def _heater_store(grid_w, batt_w, heater_setpoint_w, *, loads_first=False, pv_w=0.0):
+    s = Store()
+    s._config = {
+        "grid": {"power": "sensor.g"},
+        "pv": [{"id": "p1", "name": "PV", "powers": [{"entity": "sensor.pv"}]}],
+        "battery": [{"id": "b1", "name": "Akku", "power": "sensor.bp"}],
+        "water_heater": [{"id": "w1", "name": "Heizstab",
+                          "powers": [{"entity": "sensor.hzp"}],
+                          "control": {"setpoint": "number.hz"}}],
+    }
+    s._settings["control_enabled"] = True
+    s._settings["surplus_loads_first"] = loads_first
+    s._settings["strategy_loads"] = {
+        "water_heater:w1": {"self_consumption": True, "max_w": 3000, "w_per_unit": 1},
+    }
+    s._live_by_id = {
+        "sensor.g": {"state": str(grid_w)},
+        "sensor.bp": {"state": str(batt_w)},
+        "sensor.pv": {"state": str(pv_w)},
+        "sensor.hzp": {"state": str(heater_setpoint_w)},
+        "number.hz": {"state": str(heater_setpoint_w)},
+    }
+    return s
+
+
+def test_engine_heater_backs_off_when_battery_discharges():
+    # No PV, battery discharging to cover the house; grid ~0. The heater was left
+    # at 600 W -> it must be driven to 0 (not sustained from the battery).
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((entity, data))
+
+    s = _heater_store(grid_w=0, batt_w=-900, heater_setpoint_w=600)
+    asyncio.run(ControlEngine(s, cs).run_once(0.0))
+    assert ("number.hz", {"value": 0.0}) in calls
+
+
+def test_engine_heater_runs_only_on_real_export():
+    # 800 W exported to grid, no battery activity -> heater absorbs the surplus.
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((entity, data))
+
+    s = _heater_store(grid_w=-800, batt_w=0, heater_setpoint_w=0, pv_w=2000)
+    asyncio.run(ControlEngine(s, cs).run_once(0.0))
+    assert ("number.hz", {"value": 800.0}) in calls
+
+
+def test_engine_loads_first_diverts_battery_charging_to_heater():
+    # PV surplus fully charging the battery, grid ~0. With loads-first the heater
+    # is ramped to take the charge power directly.
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((entity, data))
+
+    s = _heater_store(grid_w=0, batt_w=1700, heater_setpoint_w=0, loads_first=True, pv_w=2000)
+    asyncio.run(ControlEngine(s, cs).run_once(0.0))
+    assert ("number.hz", {"value": 1700.0}) in calls
+
+
+def test_engine_battery_first_keeps_charging_over_heater():
+    # Same situation but battery-first (default): the heater stays off so the
+    # battery keeps charging.
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((entity, data))
+
+    s = _heater_store(grid_w=0, batt_w=1700, heater_setpoint_w=0, loads_first=False, pv_w=2000)
+    asyncio.run(ControlEngine(s, cs).run_once(0.0))
+    assert not any(e == "number.hz" for e, _ in calls)
 
 
 def test_tariff_switches_on_when_cheap_and_off_when_not():

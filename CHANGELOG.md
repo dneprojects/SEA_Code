@@ -2,6 +2,17 @@
 
 ## 0.2.1
 
+- **Bugfix – PV-surplus no longer runs loads from the battery**: the surplus
+  controller regulated the grid to zero (`−grid_w`). With a battery present a
+  *discharging* battery holds the grid at ~0 by itself, so a controllable load
+  (e.g. an immersion heater) was never throttled back and kept draining the
+  battery at night with no PV. The signal now folds in the battery power
+  (`surplus_signal()`), so a discharging battery is never counted as surplus.
+  New setting **„PV-Überschuss-Vorrang"** (Grundeinstellungen,
+  `surplus_loads_first`): *Batterie zuerst* (default) gives loads only the
+  export overflow, *Verbraucher zuerst* lets loads take PV directly (battery
+  charges with the rest). Either way loads never run from the battery.
+
 - Verlauf: **drag a time range with the mouse** on any plot to zoom into it
   (a selection rectangle follows the drag); the range buttons (24 h/7 d/30 d)
   reset. All plots share the same window.

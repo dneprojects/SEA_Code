@@ -59,6 +59,30 @@ class ConsumerDecision:
     now_min: int = 0                      # current local minute-of-day
 
 
+def surplus_signal(grid_w: float, batt_w: float, loads_first: bool) -> float:
+    """Signed PV-surplus signal for modulation (+export available / −deficit).
+
+    The raw ``−grid_w`` ("regulate grid to zero") is wrong when a battery is
+    present: a *discharging* battery holds the grid at ~0 by itself, so the
+    controller would never throttle a load back and would happily run it off the
+    battery. We therefore fold the battery power in (sign: + = charging,
+    − = discharging):
+
+      * ``loads_first``  → ``−grid_w + batt_w`` (= pv − house_load): loads may
+        also absorb power that would otherwise charge the battery (no round-trip
+        loss); the battery charges only with what loads leave.
+      * battery first (default) → ``−grid_w + min(0, batt_w)``: only battery
+        *discharge* is subtracted, so loads get the export overflow but never
+        pre-empt charging.
+
+    In both cases a discharging battery drives the signal negative, so a
+    controllable load is never sustained from the battery. With no battery
+    (``batt_w == 0``) both reduce to the original ``−grid_w``.
+    """
+    batt_term = batt_w if loads_first else min(0.0, batt_w)
+    return -grid_w + batt_term
+
+
 def decide_action(
     now: float, surplus_w: float, consumers: list[ConsumerDecision]
 ) -> Optional[tuple[str, str, str]]:
@@ -351,8 +375,14 @@ class ControlEngine:
         if not self._store.control_enabled():
             return None
         balance = self._store.balance()
-        # Grid-centric signal: + = export (surplus available), − = import.
-        surplus_signed = -float(balance.get("grid_w", 0.0) or 0.0)
+        # PV-surplus signal: + = export available, − = deficit. Folds in battery
+        # power so a discharging battery is never mistaken for surplus (which
+        # would let a load run off the battery); see surplus_signal().
+        surplus_signed = surplus_signal(
+            float(balance.get("grid_w", 0.0) or 0.0),
+            float(balance.get("battery_w", 0.0) or 0.0),
+            self._store.surplus_loads_first(),
+        )
         action = None
         consumers = self._build()
         if consumers:

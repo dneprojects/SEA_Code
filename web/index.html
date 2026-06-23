@@ -289,6 +289,11 @@
         <div class="setrow"><label>PV-Prognose-Entität</label>
           <input type="text" id="set-pvfc" title="Optionale Solcast-/sonstige PV-Prognose-Entität (Forecast.Solar wird automatisch erkannt)" placeholder="sensor.solcast_pv_forecast_forecast_today" style="width:260px">
           <span class="sub">nur für Solcast/sonstige — Forecast.Solar wird automatisch erkannt</span></div>
+        <div class="setrow"><label>PV-Überschuss-Vorrang</label>
+          <select id="set-loadsfirst" title="Bei echtem PV-Überschuss: Batterie zuerst laden oder steuerbare Verbraucher (Heizstab etc.) direkt versorgen. In beiden Fällen wird ein entladender Speicher nie als Überschuss gewertet – Verbraucher laufen also nie aus der Batterie.">
+            <option value="0">Batterie zuerst (Speicher füllen)</option>
+            <option value="1">Verbraucher zuerst (PV direkt nutzen)</option></select>
+          <span class="sub">Verbraucher laufen nie aus der Batterie</span></div>
         <div class="setrow"><button class="btn" title="Grundeinstellungen speichern" onclick="saveSettings()">Speichern</button>
           <span id="set-msg" class="sub"></span></div>
 
@@ -1139,6 +1144,7 @@
       try { s = await fetch(api("/api/settings")).then(r=>r.json()); } catch(e) {}
       document.getElementById("set-ret").value = (s.retention_days==null?"":s.retention_days);
       document.getElementById("set-pvfc").value = s.pv_forecast_entity||"";
+      document.getElementById("set-loadsfirst").value = s.surplus_loads_first ? "1" : "0";
       const info = [
         ["Version", s.version||"–"],
         ["HA-Verbindung", s.ha_connected ? ("verbunden ("+(s.ha_version||"")+")") : "nicht verbunden"],
@@ -1153,6 +1159,7 @@
       const body = {
         retention_days: document.getElementById("set-ret").value || null,
         pv_forecast_entity: document.getElementById("set-pvfc").value,
+        surplus_loads_first: document.getElementById("set-loadsfirst").value === "1",
       };
       const msg = document.getElementById("set-msg");
       try {
