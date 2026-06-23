@@ -106,11 +106,14 @@ Settings → Add-ons/Apps → Store → ⋮ → **Repositories** →
 The source of truth is `version` in `config.yaml`. Bump version → release/tag (or
 manual run) → Action → HA offers the update.
 
-## Same for SmartHub-Addon
-`SmartHub-Addon` is already an app repository but lacks a current build workflow.
-Reuse `.github/workflows/build.yaml` and adapt it: set the slug/image to
-`smart_hub`. Since source and app live in the same repo there, the
-`publish-metadata` job can be dropped (or commit into the same repo).
+## Same pattern for SmartHub
+SmartHub uses the identical two-repo setup: source `dneprojects/SmartHub` builds
+the image and pushes metadata to the install repo `dneprojects/SmartHub-Addon`
+(its `.github/workflows/build.yaml`, aarch64 only, same GitHub-App token). Channels
+map to the install repo's `main`/`beta` branches and `smart_hub`/`smart_hub_beta`
+folders; version comes from `SMHUB_VERSION` in `const.py`; the firmware `.bin`
+files need `lfs: true` on the build checkout. A separate `windows-exe.yaml` builds
+the Smart Configurator `.exe`.
 
 ## Notes
 - Builder actions are pinned to `@2026.03.2` (per the HA docs). Update the tag
