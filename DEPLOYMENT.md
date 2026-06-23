@@ -1,4 +1,4 @@
-# Deployment: SAE_Code → SAE_App (Home Assistant App)
+# Deployment: SEA_Code → SAE_App (Home Assistant App)
 
 Home Assistant now calls "add-ons" **apps**. Publishing uses **prebuilt
 multi-arch images** (the recommended way) via the current Home Assistant builder
@@ -7,7 +7,7 @@ Docs: https://developers.home-assistant.io/docs/apps/publishing
 
 Two repositories:
 
-- **SAE_Code** (this repo): source code + `Dockerfile` + `config.yaml` +
+- **SEA_Code** (this repo): source code + `Dockerfile` + `config.yaml` +
   GitHub Action. On a build it builds one image per architecture, publishes a
   **generic multi-arch manifest** to GHCR, and writes the app metadata to the
   install repo.
@@ -16,7 +16,7 @@ Two repositories:
   (referencing the generic GHCR image), README, icons. Populated by the Action.
 
 ```
-Build in SAE_Code ──> GitHub Action
+Build in SEA_Code ──> GitHub Action
    ├─ build-image (aarch64, amd64) ─> ghcr.io/dneprojects/{arch}-smart_energy_agent
    ├─ publish-multi-arch-manifest  ─> ghcr.io/dneprojects/smart_energy_agent  (← image: in config.yaml)
    └─ publish-metadata             ─> SAE_App/smart_energy_agent/
@@ -26,14 +26,14 @@ HA user ── adds SAE_App URL ──> installs ──> HA pulls the manifest i
 ## One-time setup
 
 ### 1. Create the repos
-- `dneprojects/SAE_Code` — push this folder into it.
+- `dneprojects/SEA_Code` — push this folder into it.
 - `dneprojects/SAE_App` — **public**, may start empty.
 
 ```bash
 git init -b main
 git add -A
 git commit -m "Smart Energy Agent – initial"
-git remote add origin https://github.com/dneprojects/SAE_Code.git
+git remote add origin https://github.com/dneprojects/SEA_Code.git
 git push -u origin main
 ```
 
@@ -42,7 +42,7 @@ The Action pushes to a **different** repo (SAE_App); the built-in `GITHUB_TOKEN`
 is not enough. Create a fine-grained token:
 - GitHub → Settings → Developer settings → Fine-grained tokens
 - Repository access: only `dneprojects/SAE_App`; permission **Contents: Read and write**
-- In **SAE_Code** → Settings → Secrets and variables → Actions → secret
+- In **SEA_Code** → Settings → Secrets and variables → Actions → secret
   `APP_REPO_TOKEN` = the token.
 
 Building/pushing images to GHCR uses the built-in `GITHUB_TOKEN` (jobs have
@@ -74,7 +74,7 @@ carries `…-beta.<run>` so HA recognizes each new beta as an update.
 
 ## Build a release
 1. Bump `version` in `config.yaml`, commit/push.
-2. In **SAE_Code** create a **release** with a tag (e.g. `v0.2.0`) — or run the
+2. In **SEA_Code** create a **release** with a tag (e.g. `v0.2.0`) — or run the
    Action manually via "Run workflow" → Public.
 3. The Action builds `aarch64` + `amd64`, publishes the manifest, and commits the
    metadata to SAE_App.

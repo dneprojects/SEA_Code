@@ -23,7 +23,7 @@ RUN chmod a+x /app/run.sh
 LABEL \
     org.opencontainers.image.title="Smart Energy Agent" \
     org.opencontainers.image.description="Energy-aware monitoring and PV-surplus control for Home Assistant" \
-    org.opencontainers.image.source="https://github.com/dneprojects/SAE_Code" \
+    org.opencontainers.image.source="https://github.com/dneprojects/SEA_Code" \
     org.opencontainers.image.licenses="MIT"
 
 CMD [ "/app/run.sh" ]
