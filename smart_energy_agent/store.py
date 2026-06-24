@@ -456,7 +456,7 @@ class Store:
         if not key:
             return False
         cfg = self._settings.setdefault("strategy_loads", {}).setdefault(key, {})
-        for f in ("self_consumption", "tariff_shift"):
+        for f in ("self_consumption", "tariff_shift", "interruptible"):
             if f in patch:
                 cfg[f] = bool(patch[f])
         for f in ("priority", "pv_threshold_w", "min_runtime_min", "min_off_min", "max_starts_per_day"):
@@ -504,7 +504,7 @@ class Store:
                    "pv_threshold_w": 0, "min_runtime_min": 0, "min_off_min": 0,
                    "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1,
                    "limit_entity": "", "limit_max": 0, "ready_entity": "", "latest_start": "",
-                   "grid_soc_min": 0, "grid_soc_max": 100}
+                   "grid_soc_min": 0, "grid_soc_max": 100, "interruptible": True}
             cfg.update(sl.get(d["key"], {}))
             # The battery's stop signal is always its SoC — fill it in automatically
             # so the UI only asks for the threshold (active once limit_max > 0).

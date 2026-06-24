@@ -57,6 +57,7 @@ class ConsumerDecision:
     satisfied: bool = False
     deadline_min: Optional[int] = None   # latest-start time as minute-of-day
     now_min: int = 0                      # current local minute-of-day
+    interruptible: bool = True            # may be switched off mid-run when surplus drops
 
 
 def surplus_signal(
@@ -134,9 +135,12 @@ def decide_action(
                     f"PV-Überschuss {round(surplus_w)} W ≥ Bedarf")
 
     if surplus_w < -off_margin:
+        # Only interruptible loads are shed on import; a non-interruptible load
+        # (e.g. a washing-machine program) keeps running until it is satisfied
+        # (handled by the "done" branch above).
         cands = [
             c for c in consumers
-            if c.is_on and (now - c.last_on) >= c.min_runtime_s
+            if c.is_on and c.interruptible and (now - c.last_on) >= c.min_runtime_s
         ]
         if cands:
             # Lowest priority first; among equal, shed the largest load.
@@ -261,6 +265,7 @@ class ControlEngine:
                 satisfied=bool(d.get("satisfied")),
                 deadline_min=_hhmm_to_min(cfg.get("latest_start", "")),
                 now_min=now_min,
+                interruptible=bool(cfg.get("interruptible", True)),
             ))
         return out
 
@@ -434,7 +439,10 @@ def decide_tariff_actions(
             if want and not l["is_on"] and (now - l["last_off"]) >= l["min_off_s"]:
                 actions.append((l["entity"], "on",
                                 "Deadline – Start erzwungen" if forced else "günstiger Tarif"))
-            elif not want and l["is_on"] and (now - l["last_on"]) >= l["min_runtime_s"]:
+            elif (not want and l["is_on"] and (now - l["last_on"]) >= l["min_runtime_s"]
+                  # A non-interruptible load is only stopped once satisfied (done),
+                  # never merely because the tariff stopped being cheap.
+                  and (l.get("interruptible", True) or l.get("satisfied"))):
                 actions.append((l["entity"], "off",
                                 "Ziel erreicht" if l.get("satisfied") else "Tarif nicht günstig"))
         else:  # setpoint / modulating
@@ -482,6 +490,7 @@ class TariffEngine:
                     "satisfied": bool(d.get("satisfied")),
                     "deadline_min": _hhmm_to_min(cfg.get("latest_start", "")),
                     "now_min": now_min,
+                    "interruptible": bool(cfg.get("interruptible", True)),
                 })
             elif mode == "setpoint" and d.get("setpoint"):
                 eid = d["setpoint"]

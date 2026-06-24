@@ -2,6 +2,13 @@
 
 ## 0.2.1
 
+- **Schaltlasten: „unterbrechbar"** – neue Checkbox je geschalteter Entität (in
+  der Geräte-Steuerung). An (Default): eine laufende Last darf bei Wegfall von
+  Überschuss bzw. günstigem Tarif wieder abgeschaltet werden (z. B. Heizstab).
+  Aus: die Last läuft nach dem Start bis zum Ziel durch und wird nur abgeschaltet,
+  wenn das Ziel erreicht ist (z. B. Waschmaschine) – gilt für PV-Überschuss- und
+  Tarif-Steuerung. Die Strategie-Beschreibungen erwähnen den Status im Beispiel.
+
 - **Strategie-Beschreibungen**: jede Strategie hat jetzt einen **ⓘ-Info-Button**
   (nur Icon) neben ihrem Titel im Strategien-Bereich. Er öffnet eine kompakte
   Beschreibung (Funktionsweise · Voraussetzungen · Beispiel) in einem Overlay

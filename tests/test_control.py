@@ -338,6 +338,36 @@ def test_switch_decision_on_and_off():
     assert off and off[1] == "off"
 
 
+def test_non_interruptible_load_not_shed_on_import():
+    # A running non-interruptible load keeps running on grid import; an
+    # interruptible one of equal priority is shed instead.
+    ni = _cd("switch.wm", is_on=True, interruptible=False, nominal_power_w=2000)
+    inter = _cd("switch.hz", is_on=True, interruptible=True, nominal_power_w=2000)
+    out = decide_action(1000, -800, [ni, inter])
+    assert out == ("switch.hz", "off", "Netzbezug 800 W, schalte ab")
+    # With only the non-interruptible load running, nothing is shed.
+    assert decide_action(1000, -800, [ni]) is None
+
+
+def test_non_interruptible_still_shed_when_satisfied():
+    # Target reached overrides interruptibility (the run is done).
+    ni_done = _cd("switch.wm", is_on=True, interruptible=False, satisfied=True, nominal_power_w=2000)
+    assert decide_action(1000, -800, [ni_done]) == ("switch.wm", "off", "Ziel erreicht")
+
+
+def test_tariff_keeps_non_interruptible_running_until_satisfied():
+    base = {"entity": "switch.wm", "mode": "switch", "is_on": True, "last_on": 0, "last_off": 0,
+            "min_runtime_s": 0, "min_off_s": 0, "interruptible": False}
+    # tariff no longer cheap, not satisfied -> non-interruptible load stays on
+    assert decide_tariff_actions(1000, False, [{**base, "satisfied": False}]) == []
+    # satisfied -> turned off (done)
+    off = decide_tariff_actions(1000, False, [{**base, "satisfied": True}])
+    assert off == [("switch.wm", "off", "Ziel erreicht")]
+    # an interruptible load is turned off when not cheap
+    assert decide_tariff_actions(1000, False, [{**base, "interruptible": True, "satisfied": False}]) \
+        == [("switch.wm", "off", "Tarif nicht günstig")]
+
+
 def test_deadline_forces_start_without_surplus():
     # 10:30 now, deadline 10:00, no surplus -> forced on within the window
     c = _cd("switch.wm", is_on=False, deadline_min=600, now_min=630)

@@ -742,6 +742,12 @@
         : num("max. Leistung W","max_w",72,"Maximale Leistungsaufnahme des Geräts (W)")
           + num("W/Einheit","w_per_unit",54,"Watt pro Einheit der Sollwert-Entität: Wallbox ~690 W/A; Leistungssollwert in W = 1")
           + num("min. Leistung W","min_w",70,"Mindestleistung; darunter wird abgeschaltet (z. B. Wallbox 6 A × 690 = 4140 W)");
+      // Switched loads: may the run be interrupted (turned off again when the
+      // surplus / cheap tariff drops) or must it run through to its target?
+      const interruptLine = sw
+        ? `<div style="margin-top:4px"><label title="An: laufende Last darf bei Wegfall von Überschuss/günstigem Tarif wieder abgeschaltet werden (z. B. Heizstab). Aus: muss bis zum Ziel durchlaufen (z. B. Waschmaschine).">
+             <input type="checkbox" ${cfg.interruptible!==false?'checked':''} onchange="setLoad('${key}','interruptible',this.checked)"> unterbrechbar</label></div>`
+        : '';
       const evLine = (d.kind==='ev_charger')
         ? `<div style="margin-top:4px"><span class="sub">Auto angesteckt:</span> ${cfg.ready_entity
             ? `<span class="eid">${cfg.ready_entity}</span> <button class="btn" title="Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickReady('${key}')">ändern</button>`
@@ -767,7 +773,7 @@
              <input type="number" title="Bis zu diesem SoC netzladen" style="width:50px" value="${cfg.grid_soc_max}" onchange="setLoad('${key}','grid_soc_max',this.value)"> %</div>` : ''}</div>`
         : '';
       const inner = `<span class="swhead" style="display:block;margin-top:6px">PV-Überschuss-Steuerung</span>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${fields}</div>${evLine}${stopLine}${gridLine}`;
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${fields}</div>${interruptLine}${evLine}${stopLine}${gridLine}`;
       return cell(inner, "swfull");
     }
     // --- mutations ---
@@ -1452,9 +1458,11 @@
              geregelt; fällt die PV unter den Bedarf, regelt es zurück statt aus dem Netz zu laufen.${_devLimit(mod)}</p>`;
       } else {
         const thr = Math.max(Number(c.pv_threshold_w)||0, Number(mod.power_w)||0);
+        const offTxt = c.interruptible===false
+          ? ` und läuft dann <b>bis zum Ziel durch</b> (nicht unterbrechbar)`
+          : ` und bei Netzbezug wieder abgeschaltet`;
         s = `<p><b>${mod.name}</b> (Prio ${c.priority}${mod.power_w!=null?', ~'+fmtW(mod.power_w):''}) wird
-             zugeschaltet, sobald der Überschuss ${thr?'≥ '+fmtW(thr):'ausreicht'}, und bei Netzbezug wieder
-             abgeschaltet.${_devLimit(mod)}</p>`;
+             zugeschaltet, sobald der Überschuss ${thr?'≥ '+fmtW(thr):'ausreicht'},${offTxt}.${_devLimit(mod)}</p>`;
       }
       const b = _partSelf().find(d => d.kind==='battery');
       if (b) {
@@ -1494,11 +1502,12 @@
       const d = part.find(x=>x.cfg.latest_start) || part[0];
       let s = "";
       if (d) {
+        const ni = d.cfg.interruptible===false;
         s = d.cfg.latest_start
           ? `<p><b>${d.name}</b> mit „spätester Start“ ${d.cfg.latest_start} wird in der günstigsten Stunde
              davor gestartet; gibt es bis dahin keine günstige Phase, startet es zum Termin trotzdem
-             (notfalls aus dem Netz).</p>`
-          : `<p><b>${d.name}</b> wird gestartet, sobald der Tarif günstig ist, und gestoppt, wenn nicht mehr.</p>`;
+             (notfalls aus dem Netz).${ni?' Einmal gestartet, läuft es <b>bis zum Ziel durch</b> (nicht unterbrechbar).':''}</p>`
+          : `<p><b>${d.name}</b> wird gestartet, sobald der Tarif günstig ist${ni?', und läuft dann <b>bis zum Ziel durch</b> (nicht unterbrechbar)':', und gestoppt, wenn nicht mehr'}.</p>`;
       }
       const b = _battTariff()[0];
       if (b) {
