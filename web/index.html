@@ -1276,11 +1276,13 @@
     let stratList = [];
     let stratDevices = [];
     let ctrlEnabled = false;
+    let appSettings = {};   // last /api/settings payload (for dynamic strategy help)
     const stratOpen = new Set(["self_consumption"]);
     function onStratToggle(key, open) { if (open) stratOpen.add(key); else stratOpen.delete(key); }
     async function loadConsumers() {
       try {
         const s = await fetch(api("/api/settings")).then(r=>r.json());
+        appSettings = s;
         ctrlEnabled = !!s.control_enabled;
         fillStrategy(s);
       } catch(e) {}
@@ -1376,62 +1378,175 @@
       return `<div class="sub">${st.desc||''}</div>${miss}
         <div class="sub" style="margin-top:4px">${st.available?'Die Umsetzung dieser Strategie folgt.':''}</div>`;
     }
-    // Per-strategy help: how it works, prerequisites, an example. Shown in an
-    // overlay inside the SEA frame via the ⓘ button next to each strategy.
-    const STRAT_HELP = {
+    // Per-strategy help: a static "how it works" plus DYNAMIC prerequisites
+    // (derived from the current configuration) and a DYNAMIC example (built from
+    // the actually configured devices and their settings). Shown in an overlay
+    // inside the SEA frame via the ⓘ button next to each strategy.
+    const STRAT_META = {
       self_consumption: {
         title: "PV-Überschuss: Eigenverbrauch und Speicherung",
-        html: `
-          <p><b>Funktionsweise.</b> Die App misst laufend die Netzbilanz. Sobald die PV mehr
-          erzeugt, als das Haus verbraucht (Überschuss/Einspeisung), werden steuerbare Geräte
-          nach Priorität zugeschaltet bzw. regelbare Geräte (Heizstab, Wallbox, Batterie) im
-          Sollwert hochgeregelt – genau so weit, dass der Überschuss aufgebraucht, aber kein
-          Netzstrom bezogen wird. Steigt der Bezug, wird wieder zurückgeregelt oder abgeschaltet.
-          Eine <i>entladende</i> Batterie zählt nie als Überschuss, ein Verbraucher läuft also nie
-          aus dem Speicher.</p>
-          <p><b>Voraussetzungen.</b> PV-Leistung <i>und</i> Netz-Leistung konfiguriert; mindestens
-          ein steuerbares Gerät (Schalt- oder Sollwert-Entität); Master-Schalter „PV-Überschuss­steuerung
-          aktiv“. Vorrang (Batterie zuerst / Verbraucher zuerst) und ein Batterie-Mindest-SoC sind unter
-          <i>Einstellungen → Grundeinstellungen</i> wählbar.</p>
-          <p><b>Beispiel.</b> PV 3000 W, Haus 800 W → 2200 W Überschuss. Der Heizstab (Prio 8) wird
-          auf ~2200 W geregelt. Zieht eine Wolke auf (PV 1000 W), regelt er auf ~200 W zurück, statt
-          aus dem Netz zu heizen.</p>`,
+        func: `<p>Die App misst laufend die Netzbilanz. Sobald die PV mehr erzeugt, als das Haus
+          verbraucht (Überschuss/Einspeisung), werden steuerbare Geräte nach Priorität zugeschaltet
+          bzw. regelbare Geräte (Heizstab, Wallbox, Batterie) im Sollwert hochgeregelt – genau so weit,
+          dass der Überschuss aufgebraucht, aber kein Netzstrom bezogen wird. Steigt der Bezug, wird
+          zurückgeregelt oder abgeschaltet. Eine <i>entladende</i> Batterie zählt nie als Überschuss,
+          ein Verbraucher läuft also nie aus dem Speicher.</p>`,
       },
       tariff_shift: {
         title: "Dynamischer Tarif: Lastverschiebung",
-        html: `
-          <p><b>Funktionsweise.</b> Nutzt deine Preisquelle (dynamischer Börsentarif, HT/NT-Fenster
-          oder feste Schwelle). In <i>günstigen</i> – besonders sehr niedrigen oder negativen – Phasen
-          werden verschiebbare Lasten gestartet und Speicher (Batterie/thermisch) geladen. In <i>teuren</i>
-          Phasen kann die Batterie gezielt entladen werden (Arbitrage). Eine Deadline „spätester Start“
-          erzwingt den Lauf rechtzeitig, auch wenn der Preis dann nicht günstig ist.</p>
-          <p><b>Voraussetzungen.</b> Eine Preisquelle konfiguriert (dynamischer Tarif-Sensor oder
-          HT/NT-Fenster unter <i>Einstellungen → Tarife</i>); mindestens eine verschiebbare Last oder
-          eine Batterie mit Sollwert-Entität; Master-Schalter „Steuerung aktiv“.</p>
-          <p><b>Beispiel.</b> Nachts fällt der Preis auf −2 ct/kWh → die Batterie lädt aus dem Netz.
-          Die Waschmaschine mit Deadline 07:00 startet automatisch in der günstigsten Stunde davor.</p>`,
+        func: `<p>Nutzt deine Preisquelle (dynamischer Börsentarif, HT/NT-Fenster oder feste Schwelle).
+          In <i>günstigen</i> – besonders sehr niedrigen oder negativen – Phasen werden verschiebbare
+          Lasten gestartet und Speicher geladen. In <i>teuren</i> Phasen kann die Batterie gezielt
+          entladen werden (Arbitrage). Eine Deadline „spätester Start“ erzwingt den Lauf rechtzeitig,
+          auch wenn der Preis dann nicht günstig ist.</p>`,
       },
       setback: {
         title: "Temperaturabsenkung bei Abwesenheit",
-        html: `
-          <p><b>Funktionsweise.</b> Erkennt Anwesenheit über die Personen-Entitäten je Gruppe. Sind
-          <i>alle</i> abwesend, werden die Raum-Thermostate abgesenkt. Vor der erwarteten Rückkehr wird
-          vorausschauend vorgeheizt, sodass es bei Ankunft wieder warm ist.</p>
-          <p><b>Voraussetzungen.</b> Eine Thermostat-Gruppe mit Personen <i>und</i> Räumen
-          (climate-Entitäten) unter <i>Gruppen / Räume</i> angelegt.</p>
-          <p><b>Beispiel.</b> Alle verlassen das Haus → Solltemperatur −3 K. Meldet sich eine Person
-          auf dem Heimweg, hebt die Vorheizung die Temperatur rechtzeitig wieder an.</p>`,
+        func: `<p>Erkennt Anwesenheit über die Personen-Entitäten je Gruppe. Sind <i>alle</i> abwesend,
+          werden die Raum-Thermostate abgesenkt. Vor der erwarteten Rückkehr wird vorausschauend
+          vorgeheizt, sodass es bei Ankunft wieder warm ist.</p>`,
       },
     };
+    // small bullet/format helpers for the dynamic sections
+    const _ok = t => `<li>✓ ${t}</li>`;
+    const _no = t => `<li style="color:#9c3a2f">✗ ${t}</li>`;
+    const _warn = t => `<li style="color:#9c6a2f">⚠ ${t}</li>`;
+    const _inf = t => `<li style="color:var(--muted)">${t}</li>`;
+    const _ul = items => `<ul style="margin:4px 0 0;padding-left:18px">${items.join("")}</ul>`;
+    const _ent = e => `<code style="font-size:.85em">${e}</code>`;
+    const _partSelf = () => (stratDevices||[]).filter(d => d.cfg && d.cfg.self_consumption);
+    const _partTariff = () => (stratDevices||[]).filter(d => d.cfg && d.cfg.tariff_shift && d.kind!=='battery');
+    const _battTariff = () => (stratDevices||[]).filter(d => d.cfg && d.cfg.tariff_shift && d.kind==='battery');
+    const _byPrio = arr => arr.slice().sort((a,b)=>(Number(b.cfg.priority)||0)-(Number(a.cfg.priority)||0));
+    function _devLimit(d) {
+      const c = d.cfg; if (!c.limit_max || Number(c.limit_max)<=0) return "";
+      const what = d.kind==='battery' ? "SoC" : (c.limit_entity ? _ent(c.limit_entity) : "Grenzwert");
+      return ` Stopp bei ${what} ≥ ${c.limit_max}${d.kind==='battery'?' %':''}.`;
+    }
+    function helpPrereq_self(st) {
+      const li = [];
+      const pvMiss = (st.missing||[]).find(m => /PV/.test(m));
+      li.push(pvMiss ? _no(pvMiss) : _ok("PV- und Netzleistung konfiguriert"));
+      const part = _partSelf();
+      if (part.length)
+        li.push(_ok(`${part.length} Gerät(e) aktiviert: ${_byPrio(part).map(d=>`${d.name} (Prio ${d.cfg.priority})`).join(", ")}`));
+      else if ((stratDevices||[]).length)
+        li.push(_warn("steuerbare Geräte vorhanden, aber keines für PV-Überschuss aktiviert"));
+      else
+        li.push(_no("kein steuerbares Gerät angelegt"));
+      li.push(appSettings.control_enabled ? _ok("Master-Schalter „Steuerung aktiv“ ein")
+                                          : _no("Master-Schalter „Steuerung aktiv“ ist aus"));
+      const lf = appSettings.surplus_loads_first, ms = Number(appSettings.surplus_battery_min_soc)||0;
+      li.push(_inf(`Vorrang: <b>${lf?'Verbraucher zuerst':'Batterie zuerst'}</b>${ms>0?` · Batterie-Mindest-SoC ${ms} %`:''}`));
+      return _ul(li);
+    }
+    function helpExample_self() {
+      const devs = _byPrio(_partSelf());
+      if (!devs.length)
+        return `<p class="sub">Aktiviere oben ein Gerät – dann erscheint hier ein konkretes Beispiel mit seinen Werten.</p>`;
+      const mod = devs.find(d => d.control_mode==='setpoint' && Number(d.cfg.max_w)>0) || devs[0];
+      const c = mod.cfg; let s;
+      if (mod.control_mode==='setpoint' && Number(c.max_w)>0) {
+        s = `<p>Bei PV 3000 W und Hausverbrauch 800 W stehen <b>2200 W</b> Überschuss bereit.
+             <b>${mod.name}</b> (Prio ${c.priority}, regelbar bis ${fmtW(c.max_w)}) wird auf ~2200 W
+             geregelt; fällt die PV unter den Bedarf, regelt es zurück statt aus dem Netz zu laufen.${_devLimit(mod)}</p>`;
+      } else {
+        const thr = Math.max(Number(c.pv_threshold_w)||0, Number(mod.power_w)||0);
+        s = `<p><b>${mod.name}</b> (Prio ${c.priority}${mod.power_w!=null?', ~'+fmtW(mod.power_w):''}) wird
+             zugeschaltet, sobald der Überschuss ${thr?'≥ '+fmtW(thr):'ausreicht'}, und bei Netzbezug wieder
+             abgeschaltet.${_devLimit(mod)}</p>`;
+      }
+      const b = _partSelf().find(d => d.kind==='battery');
+      if (b) {
+        const lf = appSettings.surplus_loads_first, ms = Number(appSettings.surplus_battery_min_soc)||0;
+        s += `<p class="sub">Speicher „${b.name}“: ${lf
+          ? (ms>0 ? `lädt zuerst bis ${ms} % SoC, danach bekommen Verbraucher den Überschuss`
+                  : `Verbraucher haben Vorrang, der Rest lädt den Speicher`)
+          : `wird zuerst geladen, Verbraucher bekommen nur den Einspeise-Überschuss`}.</p>`;
+      }
+      return s;
+    }
+    function helpPrereq_tariff(st) {
+      const t = appSettings.tariff || {}; const li = [];
+      if (t.mode==='dynamic')
+        li.push(t.price_entity ? _ok(`Dynamischer Tarif – Preis-Entität ${_ent(t.price_entity)}`)
+                               : _no("Dynamischer Tarif gewählt, aber keine Preis-Entität gesetzt"));
+      else if (t.mode==='ht_nt')
+        li.push(_ok(`HT/NT-Fenster – NT ${t.nt_start||'?'}–${t.nt_end||'?'} (${t.nt_price_ct} ct), HT ${t.ht_price_ct} ct`));
+      else
+        li.push(_no("Fester Tarif – keine günstigen Phasen; wähle dynamischen Tarif oder HT/NT unter Einstellungen → Tarife"));
+      li.push(_inf(`Speicher-Netzladen bei ≤ ${t.charge_max_ct||0} ct/kWh${Number(t.discharge_min_ct)>0?` · Entladen bei ≥ ${t.discharge_min_ct} ct/kWh`:` · Entladen aus`}`));
+      const part = _partTariff();
+      if (part.length)
+        li.push(_ok(`Verschiebbare Lasten: ${part.map(d=>d.name+(d.cfg.latest_start?` (spätestens ${d.cfg.latest_start})`:'')).join(", ")}`));
+      else
+        li.push(_warn("keine verschiebbare Last aktiviert"));
+      const bt = _battTariff();
+      if (bt.length) li.push(_inf(`Speicher im Tarifbetrieb: ${bt.map(d=>d.name).join(", ")}`));
+      li.push(appSettings.control_enabled ? _ok("Master-Schalter „Steuerung aktiv“ ein")
+                                          : _no("Master-Schalter „Steuerung aktiv“ ist aus"));
+      if (appSettings.current_price_ct!=null) li.push(_inf(`Aktueller Preis: <b>${appSettings.current_price_ct} ct/kWh</b>`));
+      return _ul(li);
+    }
+    function helpExample_tariff() {
+      const t = appSettings.tariff || {};
+      const part = _partTariff();
+      const d = part.find(x=>x.cfg.latest_start) || part[0];
+      let s = "";
+      if (d) {
+        s = d.cfg.latest_start
+          ? `<p><b>${d.name}</b> mit „spätester Start“ ${d.cfg.latest_start} wird in der günstigsten Stunde
+             davor gestartet; gibt es bis dahin keine günstige Phase, startet es zum Termin trotzdem
+             (notfalls aus dem Netz).</p>`
+          : `<p><b>${d.name}</b> wird gestartet, sobald der Tarif günstig ist, und gestoppt, wenn nicht mehr.</p>`;
+      }
+      const b = _battTariff()[0];
+      if (b) {
+        s += `<p class="sub">Speicher „${b.name}“: lädt aus dem Netz bei ≤ ${t.charge_max_ct||0} ct/kWh`
+          + (Number(t.discharge_min_ct)>0 ? ` und wird bei ≥ ${t.discharge_min_ct} ct/kWh erzwungen entladen (Arbitrage)` : ``)
+          + `.</p>`;
+      }
+      return s || `<p class="sub">Aktiviere oben eine verschiebbare Last – dann erscheint hier ein Beispiel mit ihrer Deadline.</p>`;
+    }
+    function helpPrereq_setback() {
+      const groups = ((appSettings.setback||{}).groups)||[];
+      const valid = groups.filter(g => (g.persons||[]).length && (g.thermostats||[]).length);
+      const li = [];
+      li.push(valid.length
+        ? _ok(`${valid.length} Gruppe(n): ${valid.map(g=>`${g.name} (${g.persons.length} Person(en), ${g.thermostats.length} Raum/Räume)`).join(", ")}`)
+        : _no("keine Thermostat-Gruppe mit Personen und Räumen angelegt"));
+      li.push((appSettings.setback||{}).enabled ? _ok("Absenkung aktiv") : _inf("Absenkung derzeit aus"));
+      return _ul(li);
+    }
+    function helpExample_setback() {
+      const groups = ((appSettings.setback||{}).groups)||[];
+      const g = groups.find(x => (x.persons||[]).length && (x.thermostats||[]).length);
+      if (!g) return `<p class="sub">Lege eine Gruppe mit Personen und Räumen an – dann erscheint hier ein Beispiel mit deinen Temperaturen.</p>`;
+      const th = g.thermostats[0], delta = (Number(th.comfort_c)-Number(th.eco_c));
+      let s = `<p>Verlassen alle aus „${g.name}“ das Haus, senkt <b>${th.name}</b> von ${th.comfort_c} °C auf
+               ${th.eco_c} °C (−${delta.toFixed(1)} K).`;
+      s += Number(th.reheat_k)>0 ? ` Vorlauf ~${th.reheat_k} min/K, damit es bei Rückkehr wieder warm ist.`
+                                 : ` Vor der Rückkehr wird vorausschauend vorgeheizt.`;
+      if (g.comfort_time) s += ` Komfort-Zielzeit: ${g.comfort_time}.`;
+      return s + `</p>`;
+    }
     function showStratHelp(key) {
-      const h = STRAT_HELP[key]; if (!h) return;
-      document.getElementById("strathelp-title").textContent = h.title;
-      document.getElementById("strathelp-body").innerHTML = h.html;
+      const m = STRAT_META[key]; if (!m) return;
+      const st = (stratList||[]).find(x=>x.key===key) || {};
+      let pre, ex;
+      if (key==='self_consumption') { pre = helpPrereq_self(st); ex = helpExample_self(); }
+      else if (key==='tariff_shift') { pre = helpPrereq_tariff(st); ex = helpExample_tariff(); }
+      else { pre = helpPrereq_setback(); ex = helpExample_setback(); }
+      document.getElementById("strathelp-title").textContent = m.title;
+      document.getElementById("strathelp-body").innerHTML =
+        `<div><b>Funktionsweise</b>${m.func}</div>`
+        + `<div style="margin-top:10px"><b>Voraussetzungen</b> <span class="sub">(deine Konfiguration)</span>${pre}</div>`
+        + `<div style="margin-top:10px"><b>Beispiel</b> <span class="sub">(deine Geräte)</span>${ex}</div>`;
       document.getElementById("strathelp").style.display = "flex";
     }
     function closeStratHelp() { document.getElementById("strathelp").style.display = "none"; }
     function stratInfoBtn(key) {
-      return STRAT_HELP[key]
+      return STRAT_META[key]
         ? `<button class="btn" title="Beschreibung der Strategie" aria-label="Info"
              style="padding:0;width:22px;height:22px;border-radius:50%;line-height:1;margin-left:6px"
              onclick="event.preventDefault();event.stopPropagation();showStratHelp('${key}')">ⓘ</button>`

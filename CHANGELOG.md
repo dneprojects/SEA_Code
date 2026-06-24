@@ -5,8 +5,13 @@
 - **Strategie-Beschreibungen**: jede Strategie hat jetzt einen **ⓘ-Info-Button**
   (nur Icon) neben ihrem Titel im Strategien-Bereich. Er öffnet eine kompakte
   Beschreibung (Funktionsweise · Voraussetzungen · Beispiel) in einem Overlay
-  **innerhalb des SEA-Frames** (kein neues Fenster). Texte für PV-Überschuss,
-  dynamischen Tarif und Temperaturabsenkung.
+  **innerhalb des SEA-Frames** (kein neues Fenster). Die **Voraussetzungen
+  spiegeln die aktuelle Konfiguration** (✓/✗/⚠: PV+Netz, aktivierte Geräte mit
+  Priorität, Master-Schalter, Vorrang/Mindest-SoC, Preisquelle + Schwellen,
+  Thermostat-Gruppen), und das **Beispiel wird aus den real konfigurierten
+  Geräten** und ihren Einstellungen gebaut (Name, Prio, max. Leistung, Stopp-
+  Grenze, Deadline „spätester Start“, Lade-/Entlade-Schwellen, Absenk-Delta &
+  Vorheiz-Vorlauf). Für PV-Überschuss, dynamischen Tarif und Temperaturabsenkung.
 
 - **Bugfix – PV-surplus no longer runs loads from the battery**: the surplus
   controller regulated the grid to zero (`−grid_w`). With a battery present a
