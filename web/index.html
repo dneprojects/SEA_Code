@@ -368,6 +368,18 @@
     </div>
   </div>
 
+  <!-- Strategy help overlay (shown inside the SEA frame) -->
+  <div id="strathelp" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50;align-items:center;justify-content:center"
+       onclick="if(event.target===this)closeStratHelp()">
+    <div style="background:#fff;border:1px solid var(--border);box-shadow:2px 2px 10px rgba(0,0,0,.3);width:min(620px,94vw);max-height:82vh;display:flex;flex-direction:column;padding:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <b id="strathelp-title">Strategie</b>
+        <button class="btn" title="Schließen" onclick="closeStratHelp()">×</button>
+      </div>
+      <div id="strathelp-body" style="overflow:auto;margin-top:10px;line-height:1.45"></div>
+    </div>
+  </div>
+
   <script>
     const api = (p) => p.replace(/^\//, "");
     let view = "dashboard";
@@ -1364,10 +1376,71 @@
       return `<div class="sub">${st.desc||''}</div>${miss}
         <div class="sub" style="margin-top:4px">${st.available?'Die Umsetzung dieser Strategie folgt.':''}</div>`;
     }
+    // Per-strategy help: how it works, prerequisites, an example. Shown in an
+    // overlay inside the SEA frame via the ⓘ button next to each strategy.
+    const STRAT_HELP = {
+      self_consumption: {
+        title: "PV-Überschuss: Eigenverbrauch und Speicherung",
+        html: `
+          <p><b>Funktionsweise.</b> Die App misst laufend die Netzbilanz. Sobald die PV mehr
+          erzeugt, als das Haus verbraucht (Überschuss/Einspeisung), werden steuerbare Geräte
+          nach Priorität zugeschaltet bzw. regelbare Geräte (Heizstab, Wallbox, Batterie) im
+          Sollwert hochgeregelt – genau so weit, dass der Überschuss aufgebraucht, aber kein
+          Netzstrom bezogen wird. Steigt der Bezug, wird wieder zurückgeregelt oder abgeschaltet.
+          Eine <i>entladende</i> Batterie zählt nie als Überschuss, ein Verbraucher läuft also nie
+          aus dem Speicher.</p>
+          <p><b>Voraussetzungen.</b> PV-Leistung <i>und</i> Netz-Leistung konfiguriert; mindestens
+          ein steuerbares Gerät (Schalt- oder Sollwert-Entität); Master-Schalter „PV-Überschuss­steuerung
+          aktiv“. Vorrang (Batterie zuerst / Verbraucher zuerst) und ein Batterie-Mindest-SoC sind unter
+          <i>Einstellungen → Grundeinstellungen</i> wählbar.</p>
+          <p><b>Beispiel.</b> PV 3000 W, Haus 800 W → 2200 W Überschuss. Der Heizstab (Prio 8) wird
+          auf ~2200 W geregelt. Zieht eine Wolke auf (PV 1000 W), regelt er auf ~200 W zurück, statt
+          aus dem Netz zu heizen.</p>`,
+      },
+      tariff_shift: {
+        title: "Dynamischer Tarif: Lastverschiebung",
+        html: `
+          <p><b>Funktionsweise.</b> Nutzt deine Preisquelle (dynamischer Börsentarif, HT/NT-Fenster
+          oder feste Schwelle). In <i>günstigen</i> – besonders sehr niedrigen oder negativen – Phasen
+          werden verschiebbare Lasten gestartet und Speicher (Batterie/thermisch) geladen. In <i>teuren</i>
+          Phasen kann die Batterie gezielt entladen werden (Arbitrage). Eine Deadline „spätester Start“
+          erzwingt den Lauf rechtzeitig, auch wenn der Preis dann nicht günstig ist.</p>
+          <p><b>Voraussetzungen.</b> Eine Preisquelle konfiguriert (dynamischer Tarif-Sensor oder
+          HT/NT-Fenster unter <i>Einstellungen → Tarife</i>); mindestens eine verschiebbare Last oder
+          eine Batterie mit Sollwert-Entität; Master-Schalter „Steuerung aktiv“.</p>
+          <p><b>Beispiel.</b> Nachts fällt der Preis auf −2 ct/kWh → die Batterie lädt aus dem Netz.
+          Die Waschmaschine mit Deadline 07:00 startet automatisch in der günstigsten Stunde davor.</p>`,
+      },
+      setback: {
+        title: "Temperaturabsenkung bei Abwesenheit",
+        html: `
+          <p><b>Funktionsweise.</b> Erkennt Anwesenheit über die Personen-Entitäten je Gruppe. Sind
+          <i>alle</i> abwesend, werden die Raum-Thermostate abgesenkt. Vor der erwarteten Rückkehr wird
+          vorausschauend vorgeheizt, sodass es bei Ankunft wieder warm ist.</p>
+          <p><b>Voraussetzungen.</b> Eine Thermostat-Gruppe mit Personen <i>und</i> Räumen
+          (climate-Entitäten) unter <i>Gruppen / Räume</i> angelegt.</p>
+          <p><b>Beispiel.</b> Alle verlassen das Haus → Solltemperatur −3 K. Meldet sich eine Person
+          auf dem Heimweg, hebt die Vorheizung die Temperatur rechtzeitig wieder an.</p>`,
+      },
+    };
+    function showStratHelp(key) {
+      const h = STRAT_HELP[key]; if (!h) return;
+      document.getElementById("strathelp-title").textContent = h.title;
+      document.getElementById("strathelp-body").innerHTML = h.html;
+      document.getElementById("strathelp").style.display = "flex";
+    }
+    function closeStratHelp() { document.getElementById("strathelp").style.display = "none"; }
+    function stratInfoBtn(key) {
+      return STRAT_HELP[key]
+        ? `<button class="btn" title="Beschreibung der Strategie" aria-label="Info"
+             style="padding:0;width:22px;height:22px;border-radius:50%;line-height:1;margin-left:6px"
+             onclick="event.preventDefault();event.stopPropagation();showStratHelp('${key}')">ⓘ</button>`
+        : '';
+    }
     function renderStrategies() {
       document.getElementById("strategies").innerHTML = stratList.map(st => `
         <details class="stratbox"${stratOpen.has(st.key)?' open':''} ontoggle="onStratToggle('${st.key}',this.open)">
-          <summary><b style="color:var(--fg)">${st.name}</b> ${stratBadge(st)}</summary>
+          <summary><b style="color:var(--fg)">${st.name}</b> ${stratBadge(st)}${stratInfoBtn(st.key)}</summary>
           <div class="stratbody">${stratBody(st)}</div>
         </details>`).join("");
       const cm = document.getElementById("ctrl-master");

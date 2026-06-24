@@ -2,6 +2,12 @@
 
 ## 0.2.1
 
+- **Strategie-Beschreibungen**: jede Strategie hat jetzt einen **ⓘ-Info-Button**
+  (nur Icon) neben ihrem Titel im Strategien-Bereich. Er öffnet eine kompakte
+  Beschreibung (Funktionsweise · Voraussetzungen · Beispiel) in einem Overlay
+  **innerhalb des SEA-Frames** (kein neues Fenster). Texte für PV-Überschuss,
+  dynamischen Tarif und Temperaturabsenkung.
+
 - **Bugfix – PV-surplus no longer runs loads from the battery**: the surplus
   controller regulated the grid to zero (`−grid_w`). With a battery present a
   *discharging* battery holds the grid at ~0 by itself, so a controllable load
