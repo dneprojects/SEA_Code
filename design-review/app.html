@@ -38,7 +38,7 @@ header{position:relative;background:#fff}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 26px 12px}
 .topbar .logo{height:38px;width:auto;display:block}
 .topbar .titlebox{text-align:right}
-.topbar .apptitle{font-size:24px;font-weight:700;color:#5f6b76;letter-spacing:.01em;line-height:1.1}
+.topbar .apptitle{font-size:24px;font-weight:400;color:#5f6b76;letter-spacing:.01em;line-height:1.1}
 .topbar .status{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:3px}
 .topbar .status .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
 .bannerwrap{position:relative}
@@ -207,9 +207,8 @@ footer{color:var(--faint);font-size:12px;padding:18px 26px;border-top:1px solid 
   /* SmartHub-style: hide the white logo row, show hamburger + compact title in the banner */
   .topbar{display:none}
   .banner{height:64px}
-  .menu-btn{display:inline-flex;flex:none;width:40px;height:40px;border-radius:10px;border:none;
-    background:rgba(255,255,255,.18);color:#fff;align-items:center;justify-content:center;
-    cursor:pointer;pointer-events:auto;backdrop-filter:blur(2px)}
+  .menu-btn{display:inline-flex;flex:none;width:40px;height:40px;border:none;background:none;padding:0;
+    color:#fff;align-items:center;justify-content:center;cursor:pointer;pointer-events:auto}
   .apptitle-mobile{display:block}
   .sidebar{position:fixed;left:0;top:0;height:100%;width:262px;z-index:90;transform:translateX(-110%);
     transition:transform .25s ease;overflow-y:auto;box-shadow:6px 0 24px rgba(0,0,0,.25)}
@@ -236,7 +235,7 @@ footer{color:var(--faint);font-size:12px;padding:18px 26px;border-top:1px solid 
 <symbol id="i-dash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
 <symbol id="i-hist" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></symbol>
 <symbol id="i-strat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
-<symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6"/><path d="M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></symbol>
+<symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="9" cy="7" rx="6" ry="3"/><path d="M3 7v4c0 1.6 2.7 3 6 3s6-1.4 6-3V7"/><ellipse cx="15" cy="16" rx="6" ry="3"/><path d="M9 16.5v0.5c0 1.6 2.7 3 6 3s6-1.4 6-3v-1"/></symbol>
 <symbol id="i-dev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0z"/><path d="M12 16v6"/></symbol>
 <symbol id="i-set" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 11H4.5a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 11 4.6V4.5a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9z"/></symbol>
 <symbol id="i-src" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
@@ -433,7 +432,7 @@ footer{color:var(--faint);font-size:12px;padding:18px 26px;border-top:1px solid 
       <div class="lab">Vergleich gegen</div>
       <div class="ctl"><select><option>Volleinspeisung (kein Eigenverbrauch)</option><option>Direkter Eigenverbrauch</option><option>PV-Überschuss-Senke (Heizstab/Auto)</option></select></div>
     </div>
-    <div class="cards" style="grid-template-columns:repeat(4,1fr)">
+    <div class="cards">
       <div class="stat accent"><div class="top"><span class="lbl">Ersparnis</span><svg class="ico" width="18" height="18"><use href="#i-euro"/></svg></div><div class="val">14,80 €</div><div class="meta">vs. Baseline</div></div>
       <div class="stat"><div class="top"><span class="lbl">Eigenverbrauch</span><svg class="ico" width="18" height="18"><use href="#i-leaf"/></svg></div><div class="val">71 %</div><div class="meta">der Erzeugung</div></div>
       <div class="stat"><div class="top"><span class="lbl">Autarkie</span><svg class="ico" width="18" height="18"><use href="#i-home"/></svg></div><div class="val">68 %</div><div class="meta">des Bedarfs</div></div>
@@ -645,45 +644,24 @@ function closeMenu(){document.getElementById('sidebar').classList.remove('open')
 // unique gradient id per header — duplicate ids break the paint server once the
 // first (display:none) header is hidden, leaving the others white.
 const G=n=>`<defs><linearGradient id="rg${n}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#561f1c"/><stop offset="0.55" stop-color="#7d2723"/><stop offset="1" stop-color="#c0392e"/></linearGradient></defs><rect width="1024" height="120" fill="url(#rg${n})"/>`;
+// subtle, "hinted" building blocks (low opacity, left kept clear for the hamburger)
+const WAVES=(a,b,c)=>`<g fill="none" stroke-linecap="round">
+  <path d="M0 74 Q170 50 340 74 T680 74 T1024 74" stroke="#fff" stroke-width="1.6" opacity="${a}"/>
+  <path d="M0 88 Q150 66 300 88 T600 88 T900 88 T1024 88" stroke="#ffd9d4" stroke-width="1.3" opacity="${b}"/>
+  <path d="M0 60 Q200 40 400 60 T800 60 T1024 60" stroke="#fff" stroke-width="1.2" opacity="${c}"/></g>`;
+const HORIZON=`<path d="M0 120 C220 96 430 110 660 102 860 95 980 110 1024 102 L1024 120 Z" fill="#fff" opacity="0.06"/>
+  <path d="M0 120 C260 104 470 116 700 108 880 102 1000 114 1024 108 L1024 120 Z" fill="#000" opacity="0.07"/>`;
+const SUN=(x,op)=>`<g stroke="#fff" stroke-width="1.4" fill="none" opacity="${op}" stroke-linecap="round"><circle cx="${x}" cy="44" r="16"/>
+  <g opacity="0.85"><line x1="${x}" y1="16" x2="${x}" y2="9"/><line x1="${x}" y1="72" x2="${x}" y2="79"/><line x1="${x-28}" y1="44" x2="${x-35}" y2="44"/><line x1="${x+28}" y1="44" x2="${x+35}" y2="44"/><line x1="${x-20}" y1="24" x2="${x-25}" y2="19"/><line x1="${x+20}" y1="64" x2="${x+25}" y2="69"/><line x1="${x+20}" y1="24" x2="${x+25}" y2="19"/><line x1="${x-20}" y1="64" x2="${x-25}" y2="69"/></g></g>`;
+const SUNGLOW=x=>`<g fill="#fff"><circle cx="${x}" cy="46" r="40" opacity="0.05"/><circle cx="${x}" cy="46" r="28" opacity="0.08"/><circle cx="${x}" cy="46" r="16" opacity="0.16"/></g><circle cx="${x}" cy="46" r="11" fill="#ffe9e5" opacity="0.5"/>`;
+const HOUSE=(x,op)=>`<g transform="translate(${x},30)" stroke="#fff" stroke-width="1.4" fill="none" opacity="${op}" stroke-linecap="round" stroke-linejoin="round"><path d="M0 24 L22 5 44 24"/><path d="M7 22 V48 H37 V22"/><path d="M18 48 V36 H26 V48"/></g>`;
+const BATT=(x,op)=>`<g transform="translate(${x},34)" stroke="#fff" stroke-width="1.4" fill="none" opacity="${op}" stroke-linecap="round"><rect x="0" y="9" width="34" height="20" rx="3.5"/><line x1="38" y1="15" x2="38" y2="23"/><line x1="9" y1="19" x2="21" y2="19"/></g>`;
 const HEADERS = {
-  1:{name:'Solar-Landschaft', svg:`${G(1)}
-    <g opacity="0.18" fill="#ffffff"><path d="M0 120 C200 70 360 96 540 86 720 76 880 104 1024 80 L1024 120 Z"/></g>
-    <g opacity="0.12" fill="#000"><path d="M0 120 C260 96 460 116 680 104 860 94 980 112 1024 104 L1024 120 Z"/></g>
-    <g stroke="#fff" stroke-width="2" fill="none" opacity="0.9"><circle cx="150" cy="46" r="22"/><g stroke-width="2"><line x1="150" y1="10" x2="150" y2="0"/><line x1="150" y1="82" x2="150" y2="92"/><line x1="114" y1="46" x2="104" y2="46"/><line x1="186" y1="46" x2="196" y2="46"/><line x1="124" y1="20" x2="117" y2="13"/><line x1="176" y1="72" x2="183" y2="79"/><line x1="176" y1="20" x2="183" y2="13"/><line x1="124" y1="72" x2="117" y2="79"/></g></g>
-    <g stroke="#fff" stroke-width="1.6" fill="none" opacity="0.8"><g transform="translate(760,58) rotate(-18)"><rect x="0" y="0" width="120" height="46"/><line x1="30" y1="0" x2="30" y2="46"/><line x1="60" y1="0" x2="60" y2="46"/><line x1="90" y1="0" x2="90" y2="46"/><line x1="0" y1="23" x2="120" y2="23"/></g></g>`},
-  2:{name:'Smart-Home Flow', svg:`${G(2)}
-    <g stroke="#fff" stroke-width="1.8" fill="none" opacity="0.92" stroke-linecap="round" stroke-linejoin="round">
-      <g transform="translate(120,40)"><circle cx="20" cy="20" r="13"/><g><line x1="20" y1="-2" x2="20" y2="-8"/><line x1="20" y1="42" x2="20" y2="48"/><line x1="-2" y1="20" x2="-8" y2="20"/><line x1="42" y1="20" x2="48" y2="20"/></g></g>
-      <g transform="translate(470,34)"><path d="M0 26 L26 4 52 26"/><path d="M6 24 V52 H46 V24"/></g>
-      <g transform="translate(820,40)"><rect x="0" y="12" width="40" height="24" rx="3"/><line x1="44" y1="20" x2="44" y2="28"/><line x1="12" y1="24" x2="28" y2="24"/></g>
-    </g>
-    <g stroke="#ffd9d4" stroke-width="2.2" fill="none" stroke-dasharray="7 7" opacity="0.85"><path d="M158 60 H470"/><path d="M540 60 H820"/></g>
-    <g fill="#ffd9d4"><circle cx="300" cy="60" r="3.5"/><circle cx="690" cy="60" r="3.5"/></g>`},
-  3:{name:'Sunburst', svg:`${G(3)}
-    <g stroke="#fff" stroke-width="2" opacity="0.5"><g transform="translate(110,60)">${Array.from({length:14},(_,i)=>{const a=(i/14)*Math.PI-Math.PI/2;return `<line x1="0" y1="0" x2="${Math.cos(a)*420}" y2="${Math.sin(a)*420}"/>`}).join('')}</g></g>
-    <circle cx="110" cy="60" r="30" fill="#fff" opacity="0.95"/><circle cx="110" cy="60" r="46" fill="none" stroke="#fff" stroke-width="2" opacity="0.5"/>`},
-  4:{name:'Energiewellen', svg:`${G(4)}
-    <g fill="none" stroke-linecap="round">
-      <path d="M0 70 Q128 30 256 70 T512 70 T768 70 T1024 70" stroke="#fff" stroke-width="2.4" opacity="0.85"/>
-      <path d="M0 84 Q128 50 256 84 T512 84 T768 84 T1024 84" stroke="#ffd9d4" stroke-width="2" opacity="0.6"/>
-      <path d="M0 56 Q160 22 320 56 T640 56 T960 56 T1024 56" stroke="#fff" stroke-width="1.6" opacity="0.4"/>
-    </g>`},
-  5:{name:'Tech-Hexgrid', svg:`${G(5)}
-    <g stroke="#fff" stroke-width="1.4" fill="none" opacity="0.5">${(function(){let o='';const w=34,h=30;for(let r=0;r<5;r++){for(let c=0;c<20;c++){const x=c*w*1.5+(r%2?w*0.75:0);const y=r*h-20;const op=Math.max(.08,1-x/1100);o+=`<polygon opacity="${op.toFixed(2)}" points="${x},${y+h/2} ${x+w/2},${y} ${x+w},${y+h/2} ${x+w},${y+h*1.5} ${x+w/2},${y+h*2} ${x},${y+h*1.5}"/>`}}return o})()}</g>
-    <circle cx="120" cy="56" r="6" fill="#fff"/><circle cx="120" cy="56" r="14" fill="none" stroke="#fff" stroke-width="2" opacity="0.6"/>`},
-  6:{name:'Duotone Skyline', svg:`${G(6)}
-    <circle cx="840" cy="50" r="30" fill="#ffb3a8" opacity="0.55"/>
-    <g fill="#000" opacity="0.16"><rect x="60" y="70" width="40" height="50"/><rect x="110" y="54" width="34" height="66"/><rect x="150" y="80" width="46" height="40"/><rect x="210" y="60" width="30" height="60"/><rect x="250" y="86" width="50" height="34"/></g>
-    <g fill="#fff" opacity="0.14"><rect x="700" y="64" width="34" height="56"/><rect x="744" y="48" width="40" height="72"/><rect x="792" y="78" width="34" height="42"/><rect x="836" y="58" width="44" height="62"/><rect x="888" y="84" width="48" height="36"/><rect x="944" y="68" width="36" height="52"/></g>
-    <g fill="#000" opacity="0.10"><rect x="320" y="78" width="60" height="42"/><rect x="392" y="62" width="40" height="58"/><rect x="442" y="86" width="70" height="34"/></g>`},
-  7:{name:'Windräder & Sonne', svg:`${G(7)}
-    <g opacity="0.16" fill="#fff"><path d="M0 120 C220 92 420 112 660 100 860 90 980 110 1024 100 L1024 120 Z"/></g>
-    <g stroke="#fff" stroke-width="2" fill="none" opacity="0.9"><circle cx="150" cy="44" r="20"/><g><line x1="150" y1="8" x2="150" y2="2"/><line x1="150" y1="80" x2="150" y2="86"/><line x1="114" y1="44" x2="108" y2="44"/><line x1="186" y1="44" x2="192" y2="44"/></g></g>
-    <g stroke="#fff" stroke-width="1.8" fill="none" opacity="0.85" stroke-linecap="round">
-      <g transform="translate(560,40)"><line x1="20" y1="22" x2="20" y2="74"/><g stroke-width="2"><line x1="20" y1="22" x2="20" y2="0"/><line x1="20" y1="22" x2="40" y2="33"/><line x1="20" y1="22" x2="0" y2="33"/></g></g>
-      <g transform="translate(700,30)"><line x1="16" y1="26" x2="16" y2="84"/><g stroke-width="2"><line x1="16" y1="26" x2="16" y2="2"/><line x1="16" y1="26" x2="38" y2="38"/><line x1="16" y1="26" x2="-6" y2="38"/></g></g>
-      <g transform="translate(840,46)"><line x1="14" y1="20" x2="14" y2="68"/><g stroke-width="2"><line x1="14" y1="20" x2="14" y2="2"/><line x1="14" y1="20" x2="32" y2="30"/><line x1="14" y1="20" x2="-4" y2="30"/></g></g>
-    </g>`},
+  1:{name:'Sonne, Wellen & Haus', svg:`${G(1)} ${HORIZON} ${WAVES(0.16,0.10,0.20)} ${SUN(852,0.42)} ${HOUSE(556,0.26)} ${BATT(648,0.26)}`},
+  2:{name:'Weiche Sonne', svg:`${G(2)} ${WAVES(0.13,0.08,0.16)} ${SUNGLOW(848)} ${HOUSE(580,0.22)} ${BATT(676,0.22)}`},
+  3:{name:'Wellen im Vordergrund', svg:`${G(3)} ${WAVES(0.24,0.15,0.30)} ${SUN(892,0.40)} ${HOUSE(636,0.20)} ${BATT(724,0.20)}`},
+  4:{name:'Panorama', svg:`${G(4)} ${HORIZON} ${WAVES(0.12,0.08,0.14)} ${SUN(820,0.40)} ${HOUSE(660,0.24)} ${BATT(752,0.24)}`},
+  5:{name:'Minimal', svg:`${G(5)} ${WAVES(0.16,0.10,0.20)} ${SUN(864,0.40)}`},
 };
 function buildHeaders(){
   const wrap=document.getElementById('headers'); const sel=document.getElementById('hsel');
