@@ -2,6 +2,14 @@
 
 ## 0.2.1
 
+- **Neues UI-Design** für alle Seiten: einheitliches Layout (festes 1024-px-
+  Desktop, schmaler ⇒ horizontaler Scroll; Mobil hochkant mit Hamburger-Menü
+  unterhalb des Headers, nur inhaltshoch), saubere Ausrichtung, einheitliche
+  Buttons, durchgängiges SVG-Icon-Set. Header wie SmartHub: weiße Logo-Zeile
+  über dem roten Banner (neue, dezente Sonne-/Wellen-Grafik), Schrift „Lucida
+  Sans". Verbindungs-/Aktualisierungsstatus jetzt klein neben dem Dashboard-
+  Titel statt im Header. Einsparung mit Münzen-Icon.
+
 - **Schaltlasten: „unterbrechbar"** – neue Checkbox je geschalteter Entität (in
   der Geräte-Steuerung). An (Default): eine laufende Last darf bei Wegfall von
   Überschuss bzw. günstigem Tarif wieder abgeschaltet werden (z. B. Heizstab).

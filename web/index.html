@@ -128,9 +128,186 @@
       .sidebar.open { transform:translateX(0); }
       .content { padding:0 12px 24px; }
     }
+
+    /* ====================================================================
+       NEW DESIGN SYSTEM (2026) — overrides the legacy rules above.
+       Maps the approved mockup onto the existing class hooks.
+       ==================================================================== */
+    :root{
+      --brand:#c0372d; --brand-2:#7d2723; --brand-3:#561f1c;
+      --ink:#2c2f33; --muted:#71767c; --faint:#9aa0a6;
+      --pg:#f4f5f7; --card:#ffffff; --line:#e6e8eb; --line2:#eef0f2;
+      --ok:#3f9b2f; --shadow:0 1px 2px rgba(20,24,28,.06),0 6px 18px rgba(20,24,28,.06);
+      --r:12px; --r-sm:8px;
+      --ui:"Lucida Sans",Arial,Verdana,Helvetica,sans-serif;
+    }
+    body{font-family:var(--ui);font-size:14px;line-height:1.45;color:var(--ink);
+      background:var(--pg);overflow-x:auto;margin:0;}
+    a{color:var(--brand)}
+    .sub{font-size:12px;color:var(--muted)}
+
+    /* fixed 1024 desktop; narrower -> horizontal scroll */
+    .shell{width:1024px;margin:0 auto;background:var(--pg)}
+
+    /* ---- header: white logo row above the red banner (like SmartHub) ---- */
+    header{position:relative;background:#fff}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 26px 12px}
+    .topbar .logo{height:38px;width:auto;display:block}
+    .topbar .logo-fallback{font-family:var(--ui);font-weight:700;color:var(--brand);font-size:22px}
+    .topbar .titlebox{text-align:right}
+    .topbar .apptitle{font-family:var(--ui);font-size:24px;font-weight:400;color:#5f6b76;letter-spacing:.01em}
+    .topbar .status{display:none}                /* status moved to the dashboard */
+    .bannerwrap{position:relative}
+    .banner{height:96px;width:100%;display:block}
+    .banner-overlay{position:absolute;inset:0;display:flex;align-items:center;gap:12px;padding:0 18px;pointer-events:none}
+    .menu-btn{display:none;width:40px;height:40px;border:none;background:none;padding:0;color:#fff;
+      align-items:center;justify-content:center;cursor:pointer;pointer-events:auto}
+    .apptitle-mobile{display:none;color:#fff;font-weight:700;font-size:18px;text-shadow:0 1px 3px rgba(0,0,0,.35)}
+
+    /* ---- layout / nav ---- */
+    .layout{display:flex;align-items:flex-start}
+    .sidebar{width:212px;flex:none;background:var(--card);border-right:1px solid var(--line);
+      padding:14px 12px;min-height:560px}
+    .sidebar a{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:var(--r-sm);
+      color:var(--ink);font-family:var(--ui);font-weight:600;font-size:14px;background:none;margin-bottom:2px}
+    .sidebar a:hover{background:var(--line2);text-decoration:none}
+    .sidebar a.active{background:#fbeceb;color:var(--brand)}
+    .sidebar a .ico{width:20px;height:20px;color:var(--faint);flex:none}
+    .sidebar a.active .ico{color:var(--brand)}
+    .sidebar a.sub{display:flex;font-size:13.5px;padding-left:12px}
+    .navgroup{margin:14px 12px 6px;font-size:11px;font-weight:700;letter-spacing:.06em;
+      text-transform:uppercase;color:var(--faint)}
+    .content{flex:1;min-width:0;padding:22px 26px 40px}
+
+    /* ---- section / page titles ---- */
+    .panel-title{font-family:var(--ui);font-size:12px;font-weight:700;letter-spacing:.05em;
+      text-transform:uppercase;color:var(--muted);margin:26px 0 12px;display:flex;align-items:center;gap:8px;
+      border:0;padding:0}
+    .panel-title::after{content:"";flex:1;height:1px;background:var(--line)}
+    .page-h{display:flex;align-items:center;gap:10px;margin:0 0 6px}
+    .page-h .ico{width:22px;height:22px;color:var(--brand)}
+    .page-h h1{font-size:20px;font-weight:700;margin:0;color:var(--ink)}
+    .page-status{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+    .page-status .dot{width:8px;height:8px;border-radius:50%;background:#bbb;flex:none}
+    .page-status .dot.ok{background:var(--ok)} .page-status .dot.bad{background:var(--brand)}
+
+    /* ---- cards ---- */
+    .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:14px}
+    .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+      box-shadow:var(--shadow);padding:14px 16px;min-width:0}
+    .card .v{font-size:24px;font-weight:750;color:var(--ink);font-variant-numeric:tabular-nums}
+    .card .l{font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+    .card .sub{font-size:12px;color:var(--muted);margin-top:3px}
+    .card.surplus{border-color:#f1c3bf} .card.surplus .v{color:var(--brand)}
+    .pos{color:var(--brand)} .neg{color:var(--ok)}
+
+    /* ---- controls / segmented ---- */
+    .controls{margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--muted)}
+    .seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;background:var(--card)}
+    .seg button{height:34px;border:none;border-left:1px solid var(--line);background:transparent;color:var(--muted);
+      padding:0 15px;cursor:pointer;font:inherit;font-weight:600;font-size:13px}
+    .seg button:first-child{border-left:none}
+    .seg button.active{background:var(--brand);color:#fff}
+
+    /* ---- buttons (uniform) ---- */
+    .btn{font-family:var(--ui);font-size:13px;font-weight:600;min-height:34px;display:inline-flex;
+      align-items:center;justify-content:center;gap:7px;padding:0 14px;border-radius:var(--r-sm);
+      border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;line-height:1}
+    .btn:hover{background:var(--line2)}
+    .btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+    .btn.primary:hover{background:#a92f26}
+
+    /* ---- inputs ---- */
+    input[type=text],input[type=number],input[type=time],input[type=datetime-local],select{
+      height:34px;border:1px solid var(--line);border-radius:var(--r-sm);padding:0 10px;font-family:var(--ui);
+      font-size:13px;color:var(--ink);background:var(--card)}
+    input:focus,select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(192,55,45,.12)}
+    input[type=checkbox]{width:17px;height:17px;accent-color:var(--brand)}
+    .setrow{display:flex;align-items:center;gap:12px;margin:12px 0;flex-wrap:wrap}
+    .setrow label{min-width:230px;color:var(--ink);font-weight:600}
+
+    /* ---- tables (clean, no heavy lines) ---- */
+    table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);
+      border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+    th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:top}
+    thead th{background:var(--line2);color:var(--muted);font-weight:700;font-size:11px;
+      text-transform:uppercase;letter-spacing:.03em}
+    tbody tr:nth-child(even){background:#fbfbfc}
+    tr:last-child td{border-bottom:none}
+    .info-tbl{border:none;box-shadow:none;background:none}
+    .info-tbl td{border:none;padding:4px 16px 4px 0}
+    .info-tbl td:first-child{color:var(--muted)}
+    .num{text-align:right;font-variant-numeric:tabular-nums}
+    .eid{font-family:ui-monospace,Consolas,monospace;font-size:11.5px;color:var(--ink);
+      background:var(--line2);border-radius:6px;padding:2px 7px}
+    .count{color:#fff;background:var(--brand);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600}
+    .conf,.ov{color:var(--muted);font-size:11px}
+
+    /* ---- charts / legend ---- */
+    .chart-wrap{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:10px 12px}
+    .legend{display:flex;gap:16px;flex-wrap:wrap;margin:10px 0;font-size:12.5px}
+    .legend span{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+    .legend .sw{width:11px;height:11px;border-radius:3px}
+    .legend .off{opacity:.4;text-decoration:line-through}
+
+    /* ---- setup device cards (rows/columns, no table lines) ---- */
+    #view-setup .swdev{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+      box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+    #view-setup .swdev>summary{padding:13px 16px;gap:12px}
+    #view-setup .swname{color:var(--ink);font-weight:700}
+    #view-setup .swbody{padding:6px 16px 14px;border-top:1px solid var(--line2)}
+    #view-setup .swgrid{grid-template-columns:170px minmax(120px,1fr) auto auto;gap:6px 12px}
+    #view-setup .swgrid>div{padding:5px 6px;border-radius:var(--r-sm);font-size:13px}
+    #view-setup .swhead{color:var(--brand);font-size:11px;letter-spacing:.05em;margin-top:12px}
+    #view-setup .swchip{font-size:11px;font-weight:700;color:var(--muted);background:var(--line2);border-radius:999px;padding:3px 9px}
+    #view-setup input,#view-setup select{font-size:13px;height:32px}
+    #view-setup .btn{min-height:30px;padding:0 11px}
+
+    /* ---- strategy boxes ---- */
+    #view-consumers .stratbox{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+      box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+    #view-consumers .stratbox>summary{padding:14px 16px;gap:11px}
+    #view-consumers .stratbody{padding:14px 16px;border-top:1px solid var(--line2)}
+    .badge{color:#fff;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700}
+
+    footer{background:var(--brand-3);border-top:none;color:#f0d9d7;font-size:12px;padding:14px 26px;margin-top:24px}
+
+    #menu-backdrop{background:rgba(20,24,28,.4)}
+
+    /* ---- mobile (portrait, hide menu) ---- */
+    @media (max-width:760px){
+      body{overflow-x:hidden}
+      .shell{width:100%}
+      .topbar{display:none}
+      .banner{height:64px}
+      .menu-btn{display:inline-flex}
+      .apptitle-mobile{display:block}
+      .sidebar{position:fixed;left:0;top:0;height:auto;min-height:0;max-height:84vh;width:auto;min-width:230px;
+        z-index:90;transform:translateX(-110%);transition:transform .25s ease;overflow-y:auto;
+        border-right:none;border-radius:0 14px 14px 0;box-shadow:4px 6px 24px rgba(0,0,0,.28);padding:10px}
+      .sidebar.open{transform:translateX(0)}
+      #menu-backdrop{inset:0}
+      .content{padding:16px 14px 30px}
+      .cards{grid-template-columns:repeat(2,1fr);gap:10px}
+      .setrow label{min-width:0}
+      #view-setup .swgrid{grid-template-columns:1fr}
+      .seg{width:100%}.seg button{flex:1;padding:0 6px}
+    }
+    @media (min-width:761px){ .menu-btn{display:none} }
   </style>
 </head>
 <body>
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+    <symbol id="i-dash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+    <symbol id="i-hist" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></symbol>
+    <symbol id="i-strat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="9" cy="7" rx="6" ry="3"/><path d="M3 7v4c0 1.6 2.7 3 6 3s6-1.4 6-3V7"/><ellipse cx="15" cy="16" rx="6" ry="3"/><path d="M9 16.5v0.5c0 1.6 2.7 3 6 3s6-1.4 6-3v-1"/></symbol>
+    <symbol id="i-dev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M7 8h10v3a5 5 0 0 1-10 0z"/><path d="M12 16v6"/></symbol>
+    <symbol id="i-set" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 13a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 4.6 11H4.5a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 11 4.6V4.5a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9z"/></symbol>
+    <symbol id="i-src" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></symbol>
+    <symbol id="i-thermo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13V5a2 2 0 1 1 4 0v8a4 4 0 1 1-4 0z"/><circle cx="12" cy="16" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  </defs></svg>
+  <div class="shell">
   <header>
     <div class="topbar">
       <img class="logo" src="static/logo.png" alt="habitron"
@@ -138,58 +315,48 @@
       <span class="logo-fallback" style="display:none">habitron</span>
       <div class="titlebox">
         <span class="apptitle">Smart Energy Agent <span id="app-version" class="sub" style="font-weight:normal"></span></span>
-        <span class="status"><span id="ha-dot" class="dot"></span><span id="ha-text">verbinde…</span> · <span id="updated"></span></span>
       </div>
     </div>
-    <svg class="banner" viewBox="0 0 1200 90" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-      <defs>
-        <linearGradient id="redbg" x1="0" y1="0" x2="1" y2="0.5">
-          <stop offset="0" stop-color="#561f1c"/><stop offset="0.55" stop-color="#7d2723"/><stop offset="1" stop-color="#c0392e"/>
-        </linearGradient>
-      </defs>
-      <rect width="1200" height="90" fill="url(#redbg)"/>
-      <ellipse cx="260" cy="45" rx="320" ry="130" fill="#d34b3f" opacity="0.22"/>
-      <g stroke="#ffffff" stroke-width="1" opacity="0.06">
-        <line x1="0" y1="30" x2="1200" y2="30"/><line x1="0" y1="60" x2="1200" y2="60"/>
-        <line x1="400" y1="0" x2="400" y2="90"/><line x1="680" y1="0" x2="680" y2="90"/>
-      </g>
-      <g fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.85">
-        <circle cx="-6" cy="92" r="54" stroke-dasharray="9 8" opacity="0.5"/>
-        <!-- Sonne (etwas rechts) -->
-        <g transform="translate(90,0)">
-          <circle cx="170" cy="45" r="26"/>
-          <circle cx="170" cy="45" r="48" stroke-dasharray="8 8" opacity="0.5"/>
-          <line x1="202" y1="45" x2="216" y2="45"/>
-          <line x1="192.6" y1="67.4" x2="202.5" y2="77.3"/>
-          <line x1="170" y1="77" x2="170" y2="91"/>
-          <line x1="147.4" y1="67.4" x2="137.5" y2="77.3"/>
-          <line x1="138" y1="45" x2="124" y2="45"/>
-          <line x1="147.4" y1="22.6" x2="137.5" y2="12.7"/>
-          <line x1="170" y1="13" x2="170" y2="-1"/>
-          <line x1="192.6" y1="22.6" x2="202.5" y2="12.7"/>
+    <div class="bannerwrap">
+      <svg class="banner" viewBox="0 0 1024 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs><linearGradient id="rg5" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#561f1c"/><stop offset="0.55" stop-color="#7d2723"/><stop offset="1" stop-color="#c0392e"/></linearGradient></defs>
+        <rect width="1024" height="120" fill="url(#rg5)"/>
+        <g fill="none" stroke-linecap="round">
+          <path d="M0 74 Q170 50 340 74 T680 74 T1024 74" stroke="#fff" stroke-width="1.6" opacity="0.16"/>
+          <path d="M0 88 Q150 66 300 88 T600 88 T900 88 T1024 88" stroke="#ffd9d4" stroke-width="1.3" opacity="0.10"/>
+          <path d="M0 60 Q200 40 400 60 T800 60 T1024 60" stroke="#fff" stroke-width="1.2" opacity="0.20"/>
         </g>
-      </g>
-    </svg>
-    <img class="menu-btn" src="static/acc_white.png" alt="Menü" title="Menü" onclick="toggleMenu()">
+        <g stroke="#fff" stroke-width="1.4" fill="none" opacity="0.40" stroke-linecap="round">
+          <circle cx="864" cy="44" r="16"/>
+          <g opacity="0.85"><line x1="864" y1="16" x2="864" y2="9"/><line x1="864" y1="72" x2="864" y2="79"/><line x1="836" y1="44" x2="829" y2="44"/><line x1="892" y1="44" x2="899" y2="44"/><line x1="844" y1="24" x2="839" y2="19"/><line x1="884" y1="64" x2="889" y2="69"/><line x1="884" y1="24" x2="889" y2="19"/><line x1="844" y1="64" x2="839" y2="69"/></g>
+        </g>
+      </svg>
+      <div class="banner-overlay">
+        <button class="menu-btn" onclick="toggleMenu()" aria-label="Menü"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <span class="apptitle-mobile">Smart Energy Agent</span>
+      </div>
+    </div>
   </header>
 
   <div id="menu-backdrop" onclick="closeMenu()"></div>
   <div class="layout">
     <nav class="sidebar">
-      <a href="#" data-view="dashboard" class="active" onclick="showView('dashboard');return false;">Dashboard</a>
-      <a href="#" data-view="history" onclick="showView('history');return false;">Verlauf</a>
-      <a href="#" data-view="consumers" onclick="showView('consumers');return false;">Strategien</a>
-      <a href="#" data-view="savings" onclick="showView('savings');return false;">Einsparung</a>
-      <a href="#" data-view="devices" onclick="showView('devices');return false;">Geräte</a>
-      <a href="#" class="parent" onclick="showView('basic');return false;">Einstellungen</a>
-      <a href="#" class="sub" data-view="basic" onclick="showView('basic');return false;">Grundeinstellungen</a>
-      <a href="#" class="sub" data-view="setup" onclick="showView('setup');return false;">Erzeuger/Verbraucher</a>
-      <a href="#" class="sub" data-view="thermostats" onclick="showView('thermostats');return false;">Temperaturabsenkung</a>
+      <a href="#" data-view="dashboard" class="active" onclick="showView('dashboard');return false;"><svg class="ico"><use href="#i-dash"/></svg>Dashboard</a>
+      <a href="#" data-view="history" onclick="showView('history');return false;"><svg class="ico"><use href="#i-hist"/></svg>Verlauf</a>
+      <a href="#" data-view="consumers" onclick="showView('consumers');return false;"><svg class="ico"><use href="#i-strat"/></svg>Strategien</a>
+      <a href="#" data-view="savings" onclick="showView('savings');return false;"><svg class="ico"><use href="#i-save"/></svg>Einsparung</a>
+      <a href="#" data-view="devices" onclick="showView('devices');return false;"><svg class="ico"><use href="#i-dev"/></svg>Geräte</a>
+      <div class="navgroup">Einstellungen</div>
+      <a href="#" data-view="basic" onclick="showView('basic');return false;"><svg class="ico"><use href="#i-set"/></svg>Grundeinstellungen</a>
+      <a href="#" data-view="setup" onclick="showView('setup');return false;"><svg class="ico"><use href="#i-src"/></svg>Erzeuger/Verbraucher</a>
+      <a href="#" data-view="thermostats" onclick="showView('thermostats');return false;"><svg class="ico"><use href="#i-thermo"/></svg>Temperaturabsenkung</a>
     </nav>
 
     <div class="content">
       <!-- Dashboard -->
       <section id="view-dashboard">
+        <div class="page-h"><svg class="ico"><use href="#i-dash"/></svg><h1>Dashboard</h1>
+          <span class="page-status"><span id="ha-dot" class="dot"></span><span id="ha-text">verbinde…</span> · <span id="updated"></span></span></div>
         <div class="panel-title">Übersicht</div>
         <div class="cards" id="summary"></div>
         <div class="panel-title">Energiefluss</div>
@@ -353,6 +520,7 @@
       </section>
     </div>
   </div>
+  </div><!-- /shell -->
 
   <!-- Entity picker popup -->
   <div id="picker" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:50;align-items:center;justify-content:center"
@@ -409,8 +577,15 @@
     }
 
     function toggleMenu() {
-      const open = document.querySelector(".sidebar").classList.toggle("open");
-      document.getElementById("menu-backdrop").style.display = open ? "block" : "none";
+      const sb = document.querySelector(".sidebar"), bd = document.getElementById("menu-backdrop");
+      const opening = !sb.classList.contains("open");
+      if (opening) {
+        // open below the header: top = header's bottom edge in the viewport
+        const top = Math.max(0, Math.round(document.querySelector("header").getBoundingClientRect().bottom));
+        sb.style.top = top + "px"; bd.style.top = top + "px";
+      }
+      sb.classList.toggle("open", opening);
+      bd.style.display = opening ? "block" : "none";
     }
     function closeMenu() {
       document.querySelector(".sidebar").classList.remove("open");
@@ -424,11 +599,6 @@
       });
       document.querySelectorAll(".sidebar a").forEach(a =>
         a.classList.toggle("active", a.dataset.view === name));
-      const inSettings = ["basic","setup","thermostats"].includes(name);
-      const parent = document.querySelector(".sidebar a.parent");
-      if (parent) parent.classList.toggle("active", inSettings);
-      document.querySelectorAll(".sidebar a.sub").forEach(a =>
-        a.style.display = inSettings ? "block" : "none");
       if (name === "setup") loadSetup();
       if (name === "devices") loadDevices();
       if (name === "history") loadHistory();
