@@ -2,6 +2,13 @@
 
 ## 0.2.1
 
+- UI-Feinschliff: roter **Header bleibt fix** stehen, nur der Inhalt darunter
+  scrollt vertikal; **Menü-Texte kleiner** (passen in die Box); Grundeinstellungen
+  mit **einheitlich ausgerichteter Eingabespalte**. Im **Handy-Modus**: Hamburger
+  und Titel auf gleicher Höhe (Titel etwas weiter rechts), Geräte-Einstellungen
+  sauber gestapelt statt verrutscht, und insgesamt **kleinere Schriften/Formen**,
+  damit mehr auf die Seite passt.
+
 - **Neues UI-Design** für alle Seiten: einheitliches Layout (festes 1024-px-
   Desktop, schmaler ⇒ horizontaler Scroll; Mobil hochkant mit Hamburger-Menü
   unterhalb des Headers, nur inhaltshoch), saubere Ausrichtung, einheitliche
