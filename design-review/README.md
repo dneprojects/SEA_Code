@@ -24,6 +24,8 @@ Statisches, self-contained Mockup des neuen UI mit Dummy-Daten. **Noch nichts an
 > Sag mir, **welche Header-Nummer** dir gefällt (gern auch Kombi-Wünsche), dann baue ich genau diese in die echte App ein und setze das Layout produktiv um. Die Mockup-Dateien werden danach wieder entfernt.
 
 ## Designprinzipien im Mockup
+- **Header wie SmartHub**: weiße Zeile mit echtem **habitron-Logo** (links) und Titel (rechts, grau) **über** dem roten Banner; auf Mobil wird die weiße Zeile ausgeblendet und der **Hamburger sitzt im Banner** (mit Platz).
+- **Schrift wie SmartHub** (`"Lucida Sans", Arial, Verdana, Helvetica`).
 - Einheitliche Button-Höhe (34 px; Icon-Buttons quadratisch), konsistente Karten/Radien/Schatten.
 - Einrichtung über **Zeilen-/Spalten-Grid ohne Tabellenlinien** (Label · Entität · Live-Wert · Aktion sauber ausgerichtet).
 - Durchgängiges Inline-SVG-Icon-Set (keine externen Abhängigkeiten).
