@@ -39,8 +39,6 @@ header{position:relative;background:#fff}
 .topbar .logo{height:38px;width:auto;display:block}
 .topbar .titlebox{text-align:right}
 .topbar .apptitle{font-size:24px;font-weight:400;color:#5f6b76;letter-spacing:.01em;line-height:1.1}
-.topbar .status{font-size:12px;color:var(--muted);display:flex;gap:6px;align-items:center;justify-content:flex-end;margin-top:3px}
-.topbar .status .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
 .bannerwrap{position:relative}
 .banner{height:96px;width:100%;display:block}
 .hdr{display:none}
@@ -67,6 +65,8 @@ header{position:relative;background:#fff}
 .page-h{display:flex;align-items:center;gap:10px;margin:0 0 4px}
 .page-h h1{font-size:20px;font-weight:700;margin:0}
 .page-h .ico{color:var(--brand)}
+.page-status{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.page-status .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none}
 .page-sub{color:var(--muted);margin:0 0 18px;font-size:13px;max-width:70ch}
 .sec{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);
   margin:26px 0 12px;display:flex;align-items:center;gap:8px}
@@ -210,10 +210,13 @@ footer{color:var(--faint);font-size:12px;padding:18px 26px;border-top:1px solid 
   .menu-btn{display:inline-flex;flex:none;width:40px;height:40px;border:none;background:none;padding:0;
     color:#fff;align-items:center;justify-content:center;cursor:pointer;pointer-events:auto}
   .apptitle-mobile{display:block}
-  .sidebar{position:fixed;left:0;top:0;height:100%;width:262px;z-index:90;transform:translateX(-110%);
-    transition:transform .25s ease;overflow-y:auto;box-shadow:6px 0 24px rgba(0,0,0,.25)}
+  /* side menu: only as tall as its content, sliding in BELOW the header
+     (its top is set dynamically in toggleMenu to the header's bottom edge) */
+  .sidebar{position:fixed;left:0;top:0;height:auto;min-height:0;max-height:84vh;width:auto;min-width:230px;
+    z-index:90;transform:translateX(-110%);transition:transform .25s ease;overflow-y:auto;
+    border-radius:0 14px 14px 0;box-shadow:4px 6px 24px rgba(0,0,0,.28);padding:10px 10px 14px}
   .sidebar.open{transform:translateX(0)}
-  .backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:85}
+  .backdrop{display:none;position:fixed;left:0;right:0;bottom:0;top:0;background:rgba(0,0,0,.4);z-index:85}
   .backdrop.on{display:block}
   .content{padding:16px 14px 32px}
   .cards{grid-template-columns:repeat(2,1fr);gap:10px}
@@ -274,7 +277,6 @@ footer{color:var(--faint);font-size:12px;padding:18px 26px;border-top:1px solid 
     <img class="logo" src="logo.png" alt="habitron">
     <div class="titlebox">
       <div class="apptitle">Smart Energy Agent</div>
-      <div class="status"><span class="dot"></span> verbunden · aktualisiert 14:32</div>
     </div>
   </div>
   <!-- red banner (swappable variants) with hamburger inside -->
@@ -305,7 +307,8 @@ footer{color:var(--faint);font-size:12px;padding:18px 26px;border-top:1px solid 
 
   <!-- ===================== DASHBOARD ===================== -->
   <section data-view="dashboard">
-    <div class="page-h"><svg class="ico" width="22" height="22"><use href="#i-dash"/></svg><h1>Dashboard</h1></div>
+    <div class="page-h"><svg class="ico" width="22" height="22"><use href="#i-dash"/></svg><h1>Dashboard</h1>
+      <span class="page-status"><span class="dot"></span> verbunden · aktualisiert 14:32</span></div>
     <p class="page-sub">Aktueller Energiefluss und die wichtigsten Live-Werte deiner Anlage.</p>
     <div class="cards">
       <div class="stat"><div class="top"><span class="lbl">PV-Erzeugung</span><svg class="ico" width="18" height="18"><use href="#i-sun"/></svg></div><div class="val">2,4 kW</div><div class="meta">3 Strings · Süd/Ost</div></div>
@@ -637,7 +640,16 @@ function nav(v){
   document.querySelectorAll('.navlink').forEach(a=>a.classList.toggle('active', a.dataset.v===v));
   closeMenu(); window.scrollTo(0,0);
 }
-function toggleMenu(){document.getElementById('sidebar').classList.toggle('open');document.getElementById('backdrop').classList.toggle('on');}
+function toggleMenu(){
+  const sb=document.getElementById('sidebar'), bd=document.getElementById('backdrop');
+  const opening=!sb.classList.contains('open');
+  if(opening){
+    // open below the header: top = header's bottom edge in the viewport
+    const top=Math.max(0,Math.round(document.querySelector('header').getBoundingClientRect().bottom));
+    sb.style.top=top+'px'; bd.style.top=top+'px';
+  }
+  sb.classList.toggle('open'); bd.classList.toggle('on');
+}
 function closeMenu(){document.getElementById('sidebar').classList.remove('open');document.getElementById('backdrop').classList.remove('on');}
 
 /* ---- header variants ---- */
