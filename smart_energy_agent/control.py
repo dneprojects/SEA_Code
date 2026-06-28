@@ -21,6 +21,9 @@ from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
 from . import const
+from .control_core import (
+    Command, CommandSet, Controller, Cycle, ProcessImage, apply_commands,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -229,8 +232,55 @@ def battery_tariff_mode(
     return None
 
 
+def plan_modulation(mods: list[dict], surplus_signed: float) -> list[Command]:
+    """Pure planner: turn modulating loads + the signed surplus into setpoint
+    commands (no IO). Batteries with a tariff mode are commanded explicitly
+    (charge / forced discharge); idle batteries join the PV-surplus allocation.
+    Same ordering/semantics as the previous ``_modulate``."""
+    out: list[Command] = []
+    normal = [m for m in mods if not m.get("is_batt")]
+    for m in [m for m in mods if m.get("is_batt")]:
+        mode, disc, wpu = m.get("batt_mode"), m.get("discharge", ""), (m["wpu"] or 1.0)
+        if mode == "charge":
+            out.append(Command(m["entity"], "set", round(m["max_w"] / wpu, 2), "Netzladen (Tarif)"))
+            out.append(Command(disc, "set", 0.0, "Entladen aus"))
+        elif mode == "discharge":
+            out.append(Command(disc, "set", round(m["max_w"] / wpu, 2), "Entladen (Tarif)"))
+            out.append(Command(m["entity"], "set", 0.0, "Laden aus (Entladen)"))
+        else:
+            out.append(Command(disc, "set", 0.0, "Entladen aus"))
+            normal.append(m)   # idle battery follows the PV surplus
+    for a in decide_modulation(surplus_signed, normal):
+        out.append(Command(a["entity"], "set", a["unit"], f"regelbar, {round(a['power_w'])} W"))
+    return out
+
+
+class PvSurplusSwitchController:
+    """Switches auto-consumers on/off from the PV-surplus signal (one per cycle)."""
+
+    name = "pv_surplus_switch"
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        if not image.consumers:
+            return
+        action = decide_action(image.now, image.surplus_signed, image.consumers)
+        if action is not None:
+            entity, what, reason = action
+            cmds.add(Command(entity, "on" if what == "on" else "off", reason=reason))
+
+
+class PvSurplusModulationController:
+    """Distributes the signed PV surplus across modulating loads + batteries."""
+
+    name = "pv_surplus_modulation"
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        for cmd in plan_modulation(image.mods, image.surplus_signed):
+            cmds.add(cmd)
+
+
 class ControlEngine:
-    """Builds decision input from the store and executes one action per cycle."""
+    """Builds the process image from the store and runs the PV-surplus cycle."""
 
     def __init__(self, store, call_service: Callable[[str, str, str], Awaitable]):
         self._store = store
@@ -329,91 +379,50 @@ class ControlEngine:
                         "discharge": d.get("discharge", "")})
         return out
 
-    async def _set_unit(self, m: dict, unit: float, label: str) -> None:
-        # The setpoint is (re)written every cycle even when unchanged: some
-        # actuators (e.g. an immersion-heater power setpoint) fall back to 0 if
-        # they don't receive a fresh value regularly. HA copes with the repeats.
-        if m["domain"] not in ("number", "input_number"):
-            return
-        try:
-            await self._call_service(m["domain"], "set_value", m["entity"], {"value": unit})
-            _LOGGER.info("Control: %s -> %s (%s)", m["entity"], unit, label)
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.warning("Modulation failed for %s: %s", m["entity"], err)
+    # Controller chain for the PV-surplus cycle (highest priority first).
+    CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
 
-    async def _set_value(self, entity: str, wpu: float, power_w: float, label: str) -> None:
-        """Set a number actuator (in its own unit) if it changed meaningfully."""
-        if not entity:
-            return
-        domain = entity.split(".", 1)[0]
-        if domain not in ("number", "input_number"):
-            return
-        unit = round(power_w / (wpu or 1.0), 2)
-        # Always (re)write, even if unchanged — see _set_unit for why.
-        try:
-            await self._call_service(domain, "set_value", entity, {"value": unit})
-            _LOGGER.info("Control: %s -> %s (%s)", entity, unit, label)
-        except Exception as err:  # noqa: BLE001
-            _LOGGER.warning("Set failed for %s: %s", entity, err)
-
-    async def _modulate(self, surplus_signed: float) -> None:
-        mods = self._mods()
-        # Batteries with a tariff mode are handled explicitly (charge / forced
-        # discharge); only idle batteries join the surplus allocation.
-        normal = [m for m in mods if not m.get("is_batt")]
-        for m in [m for m in mods if m.get("is_batt")]:
-            mode, disc, wpu = m.get("batt_mode"), m.get("discharge", ""), m["wpu"]
-            if mode == "charge":
-                await self._set_unit(m, round(m["max_w"] / (wpu or 1.0), 2), "Netzladen (Tarif)")
-                await self._set_value(disc, wpu, 0.0, "Entladen aus")
-            elif mode == "discharge":
-                await self._set_value(disc, wpu, m["max_w"], "Entladen (Tarif)")
-                await self._set_unit(m, 0.0, "Laden aus (Entladen)")
-            else:
-                await self._set_value(disc, wpu, 0.0, "Entladen aus")
-                normal.append(m)   # idle battery follows the PV surplus
-        for a in decide_modulation(surplus_signed, normal):
-            # Re-send every cycle even when unchanged (keepalive); see _set_unit.
-            if a["domain"] not in ("number", "input_number"):
-                continue
-            try:
-                await self._call_service(a["domain"], "set_value", a["entity"], {"value": a["unit"]})
-                _LOGGER.info("Control: %s -> %s (regelbar, %d W)", a["entity"], a["unit"], a["power_w"])
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.warning("Modulation failed for %s: %s", a["entity"], err)
-
-    async def run_once(self, now: float) -> Optional[tuple[str, str, str]]:
-        if not self._store.control_enabled():
-            return None
-        balance = self._store.balance()
+    def _surplus_signed(self, balance: dict) -> float:
         # PV-surplus signal: + = export available, − = deficit. Folds in battery
         # power so a discharging battery is never mistaken for surplus (which
         # would let a load run off the battery); see surplus_signal().
         soc = balance.get("battery_soc")
-        surplus_signed = surplus_signal(
+        return surplus_signal(
             float(balance.get("grid_w", 0.0) or 0.0),
             float(balance.get("battery_w", 0.0) or 0.0),
             self._store.surplus_loads_first(),
             float(soc) if soc is not None else None,
             self._store.surplus_battery_min_soc(),
         )
-        action = None
-        consumers = self._build()
-        if consumers:
-            action = decide_action(now, surplus_signed, consumers)
-            if action is not None:
-                entity_id, what, reason = action
-                domain = entity_id.split(".", 1)[0]
-                service = "turn_on" if what == "on" else "turn_off"
-                try:
-                    await self._call_service(domain, service, entity_id)
-                    self._store.note_switch(entity_id, what == "on", reason)
-                    _LOGGER.info("Control: %s %s (%s)", service, entity_id, reason)
-                except Exception as err:  # noqa: BLE001
-                    _LOGGER.warning("Control action failed for %s: %s", entity_id, err)
-        # Modulating loads absorb the remaining surplus every cycle.
-        await self._modulate(surplus_signed)
-        return action
+
+    def build_image(self, now: float) -> ProcessImage:
+        """The Input phase: one consistent snapshot of all controller inputs."""
+        balance = self._store.balance()
+        return ProcessImage(
+            now=now,
+            surplus_signed=self._surplus_signed(balance),
+            consumers=self._build(),
+            mods=self._mods(),
+        )
+
+    async def _modulate(self, surplus_signed: float) -> None:
+        """Plan + write only the modulating setpoints (kept for direct callers)."""
+        cmds = CommandSet()
+        for cmd in plan_modulation(self._mods(), surplus_signed):
+            cmds.add(cmd)
+        await apply_commands(self._call_service, self._store, cmds)
+
+    async def run_once(self, now: float) -> Optional[tuple[str, str, str]]:
+        if not self._store.control_enabled():
+            return None
+        image = self.build_image(now)                 # Input
+        cmds = Cycle(self.CHAIN).run(image)           # Process
+        await apply_commands(self._call_service, self._store, cmds)   # Output
+        # Return the switch action (if any) for compatibility / logging.
+        for cmd in cmds.commands():
+            if cmd.kind in ("on", "off"):
+                return (cmd.entity, cmd.kind, cmd.reason)
+        return None
 
 
 def decide_tariff_actions(
