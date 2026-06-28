@@ -307,6 +307,41 @@ class TariffShiftController:
             cmds.add(cmd)
 
 
+class PeakShavingController:
+    """Caps grid import by discharging the battery above a configured draw.
+
+    Highest priority: it runs first and locks the battery's discharge/charge
+    setpoints, so the self-consumption / tariff controllers can no longer touch
+    them this cycle (a hard constraint above self-consumption). Off (no peak
+    config, limit ≤ 0, or import under the cap) it adds nothing → the battery is
+    handled as before.
+    """
+
+    name = "peak_shaving"
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        peak = image.extra.get("peak")
+        if not peak or peak["limit_w"] <= 0:
+            return
+        over = image.grid_w - peak["limit_w"]          # import above the cap (W)
+        if over <= 0:
+            return
+        for b in peak["batteries"]:
+            if not b["discharge"] or over <= 0:
+                continue
+            if b["soc"] is not None and b["soc"] <= b["reserve"]:
+                continue                               # keep the reserve
+            power = min(b["max_w"], over)
+            if power <= 0:
+                continue
+            wpu = b["wpu"] or 1.0
+            cmds.add(Command(b["discharge"], "set", round(power / wpu, 2),
+                             f"Peak-Shaving (Netzbezug {round(image.grid_w)} W)"))
+            if b["charge"]:
+                cmds.add(Command(b["charge"], "set", 0.0, "Peak-Shaving (Laden aus)"))
+            over -= power
+
+
 class ControlEngine:
     """Builds the process image from the store and runs the unified control cycle
     (PV-surplus every tick + tariff shifting at its slower cadence)."""
@@ -388,9 +423,11 @@ class ControlEngine:
         return out
 
     # Controller chains (highest priority first). run_once() uses the PV-only
-    # chain (stable for direct/unit-test callers); run_cycle() adds tariff.
+    # chain (stable for direct/unit-test callers); run_cycle() adds peak shaving
+    # (a hard constraint, first) and tariff shifting (last, slow cadence).
     CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
-    FULL_CHAIN: list[Controller] = CHAIN + [TariffShiftController()]
+    FULL_CHAIN: list[Controller] = (
+        [PeakShavingController()] + CHAIN + [TariffShiftController()])
 
     def _surplus_signed(self, balance: dict) -> float:
         # PV-surplus signal: + = export available, − = deficit. Folds in battery
@@ -411,9 +448,21 @@ class ControlEngine:
         return ProcessImage(
             now=now,
             surplus_signed=self._surplus_signed(balance),
+            grid_w=float(balance.get("grid_w", 0.0) or 0.0),
             consumers=self._build(),
             mods=self._mods(),
         )
+
+    def _peak_batteries(self) -> list[dict]:
+        """Batteries usable for peak shaving (have a forced-discharge setpoint)."""
+        out = []
+        for dev in devices(self._store):
+            if not dev.is_battery or not dev.discharge_entity:
+                continue
+            out.append({"discharge": dev.discharge_entity, "charge": dev.setpoint_entity,
+                        "max_w": dev.max_w, "wpu": dev.wpu, "soc": dev.soc,
+                        "reserve": dev.grid_soc_min})
+        return out
 
     async def _modulate(self, surplus_signed: float) -> None:
         """Plan + write only the modulating setpoints (kept for direct callers)."""
@@ -466,6 +515,10 @@ class ControlEngine:
         if not self._store.control_enabled():
             return
         image = self.build_image(now)                       # Input
+        # Peak shaving inputs (only when enabled).
+        peak_limit = self._store.peak_limit_w()
+        if peak_limit > 0:
+            image.extra["peak"] = {"limit_w": peak_limit, "batteries": self._peak_batteries()}
         # Tariff inputs are only gathered when the tariff controller is due.
         tariff_due = (now - self._last_run.get(TariffShiftController.name, -1e18)
                       ) >= (const.TARIFF_INTERVAL - 1)

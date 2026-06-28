@@ -2,6 +2,11 @@
 
 ## 0.2.1
 
+- **Neu: Peak-Shaving** — Einstellung „Netzbezug deckeln bei (W)" (Grundeinstellungen,
+  0 = aus): übersteigt der Netzbezug diesen Wert, entlädt die Batterie gezielt, um
+  darunter zu bleiben (höchste Priorität vor Eigenverbrauch/Tarif). Benötigt eine
+  Batterie mit Entladeleistungs-Sollwert-Entität.
+
 - Leistungsfluss-Diagramm: auf dem **Handy größere Kreise** mit mehr seitlichem
   Abstand; expandierte Verbraucher (über „+") **stapeln jetzt nach unten** und
   schieben die folgenden Kreise nach unten (Rahmen wächst mit). Im Browser Kreise

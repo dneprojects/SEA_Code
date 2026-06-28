@@ -65,6 +65,9 @@ class Store:
             # its charging power until the SoC reaches this reserve before loads
             # may divert it. 0 = off. No effect in "battery first" mode.
             "surplus_battery_min_soc": 0.0,
+            # Peak shaving: cap grid import (W) by discharging the battery above
+            # this draw. 0 = off. Needs a battery with a discharge-power setpoint.
+            "peak_limit_w": 0.0,
 
             # Electricity tariff: purchase price + feed-in compensation.
             "tariff": {
@@ -214,6 +217,12 @@ class Store:
                     max(0.0, min(100.0, float(ms))) if ms not in (None, "") else 0.0)
             except (TypeError, ValueError):
                 pass
+        if "peak_limit_w" in patch:
+            pl = patch["peak_limit_w"]
+            try:
+                self._settings["peak_limit_w"] = max(0.0, float(pl)) if pl not in (None, "") else 0.0
+            except (TypeError, ValueError):
+                pass
         if patch.get("strategy") in STRATEGY_VALUES:
             self._settings["strategy"] = patch["strategy"]
         if "pv_forecast_entity" in patch:
@@ -253,6 +262,14 @@ class Store:
         its charge power. 0 = off."""
         try:
             return float(self._settings.get("surplus_battery_min_soc", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def peak_limit_w(self) -> float:
+        """Grid-import cap (W) for peak shaving; the battery discharges above it.
+        0 = off."""
+        try:
+            return float(self._settings.get("peak_limit_w", 0.0) or 0.0)
         except (TypeError, ValueError):
             return 0.0
 

@@ -200,6 +200,43 @@ def test_engine_min_soc_keeps_charging_below_reserve_then_diverts():
     assert ("number.hz", {"value": 1700.0}) in above
 
 
+def _peak_image(grid_w, *, limit=2000.0, max_w=5000.0, soc=60.0, reserve=20.0,
+                discharge="number.bd", charge="number.bc"):
+    from smart_energy_agent.control_core import ProcessImage
+    img = ProcessImage(now=0.0, grid_w=grid_w)
+    img.extra["peak"] = {"limit_w": limit, "batteries": [
+        {"discharge": discharge, "charge": charge, "max_w": max_w, "wpu": 1.0,
+         "soc": soc, "reserve": reserve}]}
+    return img
+
+
+def test_peak_shaving_discharges_battery_above_cap():
+    from smart_energy_agent.control import PeakShavingController
+    from smart_energy_agent.control_core import CommandSet
+    cmds = CommandSet()
+    PeakShavingController().process(_peak_image(3000.0), cmds)   # 1000 W over the 2000 cap
+    t = {x["entity"]: x for x in cmds.trace()}
+    assert t["number.bd"]["value"] == 1000.0     # discharge exactly the overshoot
+    assert t["number.bc"]["value"] == 0.0        # charging forced off
+
+
+def test_peak_shaving_clamps_to_battery_power_and_respects_reserve_and_cap():
+    from smart_energy_agent.control import PeakShavingController
+    from smart_energy_agent.control_core import CommandSet
+    # overshoot 9000 W but battery max 5000 -> clamp
+    cmds = CommandSet()
+    PeakShavingController().process(_peak_image(11000.0, max_w=5000.0), cmds)
+    assert {x["entity"]: x["value"] for x in cmds.trace()}["number.bd"] == 5000.0
+    # under the cap -> nothing
+    cmds = CommandSet()
+    PeakShavingController().process(_peak_image(1500.0), cmds)
+    assert cmds.commands() == []
+    # at/below the reserve SoC -> keep reserve, do nothing
+    cmds = CommandSet()
+    PeakShavingController().process(_peak_image(3000.0, soc=20.0, reserve=20.0), cmds)
+    assert cmds.commands() == []
+
+
 def test_run_cycle_folds_in_tariff_and_throttles_to_its_interval():
     from smart_energy_agent import const
     calls = []
