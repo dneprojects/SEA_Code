@@ -24,6 +24,7 @@ from . import const
 from .control_core import (
     Command, CommandSet, Controller, Cycle, ProcessImage, apply_commands,
 )
+from .devices import devices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -316,96 +317,73 @@ class ControlEngine:
         self._last_run: dict[str, float] = {}   # controller name -> last run time
 
     def _build(self) -> list[ConsumerDecision]:
-        """Build decisions from the wizard-configured devices that opted into
-        PV-surplus self-consumption and are switchable."""
+        """Switchable PV-surplus auto-consumers, as decision records."""
         lt = time.localtime()
         now_min = lt.tm_hour * 60 + lt.tm_min
         out: list[ConsumerDecision] = []
-        for d in self._store.strategy_devices():
-            cfg = d["cfg"]
-            sw = d.get("switch")
-            if d.get("control_mode") != "switch" or not sw or not cfg.get("self_consumption"):
+        for dev in devices(self._store):
+            if dev.mode != "switch" or not dev.switch_entity or not dev.self_consumption:
                 continue
-            rt = self._store.runtime(sw)
-            state = str(self._store.live_state(sw).get("state", "")).lower()
+            rt = dev.runtime
             out.append(ConsumerDecision(
-                entity_id=sw,
-                domain=sw.split(".", 1)[0],
-                priority=int(cfg.get("priority", 5)),
-                nominal_power_w=float(d.get("power_w") or 0),
-                pv_threshold_w=float(cfg.get("pv_threshold_w", 0) or 0),
-                is_on=state in ("on", "heat", "true"),
+                entity_id=dev.switch_entity,
+                domain=dev.switch_entity.split(".", 1)[0],
+                priority=dev.priority,
+                nominal_power_w=dev.power_w,
+                pv_threshold_w=dev.pv_threshold_w,
+                is_on=dev.is_on,
                 last_on=rt.get("last_on", 0.0),
                 last_off=rt.get("last_off", 0.0),
                 starts_today=rt.get("starts", 0),
-                max_starts=int(cfg.get("max_starts_per_day", 0) or 0),
-                min_runtime_s=int(cfg.get("min_runtime_min", 0) or 0) * 60,
-                min_off_s=int(cfg.get("min_off_min", 0) or 0) * 60,
-                satisfied=bool(d.get("satisfied")),
-                deadline_min=_hhmm_to_min(cfg.get("latest_start", "")),
+                max_starts=dev.max_starts,
+                min_runtime_s=dev.min_runtime_s,
+                min_off_s=dev.min_off_s,
+                satisfied=dev.satisfied,
+                deadline_min=_hhmm_to_min(dev.latest_start),
                 now_min=now_min,
-                interruptible=bool(cfg.get("interruptible", True)),
+                interruptible=dev.interruptible,
             ))
         return out
-
-    def _battery_soc(self, d: dict) -> Optional[float]:
-        s = d.get("soc")
-        if not s:
-            return None
-        try:
-            return float(self._store.live_state(s).get("state"))
-        except (TypeError, ValueError):
-            return None
 
     def _mods(self) -> list[dict]:
         """Modulating (setpoint) loads with current setpoint. Includes PV-surplus
         loads plus batteries enabled for tariff grid-charging."""
         out = []
-        for d in self._store.strategy_devices():
-            cfg = d["cfg"]
-            eid = d.get("setpoint")
-            if d.get("control_mode") != "setpoint" or not eid:
+        tariff: Optional[dict] = None
+        for dev in devices(self._store):
+            if dev.mode != "setpoint" or not dev.setpoint_entity:
                 continue
-            is_batt = d.get("kind") == "battery"
-            grid_charge = is_batt and bool(cfg.get("tariff_shift"))
-            if not cfg.get("self_consumption") and not grid_charge:
+            grid_charge = dev.is_battery and dev.tariff_shift
+            if not dev.self_consumption and not grid_charge:
                 continue
-            max_w = float(cfg.get("max_w", 0) or 0)
-            if max_w <= 0:
+            if dev.max_w <= 0:
                 continue  # needs an upper power bound to modulate
-            try:
-                cur_unit = float(self._store.live_state(eid).get("state"))
-            except (TypeError, ValueError):
-                cur_unit = 0.0
-            wpu = float(cfg.get("w_per_unit", 1) or 1) or 1.0
             # A satisfied modulating load (limit reached) is driven to 0 so the
             # surplus is freed for the others.
-            eff_max = 0.0 if d.get("satisfied") else max_w
+            eff_max = 0.0 if dev.satisfied else dev.max_w
             # Wallbox: only charge while the vehicle is connected/ready.
-            ready = cfg.get("ready_entity")
-            if eff_max and ready and not self._store.entity_truthy(ready):
+            if eff_max and dev.ready_entity and not dev.ready:
                 eff_max = 0.0
             # Battery on the dynamic tariff: charge (cheap/negative or below the
             # reserve), discharge (expensive), or None → follow PV surplus.
             batt_mode = None
             if grid_charge:
-                t = self._store.tariff()
+                if tariff is None:
+                    tariff = self._store.tariff()
                 batt_mode = battery_tariff_mode(
                     self._store.current_price_ct(),
-                    float(t.get("charge_max_ct", 0) or 0),
-                    float(t.get("discharge_min_ct", 0) or 0),
-                    self._battery_soc(d),
-                    float(cfg.get("grid_soc_min", 0) or 0),
-                    float(cfg.get("grid_soc_max", 100) or 100),
+                    float(tariff.get("charge_max_ct", 0) or 0),
+                    float(tariff.get("discharge_min_ct", 0) or 0),
+                    dev.soc, dev.grid_soc_min, dev.grid_soc_max,
                 )
                 if batt_mode in ("charge", "discharge"):
-                    eff_max = max_w   # full power; charge-stop "satisfied" doesn't apply here
-            out.append({"entity": eid, "domain": eid.split(".", 1)[0],
-                        "cur_unit": cur_unit, "cur_w": cur_unit * wpu, "wpu": wpu,
-                        "min_w": float(cfg.get("min_w", 0) or 0), "max_w": eff_max,
-                        "priority": int(cfg.get("priority", 5)),
-                        "is_batt": is_batt, "batt_mode": batt_mode,
-                        "discharge": d.get("discharge", "")})
+                    eff_max = dev.max_w   # full power; charge-stop "satisfied" doesn't apply
+            out.append({"entity": dev.setpoint_entity,
+                        "domain": dev.setpoint_entity.split(".", 1)[0],
+                        "cur_unit": dev.cur_unit, "cur_w": dev.cur_unit * dev.wpu,
+                        "wpu": dev.wpu, "min_w": dev.min_w, "max_w": eff_max,
+                        "priority": dev.priority, "is_batt": dev.is_battery,
+                        "batt_mode": batt_mode, "discharge": dev.discharge_entity})
         return out
 
     # Controller chains (highest priority first). run_once() uses the PV-only
@@ -461,38 +439,22 @@ class ControlEngine:
         lt = time.localtime()
         now_min = lt.tm_hour * 60 + lt.tm_min
         out: list[dict] = []
-        for d in self._store.strategy_devices():
-            cfg = d["cfg"]
-            if (not cfg.get("tariff_shift") or cfg.get("self_consumption")
-                    or d.get("kind") == "battery"):
+        for dev in devices(self._store):
+            if not dev.tariff_shift or dev.self_consumption or dev.is_battery:
                 continue
-            mode = d.get("control_mode")
-            if mode == "switch" and d.get("switch"):
-                eid = d["switch"]
-                rt = self._store.runtime(eid)
-                state = str(self._store.live_state(eid).get("state", "")).lower()
+            if dev.mode == "switch" and dev.switch_entity:
+                rt = dev.runtime
                 out.append({
-                    "entity": eid, "mode": "switch",
-                    "is_on": state in ("on", "heat", "true"),
+                    "entity": dev.switch_entity, "mode": "switch", "is_on": dev.is_on,
                     "last_on": rt.get("last_on", 0.0), "last_off": rt.get("last_off", 0.0),
-                    "min_runtime_s": int(cfg.get("min_runtime_min", 0) or 0) * 60,
-                    "min_off_s": int(cfg.get("min_off_min", 0) or 0) * 60,
-                    "satisfied": bool(d.get("satisfied")),
-                    "deadline_min": _hhmm_to_min(cfg.get("latest_start", "")),
-                    "now_min": now_min,
-                    "interruptible": bool(cfg.get("interruptible", True)),
+                    "min_runtime_s": dev.min_runtime_s, "min_off_s": dev.min_off_s,
+                    "satisfied": dev.satisfied, "deadline_min": _hhmm_to_min(dev.latest_start),
+                    "now_min": now_min, "interruptible": dev.interruptible,
                 })
-            elif mode == "setpoint" and d.get("setpoint"):
-                eid = d["setpoint"]
-                wpu = float(cfg.get("w_per_unit", 1) or 1) or 1.0
-                try:
-                    cur_unit = float(self._store.live_state(eid).get("state"))
-                except (TypeError, ValueError):
-                    cur_unit = 0.0
+            elif dev.mode == "setpoint" and dev.setpoint_entity:
                 out.append({
-                    "entity": eid, "mode": "setpoint", "cur_unit": cur_unit,
-                    "max_unit": round(float(cfg.get("max_w", 0) or 0) / wpu, 2),
-                    "satisfied": bool(d.get("satisfied")),
+                    "entity": dev.setpoint_entity, "mode": "setpoint", "cur_unit": dev.cur_unit,
+                    "max_unit": round(dev.max_w / dev.wpu, 2), "satisfied": dev.satisfied,
                 })
         return out
 
