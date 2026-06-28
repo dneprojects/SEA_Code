@@ -47,13 +47,13 @@
     .content { flex:1; min-width:0; padding:0 22px 30px; }
 
     .panel-title { font-family:var(--head-font); color:var(--brand); font-size:14px;
-                   font-weight:bold; text-transform:uppercase; letter-spacing:.04em;
+                   font-weight:bold; letter-spacing:.04em;
                    margin:24px 0 10px; border-bottom:1px solid var(--border); padding-bottom:5px; }
     .cards { display:flex; gap:14px; flex-wrap:wrap; margin-top:14px; }
     .card { background:#fff; border:1px solid var(--border);
             box-shadow:1px 1px 4px rgba(120,120,120,.25); padding:11px 16px; min-width:130px; }
     .card .v { font-size:20px; font-weight:bold; color:var(--fg); }
-    .card .l { font-size:11px; color:var(--muted); margin-top:3px; text-transform:uppercase; letter-spacing:.03em; }
+    .card .l { font-size:11px; color:var(--muted); margin-top:3px; letter-spacing:.01em; }
     .card .sub { font-size:11px; color:var(--muted); margin-top:3px; }
     .card.surplus { border-color:var(--brand); } .card.surplus .v { color:var(--brand); }
     .pos { color:#c0372d; } .neg { color:#3f9b2f; }
@@ -67,7 +67,7 @@
     table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--border);
             box-shadow:1px 1px 4px rgba(120,120,120,.18); }
     th, td { text-align:left; padding:7px 11px; border-bottom:1px solid var(--border); vertical-align:top; }
-    thead th { background:#f1f1f1; color:var(--muted); font-weight:bold; font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+    thead th { background:#f1f1f1; color:var(--muted); font-weight:bold; font-size:11px; letter-spacing:.01em; }
     tbody tr:nth-child(even) { background:var(--alt); }
     tr:last-child td { border-bottom:none; }
     tr.excluded { color:#aaa; } tr.excluded .eid { color:#bbb; }
@@ -100,7 +100,7 @@
     #view-setup .swfull { grid-column:1 / -1; }
     #view-setup .swspan { grid-column:2 / -1; }
     #view-setup .swsum { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    #view-setup .swhead { font-weight:bold; color:var(--brand); font-size:11px; text-transform:uppercase; margin-top:3px; }
+    #view-setup .swhead { font-weight:bold; color:var(--brand); font-size:11px; margin-top:3px; }
     #view-setup .swnamein { width:100%; }
     #view-setup .swcirc { display:flex; align-items:center; gap:5px; flex-wrap:wrap; }
     #view-setup .swinline { font-size:12px; }
@@ -176,18 +176,21 @@
     .sidebar a .ico{width:18px;height:18px;color:var(--faint);flex:none}
     .sidebar a.active .ico{color:var(--brand)}
     .sidebar a.sub{display:flex;font-size:13.5px;padding-left:12px}
-    .navgroup{margin:14px 12px 6px;font-size:11px;font-weight:700;letter-spacing:.06em;
-      text-transform:uppercase;color:var(--faint)}
+    .navgroup{margin:14px 12px 6px;font-size:11px;font-weight:700;letter-spacing:.02em;
+      color:var(--faint)}
     .content{flex:1;min-width:0;padding:22px 26px 40px}
 
     /* ---- section / page titles ---- */
-    .panel-title{font-family:var(--ui);font-size:12px;font-weight:700;letter-spacing:.05em;
-      text-transform:uppercase;color:var(--muted);margin:26px 0 12px;display:flex;align-items:center;gap:8px;
+    /* category heading (red, bold, larger) — e.g. Batterie, Wallbox, section titles */
+    .panel-title{font-family:var(--ui);font-size:15px;font-weight:700;letter-spacing:.01em;
+      color:var(--brand);margin:26px 0 12px;display:flex;align-items:center;gap:8px;
       border:0;padding:0}
     .panel-title::after{content:"";flex:1;height:1px;background:var(--line)}
+    /* subcategory heading (black, bold, between category and body) — e.g. Leistung, Energie */
+    .subhead{font-family:var(--ui);font-size:13px;font-weight:700;color:var(--ink);margin:14px 0 6px}
     .page-h{display:flex;align-items:center;gap:10px;margin:0 0 6px}
     .page-h .ico{width:22px;height:22px;color:var(--brand)}
-    .page-h h1{font-size:20px;font-weight:700;margin:0;color:var(--ink)}
+    .page-h h1{font-size:24px;font-weight:700;margin:0;color:var(--ink)}
     .page-status{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px}
     .page-status .dot{width:8px;height:8px;border-radius:50%;background:#bbb;flex:none}
     .page-status .dot.ok{background:var(--ok)} .page-status .dot.bad{background:var(--brand)}
@@ -197,7 +200,7 @@
     .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
       box-shadow:var(--shadow);padding:14px 16px;min-width:0}
     .card .v{font-size:24px;font-weight:750;color:var(--ink);font-variant-numeric:tabular-nums}
-    .card .l{font-size:11px;color:var(--muted);margin-top:4px;text-transform:uppercase;letter-spacing:.04em;font-weight:700}
+    .card .l{font-size:11px;color:var(--muted);margin-top:4px;letter-spacing:.01em;font-weight:700}
     .card .sub{font-size:12px;color:var(--muted);margin-top:3px}
     .card.surplus{border-color:#f1c3bf} .card.surplus .v{color:var(--brand)}
     .pos{color:var(--brand)} .neg{color:var(--ok)}
@@ -236,7 +239,7 @@
       border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
     th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line2);vertical-align:top}
     thead th{background:var(--line2);color:var(--muted);font-weight:700;font-size:11px;
-      text-transform:uppercase;letter-spacing:.03em}
+      letter-spacing:.01em}
     tbody tr:nth-child(even){background:#fbfbfc}
     tr:last-child td{border-bottom:none}
     .info-tbl{border:none;box-shadow:none;background:none}
@@ -260,7 +263,7 @@
       box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
     #view-setup .swdev>summary{padding:13px 16px;gap:10px;list-style:none}
     #view-setup .swdev>summary::-webkit-details-marker{display:none}
-    #view-setup .swname{color:var(--ink);font-weight:700}
+    #view-setup .swname{color:var(--brand);font-weight:700;font-size:15px}
     #view-setup .swbody{padding:8px 16px 16px;border-top:1px solid var(--line2)}
     /* The body layout system: every row is the SAME 4-column grid, so all rows
        line up into columns — label | main(entity/input, left) | Ändern(right) | ×.
@@ -274,8 +277,8 @@
     #view-setup .fm{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
     #view-setup .fc{justify-self:end}
     #view-setup .fx{justify-self:end}
-    #view-setup .fhead{color:var(--brand);font-size:11px;font-weight:700;letter-spacing:.05em;
-      text-transform:uppercase;margin:16px 0 6px}
+    #view-setup .fhead{color:var(--ink);font-size:13px;font-weight:700;letter-spacing:.01em;
+      margin:16px 0 6px}
     #view-setup .fname{width:100%}
     #view-setup .fnum{width:96px}
     #view-setup .opt{display:inline-flex;align-items:center;gap:6px}
@@ -320,7 +323,7 @@
       #menu-backdrop{inset:0}
       .content{padding:14px 12px 28px}
       /* smaller type & forms so more fits on a phone */
-      .page-h h1{font-size:17px}
+      .page-h h1{font-size:20px}
       .panel-title{margin:18px 0 10px}
       .cards{grid-template-columns:repeat(2,1fr);gap:9px}
       .card{padding:11px 13px}
@@ -366,7 +369,7 @@
            onerror="this.style.display='none';this.nextElementSibling.style.display='inline';">
       <span class="logo-fallback" style="display:none">habitron</span>
       <div class="titlebox">
-        <span class="apptitle">Smart Energy Agent <span id="app-version" class="sub" style="font-weight:normal"></span></span>
+        <span class="apptitle">Smart Energy Agent</span>
       </div>
     </div>
     <div class="bannerwrap">
@@ -450,7 +453,7 @@
           <span class="sub">bis</span> <input type="datetime-local" id="hist-to">
           <button class="btn" onclick="applyHistRange()">Anwenden</button>
         </div>
-        <div class="panel-title" style="font-size:13px;margin:8px 0 4px">Leistung (W)</div>
+        <div class="subhead" style="margin:8px 0 4px">Leistung (W)</div>
         <div class="legend" id="chart-legend"></div>
         <p class="sub" style="margin:0 0 4px">Leistungen (abwählbar in der Legende) · durchgezogen = Verlauf · gestrichelt = Prognose · <b>Zeitbereich mit der Maus aufziehen</b> (Zurücksetzen über 24 h/7 Tage/30 Tage)</p>
         <div class="chart-wrap"><div id="chart"></div></div>
@@ -818,7 +821,6 @@
           fetch(api("/api/flow")).then(r=>r.json()),
         ]);
         renderSummary(s); renderFlow(f);
-        document.getElementById("app-version").textContent = s.version ? "v"+s.version : "";
         document.getElementById("updated").textContent = "Stand: "+new Date().toLocaleTimeString("de-DE");
       } catch(err) { document.getElementById("ha-text").textContent = "Fehler beim Laden"; }
     }
@@ -1352,7 +1354,7 @@
           leg.push(`<span><span class="sw" style="background:${col}"></span>${it.dev.name} · ${it.ent.label}: <b>${last}</b></span>`);
         });
         const yfmt = v => fmtNum(v)+(g.unit?(" "+g.unit):"");
-        return `<div style="margin-top:12px"><div class="panel-title" style="font-size:13px;margin:0 0 4px">${classTitle(g.unit, g.cls)}</div>`
+        return `<div style="margin-top:12px"><div class="subhead" style="margin:0 0 4px">${classTitle(g.unit, g.cls)}</div>`
           + `<div class="legend">${leg.join("")}</div>`
           + `<div class="chart-wrap">${svgMultiChart(ser, winFrom, winTo, xfmt, yfmt, 180)}</div></div>`;
       }).join("");
@@ -1831,7 +1833,7 @@
     function renderStrategies() {
       document.getElementById("strategies").innerHTML = stratList.map(st => `
         <details class="stratbox"${stratOpen.has(st.key)?' open':''} ontoggle="onStratToggle('${st.key}',this.open)">
-          <summary><b style="color:var(--fg)">${st.name}</b> ${stratBadge(st)}${stratInfoBtn(st.key)}</summary>
+          <summary><b style="color:var(--brand);font-size:15px">${st.name}</b> ${stratBadge(st)}${stratInfoBtn(st.key)}</summary>
           <div class="stratbody">${stratBody(st)}</div>
         </details>`).join("");
       const cm = document.getElementById("ctrl-master");
@@ -1960,7 +1962,7 @@
           <div class="setrow"><label>Komfort ab (optional, HH:MM)</label>
             <input type="time" title="Zielzeit: rechtzeitig vorheizen, sodass die Komforttemperatur dann erreicht ist" value="${g.comfort_time||''}" onchange="sbData.groups[${gi}].comfort_time=this.value;saveSb(false)">
             <span class="sub">vorausschauend vorheizen</span></div>
-          <div style="margin:4px 0 2px;color:var(--brand);font-size:11px;text-transform:uppercase">Thermostate</div>`;
+          <div class="subhead" style="margin:8px 0 2px">Thermostate</div>`;
         (g.thermostats||[]).forEach((t,ti) => {
           const cl = t.climate ? `<span class="eid">${t.climate}</span>` : '<span class="sub">— nicht gewählt —</span>';
           const k = (t.reheat_k && t.reheat_k>0) ? ` · gelernt: ${t.reheat_k} min/K` : "";

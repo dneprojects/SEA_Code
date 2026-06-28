@@ -2,6 +2,11 @@
 
 ## 0.6.0
 
+- UI: normale Schreibweise statt durchgängiger Großschreibung. Kategorien (z. B.
+  Batterie, Wallbox, Gerätenamen) jetzt rot, fett und etwas größer; Untergruppen
+  (z. B. Leistung, Energie) schwarz und fett. Seitenüberschriften etwas größer.
+  Versionsnummer nicht mehr im Kopf — sie steht in den Grundeinstellungen.
+
 - **Neu: Peak-Shaving** — Einstellung „Netzbezug deckeln bei (W)" (Grundeinstellungen,
   0 = aus): übersteigt der Netzbezug diesen Wert, entlädt die Batterie gezielt, um
   darunter zu bleiben (höchste Priorität vor Eigenverbrauch/Tarif). Benötigt eine
