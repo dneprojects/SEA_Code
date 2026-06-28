@@ -35,6 +35,7 @@ class Command:
     kind: str
     value: Optional[float] = None
     reason: str = ""
+    source: str = ""     # which controller produced it (stamped by the CommandSet)
 
 
 @dataclass
@@ -48,10 +49,13 @@ class CommandSet:
 
     _by_entity: dict[str, Command] = field(default_factory=dict)
     _order: list[str] = field(default_factory=list)
+    current_source: str = ""   # set by the runner before each controller runs
 
     def add(self, cmd: Command) -> bool:
         if not cmd.entity or cmd.entity in self._by_entity:
             return False
+        if not cmd.source:
+            cmd.source = self.current_source     # trace: who decided this
         self._by_entity[cmd.entity] = cmd
         self._order.append(cmd.entity)
         return True
@@ -61,6 +65,11 @@ class CommandSet:
 
     def commands(self) -> list[Command]:
         return [self._by_entity[e] for e in self._order]
+
+    def trace(self) -> list[dict[str, Any]]:
+        """Serializable record of what each controller decided (for debugging)."""
+        return [{"entity": c.entity, "kind": c.kind, "value": c.value,
+                 "source": c.source, "reason": c.reason} for c in self.commands()]
 
 
 @dataclass
@@ -96,6 +105,7 @@ class Cycle:
     def run(self, image: ProcessImage) -> CommandSet:
         cmds = CommandSet()
         for c in self._controllers:
+            cmds.current_source = getattr(c, "name", "")
             try:
                 c.process(image, cmds)
             except Exception as err:  # noqa: BLE001
@@ -118,9 +128,9 @@ async def apply_commands(
                 await call_service(
                     domain, "turn_on" if cmd.kind == "on" else "turn_off", cmd.entity)
                 store.note_switch(cmd.entity, cmd.kind == "on", cmd.reason)
-                _LOGGER.info("Control: %s %s (%s)", cmd.kind, cmd.entity, cmd.reason)
+                _LOGGER.info("Control[%s]: %s %s (%s)", cmd.source, cmd.kind, cmd.entity, cmd.reason)
             elif cmd.kind == "set" and domain in ("number", "input_number"):
                 await call_service(domain, "set_value", cmd.entity, {"value": cmd.value})
-                _LOGGER.info("Control: %s -> %s (%s)", cmd.entity, cmd.value, cmd.reason)
+                _LOGGER.info("Control[%s]: %s -> %s (%s)", cmd.source, cmd.entity, cmd.value, cmd.reason)
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("Apply failed for %s: %s", cmd.entity, err)

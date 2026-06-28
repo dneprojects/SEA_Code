@@ -39,6 +39,20 @@ def test_cycle_runs_controllers_in_order():
     assert cmds.commands()[0].value == 1.0          # first (A) wins, B blocked
 
 
+def test_cycle_stamps_command_source_for_tracing():
+    class Heater:
+        name = "pv_surplus_modulation"
+        def process(self, image, cmds): cmds.add(Command("number.hz", "set", 0.0, "regelbar"))
+    class Peak:
+        name = "peak_shaving"
+        def process(self, image, cmds): cmds.add(Command("number.bd", "set", 500.0, "Peak"))
+
+    cmds = Cycle([Heater(), Peak()]).run(ProcessImage(now=0.0))
+    by = {t["entity"]: t for t in cmds.trace()}
+    assert by["number.hz"]["source"] == "pv_surplus_modulation"
+    assert by["number.bd"]["source"] == "peak_shaving" and by["number.bd"]["reason"] == "Peak"
+
+
 def test_apply_commands_maps_kinds_and_records_switch():
     calls, switches = [], []
 

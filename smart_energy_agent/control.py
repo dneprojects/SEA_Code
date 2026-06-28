@@ -315,6 +315,7 @@ class ControlEngine:
         self._store = store
         self._call_service = call_service
         self._last_run: dict[str, float] = {}   # controller name -> last run time
+        self.last_trace: list[dict] = []        # last cycle's command trace (debug)
 
     def _build(self) -> list[ConsumerDecision]:
         """Switchable PV-surplus auto-consumers, as decision records."""
@@ -426,6 +427,7 @@ class ControlEngine:
             return None
         image = self.build_image(now)                 # Input
         cmds = Cycle(self.CHAIN).run(image)           # Process
+        self.last_trace = cmds.trace()                # who decided what (debug)
         await apply_commands(self._call_service, self._store, cmds)   # Output
         # Return the switch action (if any) for compatibility / logging.
         for cmd in cmds.commands():
@@ -474,11 +476,13 @@ class ControlEngine:
         for c in self.FULL_CHAIN:
             interval = getattr(c, "interval", const.CONTROL_INTERVAL)
             if now - self._last_run.get(c.name, -1e18) >= interval - 1:
+                cmds.current_source = c.name
                 try:
                     c.process(image, cmds)
                 except Exception as err:  # noqa: BLE001
                     _LOGGER.warning("Controller %s failed: %s", c.name, err)
                 self._last_run[c.name] = now
+        self.last_trace = cmds.trace()                      # who decided what (debug)
         await apply_commands(self._call_service, self._store, cmds)   # Output
 
 
