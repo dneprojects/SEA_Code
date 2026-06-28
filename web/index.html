@@ -263,7 +263,7 @@
       box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
     #view-setup .swdev>summary{padding:13px 16px;gap:10px;list-style:none}
     #view-setup .swdev>summary::-webkit-details-marker{display:none}
-    #view-setup .swname{color:var(--brand);font-weight:700;font-size:15px}
+    #view-setup .swname{color:var(--ink);font-weight:700;font-size:15px}
     #view-setup .swbody{padding:8px 16px 16px;border-top:1px solid var(--line2)}
     /* The body layout system: every row is the SAME 4-column grid, so all rows
        line up into columns — label | main(entity/input, left) | Ändern(right) | ×.
@@ -461,6 +461,9 @@
         <div class="panel-title">Weitere Messgrößen</div>
         <p class="sub" style="margin:4px 0 0">Detail der oben ausgewählten Geräte – je Sensor-Klasse ein Plot (jede Größe auf ihren eigenen Wertebereich skaliert).</p>
         <div id="detail-plots"></div>
+        <div class="panel-title">Energiebilanz</div>
+        <p class="sub" id="hist-bal-note" style="margin:0 0 6px"></p>
+        <div class="cards" id="hist-balance"></div>
       </section>
 
       <!-- Einsparung -->
@@ -1318,6 +1321,7 @@
       });
     }
     function renderChart() {
+      renderBalance();   // energy totals for the same window (kept in sync with the chart)
       const el = document.getElementById("chart");
       const xfmt = xfmtFor(winFrom, winTo);
       const fmtY = v => Math.abs(v)>=1000 ? (v/1000).toFixed(1)+" kW" : Math.round(v)+" W";
@@ -1334,6 +1338,51 @@
       el.innerHTML = svgMultiChart(ser, winFrom, winTo, xfmt, fmtY, 300);
       const sv = el.querySelector("svg"); if (sv) attachBrush(sv, winFrom, winTo);
       renderDetailPlots();
+    }
+    // Energy balance (kWh) for the displayed window: integrate the already-loaded
+    // power series (bucket averages -> avg·dt is the bucket energy, so this is
+    // accurate). Only actual history (histData) counts, not the forecast.
+    function fmtKwh(v) {
+      return (Math.abs(v)>=10 ? Math.round(v) : Math.round(v*10)/10)
+        .toLocaleString("de-DE") + " kWh";
+    }
+    function renderBalance() {
+      const box = document.getElementById("hist-balance");
+      const note = document.getElementById("hist-bal-note");
+      if (!box) return;
+      const pts = histData.filter(d => d.ts != null);
+      if (pts.length < 2) { box.innerHTML = ""; note.textContent = "Noch keine Verlaufsdaten im gewählten Zeitraum."; return; }
+      const span = winTo - winFrom, maxGap = Math.max(2*3600, span/240*4);   // skip recorder gaps
+      const integ = (key, sign) => {
+        let k = 0;
+        for (let i = 1; i < pts.length; i++) {
+          let v = pts[i-1][key]; if (v == null) continue;
+          if (sign === "pos") v = Math.max(v, 0); else if (sign === "neg") v = Math.max(-v, 0);
+          let dt = pts[i].ts - pts[i-1].ts; if (dt <= 0) continue; dt = Math.min(dt, maxGap);
+          k += v/1000 * dt/3600;
+        }
+        return k;
+      };
+      const pv = integ("pv_w"), house = integ("house_load_w");
+      const imp = integ("grid_w","pos"), exp = integ("grid_w","neg");
+      const bc = integ("battery_w","pos"), bd = integ("battery_w","neg");
+      const hasBatt = pts.some(d => d.battery_w != null) && (bc + bd) > 0.05;
+      const selfUsed = Math.max(0, pv - exp);
+      const selfQuote = pv > 0.05 ? Math.min(100, Math.max(0, selfUsed/pv*100)) : null;
+      const autark = house > 0.05 ? Math.min(100, Math.max(0, (house-imp)/house*100)) : null;
+      const cards = [
+        { v:fmtKwh(pv), l:"PV-Erzeugung" },
+        { v:fmtKwh(house), l:"Hausverbrauch" },
+        { v:fmtKwh(imp), l:"Netzbezug" },
+        { v:fmtKwh(exp), l:"Netzeinspeisung" },
+      ];
+      if (hasBatt) cards.push({ v:fmtKwh(bc), l:"Batterie geladen" }, { v:fmtKwh(bd), l:"Batterie entladen" });
+      cards.push({ v:fmtKwh(selfUsed), l:"Eigenverbrauch" });
+      if (selfQuote != null) cards.push({ v:Math.round(selfQuote)+" %", l:"Eigenverbrauchsquote" });
+      if (autark != null) cards.push({ v:Math.round(autark)+" %", l:"Autarkiegrad" });
+      box.innerHTML = cards.map(c => `<div class="card"><div class="v">${c.v}</div><div class="l">${c.l}</div></div>`).join("");
+      const f = ts => new Date(ts*1000).toLocaleString("de-DE", {day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"});
+      note.textContent = `Summen über die angezeigten Verlaufsdaten (${f(pts[0].ts)} – ${f(pts[pts.length-1].ts)}).`;
     }
     // One plot per sensor class (unit) for the entities of the selected devices.
     // Cumulative energies are not shown.

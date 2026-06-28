@@ -2,6 +2,14 @@
 
 ## 0.6.0
 
+- Neu: Auf der Seite „Verlauf" eine **Energiebilanz** (unter den Detail-Plots), die
+  über den aktuell angezeigten Zeitraum gerechnet wird (inkl. Zoom/Pan): PV-Erzeugung,
+  Hausverbrauch, Netzbezug/-einspeisung, Batterie geladen/entladen, Eigenverbrauch,
+  Eigenverbrauchsquote und Autarkiegrad.
+
+- UI: Auf der Geräte-Einstellungsseite („Erzeuger/Verbraucher") sind die Überschriften
+  der ausklappbaren Geräte-Karten wieder schwarz.
+
 - Fix: Die angezeigte Version entspricht jetzt der tatsächlich laufenden (vorher
   blieb „0.2.1" stehen) — sie wird zur Laufzeit aus dem Build übernommen.
 
