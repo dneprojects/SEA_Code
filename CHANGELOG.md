@@ -2,6 +2,15 @@
 
 ## 0.2.1
 
+- Erzeuger/Verbraucher komplett auf ein **einheitliches Spalten-Layout** umgestellt
+  (ein gemeinsames Zeilen-Raster für alle Felder): ausgewählte Entitäten stehen
+  jetzt **linksbündig untereinander** in einer Spalte, „Ändern" durchgehend
+  **rechtsbündig**, Zahlen-/Eingabefelder sauber ausgerichtet. **Heizkreise**
+  übersichtlich als *Name*-Zeile mit *Temperatur*/*Sollwert* darunter (statt
+  „Temp … Soll" in einer Zeile). „Steuerung" steht oben im Block; die Entität der
+  Steuerung bekommt eine eigene, ausgerichtete Zeile. Eigene, kompakte
+  **Handy-Variante** (Label-Zeile, darunter Wert + Aktionen).
+
 - Aufklappbare Boxen (Geräte, Strategien) zeigen jetzt ein **ausgefülltes Dreieck**
   als Aufklapp-Icon: ▶ zugeklappt, dreht zu ▼ beim Öffnen. Die „Steuerung"-Zeile
   unter Erzeuger/Verbraucher ist sauber ausgerichtet; die Entitäts-Auswahl

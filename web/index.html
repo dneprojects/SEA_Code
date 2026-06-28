@@ -261,16 +261,29 @@
     #view-setup .swdev>summary{padding:13px 16px;gap:10px;list-style:none}
     #view-setup .swdev>summary::-webkit-details-marker{display:none}
     #view-setup .swname{color:var(--ink);font-weight:700}
-    #view-setup .swbody{padding:6px 16px 14px;border-top:1px solid var(--line2)}
-    #view-setup .swgrid{grid-template-columns:170px minmax(120px,1fr) auto auto;gap:6px 12px}
-    #view-setup .swgrid>div{padding:5px 6px;border-radius:var(--r-sm);font-size:13px}
-    /* control/Steuerung & other spanned rows: clean, vertically centered flow */
-    #view-setup .swspan{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-    #view-setup .entsel{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
-    #view-setup .swhead{color:var(--brand);font-size:11px;letter-spacing:.05em;margin-top:12px}
-    #view-setup .swchip{font-size:11px;font-weight:700;color:var(--muted);background:var(--line2);border-radius:999px;padding:3px 9px}
+    #view-setup .swbody{padding:8px 16px 16px;border-top:1px solid var(--line2)}
+    /* The body layout system: every row is the SAME 4-column grid, so all rows
+       line up into columns — label | main(entity/input, left) | Ändern(right) | ×.
+       All columns are fixed except the flexible main column, which is what makes
+       the entity chips and the Ändern buttons align across every row. */
+    #view-setup .frow{display:grid;grid-template-columns:170px minmax(0,1fr) 88px 26px;
+      column-gap:12px;align-items:center;min-height:34px;padding:2px 0}
+    #view-setup .frow.top{align-items:start}
+    #view-setup .frow.top .fl{padding-top:7px}
+    #view-setup .fl{color:var(--muted);font-weight:600;min-width:0}
+    #view-setup .fm{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+    #view-setup .fc{justify-self:end}
+    #view-setup .fx{justify-self:end}
+    #view-setup .fhead{color:var(--brand);font-size:11px;font-weight:700;letter-spacing:.05em;
+      text-transform:uppercase;margin:16px 0 6px}
+    #view-setup .fname{width:100%}
+    #view-setup .fnum{width:96px}
+    #view-setup .opt{display:inline-flex;align-items:center;gap:6px}
+    #view-setup .eid{display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;
+      white-space:nowrap;vertical-align:middle}
+    #view-setup .btnx{min-width:26px;padding:0;justify-content:center}
     #view-setup input,#view-setup select{font-size:13px;height:32px}
-    #view-setup .btn{min-height:30px;padding:0 11px}
+    #view-setup .btn{min-height:30px;padding:0 12px}
 
     /* ---- strategy boxes ---- */
     #view-consumers .stratbox{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
@@ -318,11 +331,17 @@
       /* settings: stack label above its input, full width */
       .setrow{flex-direction:column;align-items:stretch;gap:4px;margin:10px 0}
       .setrow>label:first-child{width:auto}
-      /* device setup: stack cells (the 4-col desktop grid would jumble on a phone).
-         Labels/buttons inline, values/spans on their own line. */
-      #view-setup .swgrid{display:block}
-      #view-setup .swgrid>div{display:inline-block;vertical-align:middle;padding:2px 6px 2px 0;font-size:12.5px}
-      #view-setup .swgrid>.swsum,#view-setup .swgrid>.swspan,#view-setup .swgrid>.swfull{display:block;padding:3px 0}
+      /* device setup, phone layout: label on its own line, then
+         main | Ändern | × below it (alternative compact layout) */
+      #view-setup .frow{grid-template-columns:minmax(0,1fr) auto 26px;column-gap:8px;row-gap:2px;
+        align-items:center;padding:4px 0;min-height:0}
+      #view-setup .frow.top{align-items:center}
+      #view-setup .frow.top .fl{padding-top:0}
+      #view-setup .fl{grid-column:1/-1;font-size:12px;color:var(--muted)}
+      #view-setup .fm{grid-column:1/2}
+      #view-setup .fc{grid-column:2/3}
+      #view-setup .fx{grid-column:3/4}
+      #view-setup .fname{width:100%}
       #view-setup input,#view-setup select{height:30px}
       #view-setup .btn{min-height:28px;font-size:12px;padding:0 9px}
     }
@@ -816,22 +835,26 @@
       showView("setup");   // loadSetup() -> renderSetup() respects openInstances
     }
     function reqStar(f) { return f.optional ? '' : ' <span style="color:#9c3a2f">*</span>'; }
-    function cell(c, cls) { return `<div class="${cls||''}">${c}</div>`; }
-    function spanRow(label, content) { return cell(label) + cell(content, "swspan"); }
-    // Four aligned grid cells: label | summary | Ändern | last(× clear or − remove)
-    function entCells(labelHtml, path, ug, kind, lastCell) {
-      const val = getByPath(path);
-      const summ = val ? `<span class="eid">${val}</span>` : '<span class="sub">—</span>';
-      const change = `<button class="btn" title="Entität ${val?'ändern':'wählen'}" onclick="openPicker('${path}','${ug}','${kind}')">${val?'Ändern':'Wählen'}</button>`;
-      const last = lastCell !== undefined ? lastCell
-        : (val ? `<button class="btn" title="Auswahl entfernen" onclick="clearField('${path}')">×</button>` : "");
-      return cell(labelHtml) + cell(summ, "swsum") + cell(change) + cell(last);
+    // ---- setup layout system ----------------------------------------------
+    // Every body row is the SAME 4-column grid, so all rows line up:
+    //   [label] | [main: entity/input, left-aligned] | [change: Ändern, right] | [clear: ×/−]
+    function frow(label, main, change, clear, cls) {
+      return `<div class="frow${cls?' '+cls:''}">`
+        + `<div class="fl">${label==null?'':label}</div>`
+        + `<div class="fm">${main==null?'':main}</div>`
+        + `<div class="fc">${change==null?'':change}</div>`
+        + `<div class="fx">${clear==null?'':clear}</div></div>`;
     }
-    function entInline(path, ug, kind) {
+    function fhead(text) { return `<div class="fhead">${text}</div>`; }
+    // One entity-assignment row: chip in the main column, Ändern + clear on the right.
+    function entRow(label, path, ug, kind, clearCell) {
       const val = getByPath(path);
-      const summ = val ? `<span class="eid">${val}</span>` : '<span class="sub">—</span>';
-      return `<span class="entsel">${summ} <button class="btn" title="Entität ${val?'ändern':'wählen'}" onclick="openPicker('${path}','${ug}','${kind}')">${val?'Ändern':'Wählen'}</button>`
-        + (val ? ` <button class="btn" title="Auswahl entfernen" onclick="clearField('${path}')">×</button>` : '') + `</span>`;
+      const chip = val ? `<span class="eid" title="${esc(val)}">${val}</span>`
+                       : '<span class="sub">— nicht zugeordnet —</span>';
+      const change = `<button class="btn" title="Entität ${val?'ändern':'wählen'}" onclick="openPicker('${path}','${ug}','${kind}')">${val?'Ändern':'Wählen'}</button>`;
+      const clear = clearCell !== undefined ? clearCell
+        : (val ? `<button class="btn btnx" title="Auswahl entfernen" onclick="clearField('${path}')">×</button>` : '');
+      return frow(label, chip, change, clear);
     }
     // --- render ---
     function renderSetup() {
@@ -851,7 +874,7 @@
       return `<div class="panel-title">${g.label||"Netz"}</div>
         <details class="swdev"${open?' open':''} ontoggle="onToggleDev('grid',this.open)">
           <summary><b class="swname">${g.label||"Netz"}</b></summary>
-          <div class="swbody"><div class="swgrid">${(g.fields||[]).map(f => fieldHtml("grid/"+f.key, f, "grid")).join("")}</div></div>
+          <div class="swbody">${(g.fields||[]).map(f => fieldHtml("grid/"+f.key, f, "grid")).join("")}</div>
         </details>`;
     }
     function deviceInfo(kind, inst) {
@@ -868,8 +891,7 @@
     function deviceDetails(kind, inst, idx) {
       const base = kind.key+"/"+idx;
       const open = openInstances.has(inst.id);
-      let body = spanRow("Name",
-        `<input type="text" value="${esc(inst.name)}" onchange="setVal('${base}/name',this.value)" style="width:200px">`);
+      let body = frow("Name", `<input type="text" class="fname" value="${esc(inst.name)}" onchange="setVal('${base}/name',this.value)">`);
       body += (kind.fields||[]).map(f => fieldHtml(base+"/"+f.key, f, kind.key)).join("");
       if (kind.control) body += controlHtml(base, inst, kind.key);
       // Device-specific PV-surplus control settings (if this device is controllable).
@@ -878,106 +900,102 @@
       return `<details class="swdev"${open?' open':''} ontoggle="onToggleDev('${inst.id}',this.open)">
         <summary><b class="swname">${esc(inst.name)}</b> <span class="sub">${deviceInfo(kind,inst)}</span>
           <button class="btn swdel" title="Gerät entfernen" onclick="event.stopPropagation();removeInstance('${kind.key}',${idx})">Entfernen</button></summary>
-        <div class="swbody"><div class="swgrid">${body}</div></div></details>`;
+        <div class="swbody">${body}</div></details>`;
     }
     function fieldHtml(path, f, kindKey) {
       if (f.kind === "entity") {
         const ctl = f.control ? ' <span class="ov">Stellgröße</span>' : '';
-        return entCells(f.label + reqStar(f) + ctl, path, f.unit_group, kindKey);
+        return entRow(f.label + reqStar(f) + ctl, path, f.unit_group, kindKey);
       }
-      if (f.kind === "flag") return spanRow(f.label,
-        `<label class="swinline"><input type="checkbox" ${getByPath(path)?"checked":""} onchange="setVal('${path}',this.checked)"> ja</label>`);
+      if (f.kind === "flag") return frow(f.label,
+        `<label class="opt"><input type="checkbox" ${getByPath(path)?"checked":""} onchange="setVal('${path}',this.checked)"> <span class="sub">ja</span></label>`);
       if (f.kind === "named_power" || f.kind === "named_energy") return namedList(path, f, kindKey);
       if (f.kind === "circuits") return circuitsList(path, f, kindKey);
       return "";
     }
     function namedList(listPath, f, kindKey) {
       const list = getByPath(listPath) || [];
-      let h = cell(`<span class="swhead">${f.label}${reqStar(f)}</span>`, "swfull");
+      let h = fhead(f.label + reqStar(f));
       h += list.map((it,i) => {
         const ip = listPath+"/"+i;
-        const nameIn = `<input type="text" value="${esc(it.name)}" placeholder="${f.item_label}"
-            onchange="setVal('${ip}/name',this.value)" class="swnamein">`;
-        return entCells(nameIn, ip+'/entity', f.unit_group, kindKey,
-          `<button class="btn" title="Eintrag entfernen" onclick="removeAt('${listPath}',${i})">−</button>`);
+        const nameIn = `<input type="text" class="fname" value="${esc(it.name)}" placeholder="${f.item_label}" onchange="setVal('${ip}/name',this.value)">`;
+        return entRow(nameIn, ip+'/entity', f.unit_group, kindKey,
+          `<button class="btn btnx" title="Eintrag entfernen" onclick="removeAt('${listPath}',${i})">−</button>`);
       }).join("");
-      return h + cell(`<button class="btn" title="${f.item_label} hinzufügen" onclick="addItem('${listPath}','${f.item_label}')">+ ${f.item_label}</button>`, "swfull");
+      return h + frow('', `<button class="btn" title="${f.item_label} hinzufügen" onclick="addItem('${listPath}','${f.item_label}')">+ ${f.item_label}</button>`);
     }
     function circuitsList(listPath, f, kindKey) {
       const list = getByPath(listPath) || [];
       const cf = setupData.circuit_fields || [];
       const ug = (k) => (cf.find(x=>x.key===k)||{}).unit_group || "temperature";
-      let h = cell(`<span class="swhead">${f.label}</span>`, "swfull");
+      let h = fhead(f.label);
       h += list.map((it,i) => {
         const ip = listPath+"/"+i;
-        const inner = `<input type="text" value="${esc(it.name)}" placeholder="Heizkreis"
-            onchange="setVal('${ip}/name',this.value)" style="width:96px">
-          <span class="sub">Temp</span> ${entInline(ip+'/temp', ug('temp'), kindKey)}
-          <span class="sub">Soll</span> ${entInline(ip+'/setpoint', ug('setpoint'), kindKey)}
-          <button class="btn" title="Heizkreis entfernen" onclick="removeAt('${listPath}',${i})">−</button>`;
-        return cell(inner, "swfull swcirc");
+        const nameIn = `<input type="text" class="fname" value="${esc(it.name)}" placeholder="Heizkreis" onchange="setVal('${ip}/name',this.value)">`;
+        return frow("Heizkreis", nameIn, '', `<button class="btn btnx" title="Heizkreis entfernen" onclick="removeAt('${listPath}',${i})">−</button>`, 'subhead')
+          + entRow("Temperatur", ip+'/temp', ug('temp'), kindKey)
+          + entRow("Sollwert", ip+'/setpoint', ug('setpoint'), kindKey);
       }).join("");
-      return h + cell(`<button class="btn" title="Heizkreis hinzufügen" onclick="addCircuit('${listPath}')">+ Heizkreis</button>`, "swfull");
+      return h + frow('', `<button class="btn" title="Heizkreis hinzufügen" onclick="addCircuit('${listPath}')">+ Heizkreis</button>`);
     }
     function controlHtml(base, inst, kindKey) {
       const m = (inst.control||{}).mode || '';
       const rn = "ctl_"+base.replace(/\W/g,'_');
-      let inner = `<label class="swinline"><input type="radio" name="${rn}" ${m==='switch'?'checked':''} onchange="setVal('${base}/control/mode','switch')"> schalten</label>
-        <label class="swinline"><input type="radio" name="${rn}" ${m==='setpoint'?'checked':''} onchange="setVal('${base}/control/mode','setpoint')"> Sollwert</label>`
-        + (m ? ` <button class="btn" title="Keine Steuerung" onclick="setVal('${base}/control/mode','')">keine</button>` : '');
-      if (m==='switch') inner += ' ' + entInline(base+'/control/switch', 'switch', kindKey);
-      if (m==='setpoint') inner += ' ' + entInline(base+'/control/setpoint', 'setpoint', kindKey);
-      return spanRow("Steuerung", inner);
+      const opts = `<label class="opt"><input type="radio" name="${rn}" ${m==='switch'?'checked':''} onchange="setVal('${base}/control/mode','switch')"> schalten</label>`
+        + `<label class="opt"><input type="radio" name="${rn}" ${m==='setpoint'?'checked':''} onchange="setVal('${base}/control/mode','setpoint')"> Sollwert</label>`
+        + (m ? `<button class="btn" title="Keine Steuerung" onclick="setVal('${base}/control/mode','')">keine</button>` : '');
+      // "Steuerung" label sits at the TOP of the block (align-items:start); the
+      // chosen actuator's entity gets its own aligned row below.
+      let html = frow("Steuerung", opts, '', '', 'top');
+      if (m==='switch') html += entRow('', base+'/control/switch', 'switch', kindKey);
+      if (m==='setpoint') html += entRow('', base+'/control/setpoint', 'setpoint', kindKey);
+      return html;
     }
     // Device-specific PV-surplus control parameters, shown inside the device block.
     // Participation + priority live on the Strategien page; everything else here.
     function stratParamsPanel(key, d) {
       const cfg = d.cfg, sw = d.control_mode==='switch';
-      const num = (lbl,f,w,tip) => `<span class="sub" title="${tip}">${lbl}</span>`
-        + `<input type="number" title="${tip}" style="width:${w}px" value="${cfg[f]}" onchange="setLoad('${key}','${f}',this.value)">`;
-      let fields = sw
-        ? num("PV-Schwelle W","pv_threshold_w",70,"Mindest-Überschuss zum Einschalten (W)")
-          + num("min. Laufzeit","min_runtime_min",52,"Mindestlaufzeit vor dem Abschalten (min)")
-          + num("min. Auszeit","min_off_min",52,"Mindest-Auszeit vor Wiedereinschalten (min)")
-          + num("max. Starts/Tag","max_starts_per_day",46,"0 = unbegrenzt")
-          + `<span class="sub" title="Spätester Start – wird notfalls aus dem Netz erzwungen">spätester Start</span>`
-          + `<input type="time" title="Spätester Start – wird zur Deadline notfalls aus dem Netz erzwungen" value="${cfg.latest_start||''}" onchange="setLoad('${key}','latest_start',this.value)">`
-        : num("max. Leistung W","max_w",72,"Maximale Leistungsaufnahme des Geräts (W)")
-          + num("W/Einheit","w_per_unit",54,"Watt pro Einheit der Sollwert-Entität: Wallbox ~690 W/A; Leistungssollwert in W = 1")
-          + num("min. Leistung W","min_w",70,"Mindestleistung; darunter wird abgeschaltet (z. B. Wallbox 6 A × 690 = 4140 W)");
-      // Switched loads: may the run be interrupted (turned off again when the
-      // surplus / cheap tariff drops) or must it run through to its target?
-      const interruptLine = sw
-        ? `<div style="margin-top:4px"><label title="An: laufende Last darf bei Wegfall von Überschuss/günstigem Tarif wieder abgeschaltet werden (z. B. Heizstab). Aus: muss bis zum Ziel durchlaufen (z. B. Waschmaschine).">
-             <input type="checkbox" ${cfg.interruptible!==false?'checked':''} onchange="setLoad('${key}','interruptible',this.checked)"> unterbrechbar</label></div>`
-        : '';
-      const evLine = (d.kind==='ev_charger')
-        ? `<div style="margin-top:4px"><span class="sub">Auto angesteckt:</span> ${cfg.ready_entity
-            ? `<span class="eid">${cfg.ready_entity}</span> <button class="btn" title="Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickReady('${key}')">ändern</button>`
-            : `<button class="btn" title="Entität wählen, die anzeigt ob ein Auto angesteckt/ladebereit ist (optional)" onclick="pickReady('${key}')">Entität wählen</button>`}</div>` : '';
-      // The battery's stop is always its SoC (already known) — only ask the
-      // threshold. Other devices pick a stop entity; the set-button is icon-only.
-      const stopLine = d.kind==='battery'
-        ? `<div style="margin-top:4px"><span class="sub">Stopp bei SoC ≥</span>
-             <input type="number" title="Bei diesem Ladezustand (%) stoppt das Laden; 0 = aus" style="width:56px" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)"> %</div>`
-        : (cfg.limit_entity
-          ? `<div style="margin-top:4px"><span class="sub">Stopp bei</span> <span class="eid">${cfg.limit_entity}</span> ≥
-               <input type="number" title="Schwellwert" style="width:60px" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)">
-               <button class="btn" title="Stopp-Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickLimit('${key}')">ändern</button></div>`
-          : `<div style="margin-top:4px"><button class="btn" style="color:#000;padding:1px 7px" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${key}')">■</button></div>`);
+      const numRow = (lbl,fld,tip,unit) => frow(`<span title="${tip}">${lbl}</span>`,
+        `<input type="number" class="fnum" title="${tip}" value="${cfg[fld]}" onchange="setLoad('${key}','${fld}',this.value)">${unit?` <span class="sub">${unit}</span>`:''}`);
+      let h = fhead("PV-Überschuss-Steuerung");
+      if (sw) {
+        h += numRow("PV-Schwelle","pv_threshold_w","Mindest-Überschuss zum Einschalten (W)","W")
+          + numRow("min. Laufzeit","min_runtime_min","Mindestlaufzeit vor dem Abschalten (min)","min")
+          + numRow("min. Auszeit","min_off_min","Mindest-Auszeit vor Wiedereinschalten (min)","min")
+          + numRow("max. Starts/Tag","max_starts_per_day","0 = unbegrenzt","")
+          + frow("spätester Start", `<input type="time" class="fnum" title="Spätester Start – wird zur Deadline notfalls aus dem Netz erzwungen" value="${cfg.latest_start||''}" onchange="setLoad('${key}','latest_start',this.value)">`)
+          + frow("unterbrechbar", `<label class="opt" title="An: laufende Last darf bei Wegfall von Überschuss/günstigem Tarif wieder abgeschaltet werden (z. B. Heizstab). Aus: läuft bis zum Ziel durch (z. B. Waschmaschine)."><input type="checkbox" ${cfg.interruptible!==false?'checked':''} onchange="setLoad('${key}','interruptible',this.checked)"> <span class="sub">sonst bis zum Ziel</span></label>`);
+      } else {
+        h += numRow("max. Leistung","max_w","Maximale Leistungsaufnahme des Geräts (W)","W")
+          + numRow("W/Einheit","w_per_unit","Watt pro Einheit der Sollwert-Entität: Wallbox ~690 W/A; Leistungssollwert in W = 1","")
+          + numRow("min. Leistung","min_w","Mindestleistung; darunter wird abgeschaltet (z. B. Wallbox 6 A × 690 = 4140 W)","W");
+      }
+      if (d.kind==='ev_charger') {
+        h += cfg.ready_entity
+          ? frow("Auto angesteckt", `<span class="eid" title="${esc(cfg.ready_entity)}">${cfg.ready_entity}</span>`,
+              `<button class="btn" title="Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickReady('${key}')">Ändern</button>`)
+          : frow("Auto angesteckt", '<span class="sub">— optional —</span>',
+              `<button class="btn" title="Entität wählen, die anzeigt ob ein Auto angesteckt/ladebereit ist (optional)" onclick="pickReady('${key}')">Wählen</button>`);
+      }
+      // Stop condition: battery is always its SoC; others pick a stop entity.
+      if (d.kind==='battery') {
+        h += frow("Stopp bei SoC ≥", `<input type="number" class="fnum" title="Bei diesem Ladezustand (%) stoppt das Laden; 0 = aus" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)"> <span class="sub">%</span>`);
+      } else if (cfg.limit_entity) {
+        h += frow("Stopp bei", `<span class="eid" title="${esc(cfg.limit_entity)}">${cfg.limit_entity}</span> <span class="sub">≥</span> <input type="number" class="fnum" title="Schwellwert" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)">`,
+          `<button class="btn" title="Stopp-Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickLimit('${key}')">Ändern</button>`);
+      } else {
+        h += frow("Stopp bei", '<span class="sub">— keine —</span>',
+          `<button class="btn" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${key}')">Wählen</button>`);
+      }
       // Battery only: grid-charge from the dynamic tariff with a target SoC band.
-      const gridLine = d.kind==='battery'
-        ? `<div style="margin-top:6px"><label title="Tarifgesteuertes Netzladen (günstig/negativ) und erzwungenes Entladen (teuer). Die Preis-Schwellen sind global unter „Einstellungen → Grundeinstellungen → Tarife“; Entladen benötigt eine Entladeleistungs-Sollwert-Entität.">
-             <input type="checkbox" ${cfg.tariff_shift?'checked':''} onchange="setLoad('${key}','tariff_shift',this.checked)"> Tarifgesteuertes Laden/Entladen aus dem Netz</label>
-           ${cfg.tariff_shift ? `<div style="margin-top:2px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-             <span class="sub" title="Reserve-SoC: nicht darunter entladen; darunter aus dem Netz nachladen (0 = aus)">Reserve-/Ziel-SoC</span>
-             <input type="number" style="width:50px" value="${cfg.grid_soc_min}" onchange="setLoad('${key}','grid_soc_min',this.value)"> %
-             <span class="sub">bis</span>
-             <input type="number" title="Bis zu diesem SoC netzladen" style="width:50px" value="${cfg.grid_soc_max}" onchange="setLoad('${key}','grid_soc_max',this.value)"> %</div>` : ''}</div>`
-        : '';
-      const inner = `<span class="swhead" style="display:block;margin-top:6px">PV-Überschuss-Steuerung</span>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${fields}</div>${interruptLine}${evLine}${stopLine}${gridLine}`;
-      return cell(inner, "swfull");
+      if (d.kind==='battery') {
+        h += frow("Tarif-Netzladen", `<label class="opt" title="Tarifgesteuertes Netzladen (günstig/negativ) und erzwungenes Entladen (teuer). Preis-Schwellen unter Einstellungen → Tarife; Entladen benötigt eine Entladeleistungs-Sollwert-Entität."><input type="checkbox" ${cfg.tariff_shift?'checked':''} onchange="setLoad('${key}','tariff_shift',this.checked)"> <span class="sub">aus dem Netz laden/entladen</span></label>`);
+        if (cfg.tariff_shift) {
+          h += frow("Reserve-SoC", `<input type="number" class="fnum" title="Reserve-SoC: nicht darunter entladen; darunter aus dem Netz nachladen (0 = aus)" value="${cfg.grid_soc_min}" onchange="setLoad('${key}','grid_soc_min',this.value)"> <span class="sub">%</span>`)
+            + frow("Ziel-SoC netzladen", `<input type="number" class="fnum" title="Bis zu diesem SoC netzladen" value="${cfg.grid_soc_max}" onchange="setLoad('${key}','grid_soc_max',this.value)"> <span class="sub">%</span>`);
+        }
+      }
+      return h;
     }
     // --- mutations ---
     function setVal(path, val) { setByPath(path, val); saveConfig(); }
