@@ -693,20 +693,32 @@
         el.innerHTML = "<div class='sub' style='padding:20px'>Noch keine Energiedaten. Unter „Einrichtung“ PV/Netz/Batterie zuordnen.</div>";
         return;
       }
-      const W=780, R=40, step=100, topPad=70;
-      const hx=300, hy=220;
-      const anchors = {
-        pv:[300,64], grid:[78,220], house:[hx,hy], battery:[300,376],
-      };
-      // Each load gets a full slot (circle + readable label below) so names never overlap.
       loads.forEach((ld,i) => { ld.color = ld.kind==="consumers" ? FLOW_PALETTE[i%FLOW_PALETTE.length]
           : ({heat_pump:"#ff8080", water_heater:"#e0902b", ev_charger:"#008080"}[ld.kind]||"#80b8ff");
-        ld.icon = KIND_ICON[ld.kind] || "🔌";
-        ld.x = 480; ld.y = loads.length<=1 ? hy : topPad + i*step; });
+        ld.icon = KIND_ICON[ld.kind] || "🔌"; });
+      // Phone: a narrow viewBox (≈ screen width) so the SVG is not scaled down and
+      // the text stays readable; Haus is the hub at top, the rest fans into two
+      // columns below (arranged underneath each other). Desktop: the wide star.
+      const mob = (window.innerWidth || 9999) <= 760;
+      const FS = mob ? {icon:19, val:15, name:14, sub:12, surL:13, surV:17}
+                     : {icon:15, val:11, name:11, sub:10, surL:11, surV:13};
+      const R = mob ? 30 : 40;
+      let W, anchors;
+      if (mob) {
+        W = 360;
+        const colX = k => (k%2 ? 248 : 112), rowY = k => 168 + Math.floor(k/2)*108;
+        anchors = { house:[180,62], pv:[colX(0),rowY(0)], grid:[colX(1),rowY(1)], battery:[colX(2),rowY(2)] };
+        loads.forEach((ld,i) => { const k=3+i; ld.x=colX(k); ld.y=rowY(k); });
+      } else {
+        W = 780;
+        const step=100, topPad=70, hx=300, hy=220;
+        anchors = { pv:[300,64], grid:[78,220], house:[hx,hy], battery:[300,376] };
+        loads.forEach((ld,i) => { ld.x=480; ld.y = loads.length<=1 ? hy : topPad + i*step; });
+      }
       // Height fits the content (anchors, loads, and the expanded branch's parts)
       // so the frame wraps tightly and nothing is cut off at the bottom.
-      let maxY = Math.max(anchors.battery[1], anchors.house[1], anchors.grid[1]) + R + 16;
-      loads.forEach(ld => { maxY = Math.max(maxY, ld.y + R + 16);
+      let maxY = Math.max(anchors.pv[1], anchors.battery[1], anchors.house[1], anchors.grid[1]) + R + 34;
+      loads.forEach(ld => { maxY = Math.max(maxY, ld.y + R + 34);
         if (flowExpanded.has(ld.key) && (ld.parts||[]).length>1)
           maxY = Math.max(maxY, ld.y + (ld.parts.length-1)/2*74 + 28 + 16); });
       const H = Math.round(maxY + 14);
@@ -721,10 +733,10 @@
           + `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="2 8" class="flow-anim"/>`; };
       const node = (x,y,r,color,icon,val,name,sub,big) => {
         let s = `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="${color}" stroke-width="${big?3.5:2.5}"/>`;
-        s += `<text x="${x}" y="${y-5}" text-anchor="middle" font-size="${big?18:15}">${icon}</text>`;
-        s += `<text x="${x}" y="${y+13}" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">${val}</text>`;
-        s += `<text x="${x}" y="${y+r+13}" text-anchor="middle" font-size="11" fill="#6b6c6e">${name}</text>`;
-        if (sub) s += `<text x="${x}" y="${y+r+26}" text-anchor="middle" font-size="10" fill="#9aa0a6">${sub}</text>`;
+        s += `<text x="${x}" y="${y-6}" text-anchor="middle" font-size="${big?FS.icon+3:FS.icon}">${icon}</text>`;
+        s += `<text x="${x}" y="${y+FS.val}" text-anchor="middle" font-size="${FS.val}" font-weight="bold" fill="#333">${val}</text>`;
+        s += `<text x="${x}" y="${y+r+FS.name+3}" text-anchor="middle" font-size="${FS.name}" fill="#6b6c6e">${name}</text>`;
+        if (sub) s += `<text x="${x}" y="${y+r+FS.name+FS.sub+6}" text-anchor="middle" font-size="${FS.sub}" fill="#9aa0a6">${sub}</text>`;
         return s; };
 
       let lines = "", nodes = "";
@@ -739,20 +751,25 @@
       nodes += node(...anchors.battery, R, "#d97a2b", "🔋", flowBattLabel(f.battery_w), "Batterie",
         f.battery_soc!=null?("SoC "+f.battery_soc+" %"):"");
       nodes += node(...anchors.house, R+6, "#2f5f8f", "🏠", fmtW(f.house_load_w), "Haus", "", true);
-      // PV surplus, left of the PV circle
-      if (f.surplus_w!=null) { const [sx,sy]=anchors.pv;
-        nodes += `<text x="${sx-R-12}" y="${sy-3}" text-anchor="end" font-size="11" fill="#6b6c6e">PV-Überschuss</text>`
-          + `<text x="${sx-R-12}" y="${sy+14}" text-anchor="end" font-size="13" font-weight="bold" fill="#3f9b2f">${fmtW(f.surplus_w)}</text>`;
+      // PV surplus: phone -> centered label on top; desktop -> left of the PV circle.
+      if (f.surplus_w!=null) {
+        if (mob) {
+          nodes += `<text x="${W/2}" y="22" text-anchor="middle" font-size="${FS.surL}" fill="#6b6c6e">PV-Überschuss: <tspan font-size="${FS.surV}" font-weight="bold" fill="#3f9b2f">${fmtW(f.surplus_w)}</tspan></text>`;
+        } else { const [sx,sy]=anchors.pv;
+          nodes += `<text x="${sx-R-12}" y="${sy-3}" text-anchor="end" font-size="${FS.surL}" fill="#6b6c6e">PV-Überschuss</text>`
+            + `<text x="${sx-R-12}" y="${sy+14}" text-anchor="end" font-size="${FS.surV}" font-weight="bold" fill="#3f9b2f">${fmtW(f.surplus_w)}</text>`;
+        }
       }
       // loads (right column) + expandable parts; configured loads stay shown
       // even when their entities are temporarily unavailable (value "–").
       loads.forEach(ld => {
-        if (ld.power_w) { const [a,b,c,d]=trim(hx,hy,ld.x,ld.y,R+6,R); lines+=line(a,b,c,d,ld.color,ld.power_w); }
+        if (ld.power_w) { const [a,b,c,d]=trim(anchors.house[0],anchors.house[1],ld.x,ld.y,R+6,R); lines+=line(a,b,c,d,ld.color,ld.power_w); }
         nodes += node(ld.x, ld.y, R, ld.color, ld.icon, fmtW(ld.power_w), ld.name);
         if ((ld.parts||[]).length>1) {
           const exp = flowExpanded.has(ld.key);
           nodes += `<text x="${ld.x+R-4}" y="${ld.y-R+12}" font-size="16" font-weight="bold" fill="${ld.color}" style="cursor:pointer" onclick="toggleFlow('${ld.key}')">${exp?"−":"+"}<title>Einzelleistungen ein-/ausblenden</title></text>`;
-          if (exp) ld.parts.forEach((pt,j) => { const px=640, py=ld.y + (j-(ld.parts.length-1)/2)*74;
+          if (exp) ld.parts.forEach((pt,j) => {
+            const px = mob ? (ld.x<W/2 ? ld.x+88 : ld.x-88) : 640, py = ld.y + (j-(ld.parts.length-1)/2)*74;
             if (pt.power_w) { const [a2,b2,c2,d2]=trim(ld.x,ld.y,px,py,R,28); lines+=line(a2,b2,c2,d2,ld.color,pt.power_w); }
             nodes += node(px,py,28,ld.color,"",fmtW(pt.power_w),pt.name); });
         }
@@ -1564,7 +1581,7 @@
       openPickerCb("value", "", "", eid => setLoad(key, 'limit_entity', eid));
     }
     function pickReady(key) {
-      openPickerCb("presence", "", "", eid => setLoad(key, 'ready_entity', eid));
+      openPickerCb("connected", "", "", eid => setLoad(key, 'ready_entity', eid));
     }
     async function setLoad(key, field, val) {
       try {

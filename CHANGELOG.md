@@ -2,6 +2,13 @@
 
 ## 0.2.1
 
+- „Auto angesteckt" (Wallbox) lässt sich jetzt auch mit **Sensor-Entitäten**
+  belegen (z. B. ein Coupler-/Plug-Status-Sensor mit Textzustand), nicht nur mit
+  Boolean-/Binary-Sensoren — neue, breitere Auswahl-Filtergruppe „connected".
+- **Leistungsfluss-Diagramm:** größere, besser lesbare Schrift; auf dem **Handy**
+  ein eigenes **vertikales Layout** (Haus oben als Knoten, die übrigen Größen in
+  zwei Spalten darunter) statt des breiten, herunterskalierten Stern-Layouts.
+
 - Geregelte Sollwerte werden jetzt **jeden Zyklus (re)geschrieben**, auch
   unverändert — manche Aktoren (z. B. Heizstab-Leistungssollwert) fallen sonst
   auf 0 zurück (Keepalive).

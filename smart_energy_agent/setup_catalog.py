@@ -40,6 +40,15 @@ UNIT_GROUPS: dict[str, dict[str, set[str]]] = {
     "presence": {"device_classes": {"occupancy", "presence", "motion"},
                  "units": set(),
                  "domains": {"person", "device_tracker", "zone", "input_boolean", "binary_sensor", "group"}},
+    # "Connected / ready" signal (e.g. wallbox: is a car plugged in). Permissive:
+    # a binary_sensor/switch/helper OR any sensor (many EV integrations expose the
+    # plug/coupler state as a text sensor, not a boolean). entity_truthy() decides
+    # the on/off meaning at runtime; searchable in the picker.
+    "connected": {"device_classes": {"plug", "connectivity", "occupancy", "presence",
+                                      "motion", "battery_charging", "enum"},
+                  "units": set(),
+                  "domains": {"binary_sensor", "input_boolean", "switch", "sensor",
+                              "person", "device_tracker", "group"}},
     # Broad numeric value (stop conditions: vehicle SoC, temperature, ...).
     "value": {"device_classes": set(), "units": set(),
               "domains": {"sensor", "number", "input_number"}},
