@@ -2,6 +2,19 @@
 
 ## 0.2.1
 
+- Geregelte Sollwerte werden jetzt **jeden Zyklus (re)geschrieben**, auch
+  unverändert — manche Aktoren (z. B. Heizstab-Leistungssollwert) fallen sonst
+  auf 0 zurück (Keepalive).
+- **Wallbox:** Stopp-Bedingung als **„Fahrzeug-SoC"** ausgewiesen (lädt bis zum
+  Ziel-SoC); zusammen mit „Auto angesteckt" sind so beide Fahrzeug-Entitäten
+  konfigurierbar.
+- **Dashboard:** neue Karte **Batterie-SoC (%)**. Karten **Netz** und **Batterie**
+  zeigen nur noch positive Werte mit Richtungstext (**Bezug/Einspeisung** bzw.
+  **Ladung/Entladung**).
+- **Verlauf:** das Netz erscheint nur noch als **eine** Netto-Linie (Bezug −
+  Einspeisung), auch wenn getrennte Bezugs-/Einspeise-Entitäten konfiguriert sind;
+  die Batterie ebenso als eine Größe.
+
 - Erzeuger/Verbraucher komplett auf ein **einheitliches Spalten-Layout** umgestellt
   (ein gemeinsames Zeilen-Raster für alle Felder): ausgewählte Entitäten stehen
   jetzt **linksbündig untereinander** in einer Spalte, „Ändern" durchgehend

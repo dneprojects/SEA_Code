@@ -763,11 +763,15 @@
       const dot = document.getElementById("ha-dot"), txt = document.getElementById("ha-text");
       dot.className = "dot "+(s.ha_connected?"ok":"bad");
       txt.textContent = s.ha_connected ? "verbunden mit HA "+(s.ha_version||"") : "nicht verbunden";
+      const g = s.grid_w||0, b = s.battery_w||0;   // +grid = Bezug, +batt = Ladung
       const metrics = [
-        { v:fmtW(s.pv_w), l:"PV-Erzeugung" }, { v:fmtW(s.grid_w), l:"Netz" }, { v:fmtW(s.battery_w), l:"Batterie" },
+        { v:fmtW(s.pv_w), l:"PV-Erzeugung" },
+        { v:fmtW(Math.abs(g)), l:"Netz", sub: g>0?"Bezug":g<0?"Einspeisung":"–" },
+        { v:fmtW(Math.abs(b)), l:"Batterie", sub: b>0?"Ladung":b<0?"Entladung":"–" },
       ];
+      if (s.battery_soc!=null) metrics.push({ v:Math.round(s.battery_soc)+" %", l:"Batterie-SoC" });
       document.getElementById("summary").innerHTML = metrics.map(m =>
-        `<div class="card"><div class="v">${m.v}</div><div class="l">${m.l}</div></div>`).join("");
+        `<div class="card"><div class="v">${m.v}</div><div class="l">${m.l}</div>${m.sub?`<div class="sub">${m.sub}</div>`:''}</div>`).join("");
     }
     async function refresh() {
       try {
@@ -977,15 +981,17 @@
           : frow("Auto angesteckt", '<span class="sub">— optional —</span>',
               `<button class="btn" title="Entität wählen, die anzeigt ob ein Auto angesteckt/ladebereit ist (optional)" onclick="pickReady('${key}')">Wählen</button>`);
       }
-      // Stop condition: battery is always its SoC; others pick a stop entity.
+      // Stop condition: battery is always its own SoC; the wallbox stops at the
+      // vehicle SoC (its dedicated SoC entity); other devices pick any entity.
+      const stopLbl = d.kind==='ev_charger' ? 'Fahrzeug-SoC' : 'Stopp bei';
       if (d.kind==='battery') {
         h += frow("Stopp bei SoC ≥", `<input type="number" class="fnum" title="Bei diesem Ladezustand (%) stoppt das Laden; 0 = aus" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)"> <span class="sub">%</span>`);
       } else if (cfg.limit_entity) {
-        h += frow("Stopp bei", `<span class="eid" title="${esc(cfg.limit_entity)}">${cfg.limit_entity}</span> <span class="sub">≥</span> <input type="number" class="fnum" title="Schwellwert" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)">`,
-          `<button class="btn" title="Stopp-Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickLimit('${key}')">Ändern</button>`);
+        h += frow(stopLbl, `<span class="eid" title="${esc(cfg.limit_entity)}">${cfg.limit_entity}</span> <span class="sub">≥</span> <input type="number" class="fnum" title="Lade-Ziel (z. B. % SoC); 0 = aus" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)">`,
+          `<button class="btn" title="Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickLimit('${key}')">Ändern</button>`);
       } else {
-        h += frow("Stopp bei", '<span class="sub">— keine —</span>',
-          `<button class="btn" title="Stopp-Bedingung festlegen (z. B. Fahrzeug-SoC oder Temperatur erreicht)" onclick="pickLimit('${key}')">Wählen</button>`);
+        h += frow(stopLbl, '<span class="sub">— keine —</span>',
+          `<button class="btn" title="${d.kind==='ev_charger'?'Fahrzeug-SoC-Entität wählen (lädt bis zum Ziel-SoC)':'Stopp-Bedingung festlegen (z. B. Temperatur erreicht)'}" onclick="pickLimit('${key}')">Wählen</button>`);
       }
       // Battery only: grid-charge from the dynamic tariff with a target SoC band.
       if (d.kind==='battery') {

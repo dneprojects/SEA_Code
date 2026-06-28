@@ -171,7 +171,10 @@ def test_engine_battery_first_keeps_charging_over_heater():
 
     s = _heater_store(grid_w=0, batt_w=1700, heater_setpoint_w=0, loads_first=False, pv_w=2000)
     asyncio.run(ControlEngine(s, cs).run_once(0.0))
-    assert not any(e == "number.hz" for e, _ in calls)
+    # The setpoint is (re)written every cycle (keepalive) but stays at 0 — the
+    # heater never gets the charge power; the battery keeps charging.
+    assert ("number.hz", {"value": 0.0}) in calls
+    assert not any(e == "number.hz" and d != {"value": 0.0} for e, d in calls)
 
 
 def test_engine_min_soc_keeps_charging_below_reserve_then_diverts():
@@ -188,7 +191,8 @@ def test_engine_min_soc_keeps_charging_below_reserve_then_diverts():
     s1 = _heater_store(grid_w=0, batt_w=1700, heater_setpoint_w=0,
                        loads_first=True, pv_w=2000, batt_soc=40, min_soc=60)
     asyncio.run(ControlEngine(s1, cs_below).run_once(0.0))
-    assert not any(e == "number.hz" for e, _ in below)
+    # below reserve: heater stays at 0 (written each cycle, never the surplus)
+    assert not any(e == "number.hz" and d != {"value": 0.0} for e, d in below)
 
     s2 = _heater_store(grid_w=0, batt_w=1700, heater_setpoint_w=0,
                        loads_first=True, pv_w=2000, batt_soc=60, min_soc=60)

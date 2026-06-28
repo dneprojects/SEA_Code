@@ -528,10 +528,11 @@ class Store:
             if ents:
                 out.append({"key": key, "name": name, "entities": ents})
 
-        g = cfg.get("grid") or {}
-        add("grid", "Netz", [("Netzleistung", g.get("power"), "power"),
-                             ("Bezug", g.get("import_power"), "power"),
-                             ("Einspeisung", g.get("export_power"), "power")])
+        # The grid is NOT listed as a plottable device here: its single net value
+        # (import − export, regardless of how many entities are configured) is
+        # already drawn as the "Netz" balance series, so listing import/export
+        # separately would double it. The battery likewise uses one signed power
+        # entity below, so it stays a single net line too.
         for kind in ("pv", "battery", "heat_pump", "water_heater", "ev_charger", "consumers"):
             spec = setup_catalog.find_kind(kind)
             klabel = spec["label"] if spec else kind
@@ -905,19 +906,23 @@ class Store:
         included = sum(1 for e in self._entities.values() if e.include)
         # Header figures follow the same source as the live balance: the wizard
         # config when set, otherwise the legacy role-based aggregation.
+        battery_soc = None
         if self.has_config_balance():
             b = self.balance()
             pv_w, grid_w, battery_w = b.get("pv_w"), b.get("grid_w"), b.get("battery_w")
+            battery_soc = b.get("battery_soc")
         else:
             pv_w = round(_sum(EnergyRole.PV), 1)
             grid_w = round(_sum(EnergyRole.GRID), 1)
             battery_w = round(_sum(EnergyRole.BATTERY), 1)
+            battery_soc = self.balance().get("battery_soc")
         return {
             "total": len(self._entities),
             "included": included,
             "pv_w": pv_w,
             "grid_w": grid_w,
             "battery_w": battery_w,
+            "battery_soc": battery_soc,
             "current_price_ct": self.current_price_ct(),
             "feed_in_ct": self.feed_in_ct(),
             "last_discovery_ts": self.last_discovery_ts,

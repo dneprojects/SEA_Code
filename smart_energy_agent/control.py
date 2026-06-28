@@ -330,7 +330,10 @@ class ControlEngine:
         return out
 
     async def _set_unit(self, m: dict, unit: float, label: str) -> None:
-        if abs(unit - m["cur_unit"]) < 0.1 or m["domain"] not in ("number", "input_number"):
+        # The setpoint is (re)written every cycle even when unchanged: some
+        # actuators (e.g. an immersion-heater power setpoint) fall back to 0 if
+        # they don't receive a fresh value regularly. HA copes with the repeats.
+        if m["domain"] not in ("number", "input_number"):
             return
         try:
             await self._call_service(m["domain"], "set_value", m["entity"], {"value": unit})
@@ -346,12 +349,7 @@ class ControlEngine:
         if domain not in ("number", "input_number"):
             return
         unit = round(power_w / (wpu or 1.0), 2)
-        try:
-            cur = float(self._store.live_state(entity).get("state"))
-        except (TypeError, ValueError):
-            cur = None
-        if cur is not None and abs(unit - cur) < 0.1:
-            return
+        # Always (re)write, even if unchanged — see _set_unit for why.
         try:
             await self._call_service(domain, "set_value", entity, {"value": unit})
             _LOGGER.info("Control: %s -> %s (%s)", entity, unit, label)
@@ -375,8 +373,7 @@ class ControlEngine:
                 await self._set_value(disc, wpu, 0.0, "Entladen aus")
                 normal.append(m)   # idle battery follows the PV surplus
         for a in decide_modulation(surplus_signed, normal):
-            if abs(a["unit"] - a["cur_unit"]) < 0.1:
-                continue
+            # Re-send every cycle even when unchanged (keepalive); see _set_unit.
             if a["domain"] not in ("number", "input_number"):
                 continue
             try:
