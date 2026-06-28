@@ -2,6 +2,10 @@
 
 ## 0.6.0
 
+- UI: jede Seite hat jetzt eine Überschrift mit dem passenden Menü-Icon (vorher nur
+  das Dashboard) und eine klarere Gliederung mit Unterüberschriften. „Erzeuger/
+  Verbraucher" erscheint nun als Seitentitel statt als schlichte Zeile.
+
 - UI: normale Schreibweise statt durchgängiger Großschreibung. Kategorien (z. B.
   Batterie, Wallbox, Gerätenamen) jetzt rot, fett und etwas größer; Untergruppen
   (z. B. Leistung, Energie) schwarz und fett. Seitenüberschriften etwas größer.

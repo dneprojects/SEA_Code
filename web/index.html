@@ -420,7 +420,7 @@
 
       <!-- Einrichtung -->
       <section id="view-setup" hidden>
-        <div class="panel-title">Erzeuger / Verbraucher</div>
+        <div class="page-h"><svg class="ico"><use href="#i-src"/></svg><h1>Erzeuger / Verbraucher</h1></div>
         <p class="sub" style="margin:0 0 8px">Ordne den Größen, die der Agent braucht, die passenden HA-Entitäten zu — unabhängig davon, von welchem HA-Gerät sie stammen. Vorschläge kommen aus Home Assistant; bereits im Energy-Dashboard konfigurierte Entitäten stehen oben. <span style="color:#9c3a2f">*</span> = benötigt.</p>
         <div class="controls">
           <button class="btn" onclick="importPrefs()">Aus Energy-Dashboard übernehmen</button>
@@ -431,14 +431,14 @@
 
       <!-- Geräte (nach Gattung) -->
       <section id="view-devices" hidden>
-        <div class="panel-title">Geräte</div>
+        <div class="page-h"><svg class="ico"><use href="#i-dev"/></svg><h1>Geräte</h1></div>
         <p class="sub" style="margin:0 0 8px">Die eingerichteten Gattungen mit den zugeordneten Entitäten und Live-Werten. Zuordnung erfolgt unter „Einrichtung".</p>
         <div id="devices"></div>
       </section>
 
       <!-- Verlauf & Prognose -->
       <section id="view-history" hidden>
-        <div class="panel-title">Verlauf &amp; Prognose</div>
+        <div class="page-h"><svg class="ico"><use href="#i-hist"/></svg><h1>Verlauf &amp; Prognose</h1></div>
         <div class="controls" style="flex-wrap:wrap;gap:8px">
           <span class="seg" id="range-seg">
             <button data-range="24h" class="active" onclick="setRange('24h')">24 h</button>
@@ -453,17 +453,19 @@
           <span class="sub">bis</span> <input type="datetime-local" id="hist-to">
           <button class="btn" onclick="applyHistRange()">Anwenden</button>
         </div>
+        <div class="panel-title">Leistung &amp; Prognose</div>
         <div class="subhead" style="margin:8px 0 4px">Leistung (W)</div>
         <div class="legend" id="chart-legend"></div>
         <p class="sub" style="margin:0 0 4px">Leistungen (abwählbar in der Legende) · durchgezogen = Verlauf · gestrichelt = Prognose · <b>Zeitbereich mit der Maus aufziehen</b> (Zurücksetzen über 24 h/7 Tage/30 Tage)</p>
         <div class="chart-wrap"><div id="chart"></div></div>
-        <p class="sub" style="margin:14px 0 0">Detail der oben ausgewählten Geräte – je Sensor-Klasse ein Plot (jede Größe auf ihren eigenen Wertebereich skaliert).</p>
+        <div class="panel-title">Weitere Messgrößen</div>
+        <p class="sub" style="margin:4px 0 0">Detail der oben ausgewählten Geräte – je Sensor-Klasse ein Plot (jede Größe auf ihren eigenen Wertebereich skaliert).</p>
         <div id="detail-plots"></div>
       </section>
 
       <!-- Einsparung -->
       <section id="view-savings" hidden>
-        <div class="panel-title">Einsparung durch Optimierung</div>
+        <div class="page-h"><svg class="ico"><use href="#i-save"/></svg><h1>Einsparung durch Optimierung</h1></div>
         <div class="controls">
           <span>Zeitraum:</span>
           <span class="seg" id="sav-seg">
@@ -487,6 +489,7 @@
             <button class="btn" onclick="document.getElementById('sav-cap').value=11000;loadSavings()">Auto</button>
           </span>
         </div>
+        <div class="panel-title">Ergebnis</div>
         <div class="cards" id="sav-cards"></div>
         <div class="panel-title">Energiebilanz im Zeitraum</div>
         <table class="info-tbl"><tbody id="sav-info"></tbody></table>
@@ -495,22 +498,26 @@
 
       <!-- Verbraucher -->
       <section id="view-consumers" hidden>
-        <div class="panel-title">Strategien</div>
+        <div class="page-h"><svg class="ico"><use href="#i-strat"/></svg><h1>Strategien</h1></div>
+        <div class="panel-title">Globale Strategie</div>
         <div class="setrow"><label>Optimierungsstrategie</label>
           <select id="set-strategy" title="Globaler Modus: Eigenverbrauch, Kosten (Tarif), Hybrid oder Autarkie" onchange="strategyChanged();saveStrategy()"></select></div>
         <div class="setrow"><span class="sub" id="set-strategy-desc"></span></div>
+        <div class="panel-title">Geräte-Strategien</div>
         <p class="sub" style="margin:8px 0 6px">Verfügbare Strategien werden automatisch aus den konfigurierten Entitäten ermittelt. Box aufklappen für die Einstellungen.</p>
         <div id="strategies"></div>
       </section>
 
       <!-- Grundeinstellungen (inkl. Tarife) -->
       <section id="view-basic" hidden>
-        <div class="panel-title">Grundeinstellungen</div>
+        <div class="page-h"><svg class="ico"><use href="#i-set"/></svg><h1>Grundeinstellungen</h1></div>
+        <div class="panel-title">Allgemein</div>
         <div class="setrow"><label>Aufbewahrung Historie (Tage)</label>
           <input type="number" id="set-ret" min="1" max="3650" title="Wie lange Verlaufsdaten gespeichert werden (Tage); leer = Standard"> <span class="sub">leer = Standard</span></div>
         <div class="setrow"><label>PV-Prognose-Entität</label>
           <input type="text" id="set-pvfc" title="Optionale Solcast-/sonstige PV-Prognose-Entität (Forecast.Solar wird automatisch erkannt)" placeholder="sensor.solcast_pv_forecast_forecast_today" style="width:260px">
           <span class="sub">nur für Solcast/sonstige — Forecast.Solar wird automatisch erkannt</span></div>
+        <div class="panel-title">PV-Überschuss &amp; Speicher</div>
         <div class="setrow"><label>PV-Überschuss-Vorrang</label>
           <select id="set-loadsfirst" title="Bei echtem PV-Überschuss: Batterie zuerst laden oder steuerbare Verbraucher (Heizstab etc.) direkt versorgen. In beiden Fällen wird ein entladender Speicher nie als Überschuss gewertet – Verbraucher laufen also nie aus der Batterie.">
             <option value="0">Batterie zuerst (Speicher füllen)</option>
@@ -572,7 +579,7 @@
 
       <!-- Thermostate (Absenkung bei Abwesenheit) -->
       <section id="view-thermostats" hidden>
-        <div class="panel-title">Temperaturabsenkung bei Abwesenheit</div>
+        <div class="page-h"><svg class="ico"><use href="#i-thermo"/></svg><h1>Temperaturabsenkung bei Abwesenheit</h1></div>
         <p class="sub" style="margin:0 0 8px">Pro Gruppe Personen und ihre Räume/Thermostate. Abgesenkt wird nur, wenn <b>alle</b> Personen der Gruppe abwesend sind. Optional vorausschauendes Aufheizen auf eine Komfortzeit (gelernte Vorlaufzeit). Frostschutz wird nie unterschritten.</p>
         <div id="thermo"></div>
         <span class="sub" id="thermo-msg" style="margin-left:8px"></span>
