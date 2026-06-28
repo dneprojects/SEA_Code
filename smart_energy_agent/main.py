@@ -9,7 +9,7 @@ import time
 from typing import Any
 
 from . import const, discovery
-from .control import ControlEngine, TariffEngine
+from .control import ControlEngine
 from .ha_client import HAClient
 from .store import Store
 from .thermostat import ThermostatEngine
@@ -40,7 +40,6 @@ class SmartEnergyAgent:
         )
         self.web = WebServer(self.store, self.ha_status, history_fn=self.client.get_history)
         self.control = ControlEngine(self.store, self.client.call_service)
-        self.tariff = TariffEngine(self.store, self.client.call_service)
         self.thermostat = ThermostatEngine(self.store, self.client.call_service)
 
     async def _on_connected(self) -> None:
@@ -111,27 +110,17 @@ class SmartEnergyAgent:
             except Exception as err:  # noqa: BLE001
                 logging.getLogger(__name__).warning("Recorder error: %s", err)
 
-    async def _control(self) -> None:
-        """Periodically run the PV-surplus control engine (no-op if disabled)."""
+    async def _cycle(self) -> None:
+        """One unified control cycle: the PV-surplus controllers run every tick,
+        the tariff controller at its slower interval (handled inside run_cycle)."""
         while True:
             await asyncio.sleep(const.CONTROL_INTERVAL)
             if not self.client.connected:
                 continue
             try:
-                await self.control.run_once(time.time())
+                await self.control.run_cycle(time.time())
             except Exception as err:  # noqa: BLE001
-                logging.getLogger(__name__).warning("Control loop error: %s", err)
-
-    async def _tariff(self) -> None:
-        """Periodically run the tariff load-shifting engine (no-op if disabled)."""
-        while True:
-            await asyncio.sleep(const.TARIFF_INTERVAL)
-            if not self.client.connected:
-                continue
-            try:
-                await self.tariff.run_once(time.time())
-            except Exception as err:  # noqa: BLE001
-                logging.getLogger(__name__).warning("Tariff loop error: %s", err)
+                logging.getLogger(__name__).warning("Control cycle error: %s", err)
 
     async def _setback(self) -> None:
         """Periodically run the thermostat absence-setback engine (no-op if off)."""
@@ -157,8 +146,7 @@ class SmartEnergyAgent:
         await self.web.start()
         client_task = asyncio.create_task(self.client.run_forever())
         recorder_task = asyncio.create_task(self._recorder())
-        control_task = asyncio.create_task(self._control())
-        tariff_task = asyncio.create_task(self._tariff())
+        cycle_task = asyncio.create_task(self._cycle())
         setback_task = asyncio.create_task(self._setback())
         forecast_task = asyncio.create_task(self._solar_forecast())
 
@@ -175,8 +163,7 @@ class SmartEnergyAgent:
         finally:
             status_task.cancel()
             recorder_task.cancel()
-            control_task.cancel()
-            tariff_task.cancel()
+            cycle_task.cancel()
             setback_task.cancel()
             forecast_task.cancel()
             await self.client.stop()

@@ -279,12 +279,41 @@ class PvSurplusModulationController:
             cmds.add(cmd)
 
 
+def plan_tariff(now: float, cheap: bool, loads: list[dict]) -> list[Command]:
+    """Pure planner: turn tariff-shift decisions into on/off/set commands."""
+    out: list[Command] = []
+    for entity, command, reason in decide_tariff_actions(now, cheap, loads):
+        if command == "on":
+            out.append(Command(entity, "on", reason=reason))
+        elif command == "off":
+            out.append(Command(entity, "off", reason=reason))
+        elif isinstance(command, (int, float)):
+            out.append(Command(entity, "set", float(command), reason))  # setpoint
+    return out
+
+
+class TariffShiftController:
+    """Runs deferrable tariff-shift loads in cheap windows. Lower priority than
+    the PV-surplus controllers (it only touches devices they don't), and runs at
+    the slower tariff cadence."""
+
+    name = "tariff_shift"
+    interval = const.TARIFF_INTERVAL
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        for cmd in plan_tariff(image.now, bool(image.extra.get("tariff_cheap")),
+                               image.extra.get("tariff_loads", [])):
+            cmds.add(cmd)
+
+
 class ControlEngine:
-    """Builds the process image from the store and runs the PV-surplus cycle."""
+    """Builds the process image from the store and runs the unified control cycle
+    (PV-surplus every tick + tariff shifting at its slower cadence)."""
 
     def __init__(self, store, call_service: Callable[[str, str, str], Awaitable]):
         self._store = store
         self._call_service = call_service
+        self._last_run: dict[str, float] = {}   # controller name -> last run time
 
     def _build(self) -> list[ConsumerDecision]:
         """Build decisions from the wizard-configured devices that opted into
@@ -379,8 +408,10 @@ class ControlEngine:
                         "discharge": d.get("discharge", "")})
         return out
 
-    # Controller chain for the PV-surplus cycle (highest priority first).
+    # Controller chains (highest priority first). run_once() uses the PV-only
+    # chain (stable for direct/unit-test callers); run_cycle() adds tariff.
     CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
+    FULL_CHAIN: list[Controller] = CHAIN + [TariffShiftController()]
 
     def _surplus_signed(self, balance: dict) -> float:
         # PV-surplus signal: + = export available, − = deficit. Folds in battery
@@ -424,61 +455,14 @@ class ControlEngine:
                 return (cmd.entity, cmd.kind, cmd.reason)
         return None
 
-
-def decide_tariff_actions(
-    now: float, cheap: bool, loads: list[dict]
-) -> list[tuple[str, object, str]]:
-    """Plan tariff-shift actions: run deferrable loads while the tariff is cheap,
-    OR once their latest-start deadline is reached (then run regardless of price,
-    so e.g. a washing machine still finishes in time).
-
-    Returns ``(entity, command, reason)`` where command is ``"on"``/``"off"`` for
-    switchable loads or a numeric setpoint (entity's own unit) for modulating
-    loads. Respects min-runtime / min-off guards; a satisfied load is idled.
-    """
-    actions: list[tuple[str, object, str]] = []
-    for l in loads:
-        due = _deadline_due(l.get("deadline_min"), l.get("now_min", 0))
-        want = (cheap or due) and not l.get("satisfied")
-        forced = due and not cheap
-        if l["mode"] == "switch":
-            if want and not l["is_on"] and (now - l["last_off"]) >= l["min_off_s"]:
-                actions.append((l["entity"], "on",
-                                "Deadline – Start erzwungen" if forced else "günstiger Tarif"))
-            elif (not want and l["is_on"] and (now - l["last_on"]) >= l["min_runtime_s"]
-                  # A non-interruptible load is only stopped once satisfied (done),
-                  # never merely because the tariff stopped being cheap.
-                  and (l.get("interruptible", True) or l.get("satisfied"))):
-                actions.append((l["entity"], "off",
-                                "Ziel erreicht" if l.get("satisfied") else "Tarif nicht günstig"))
-        else:  # setpoint / modulating
-            target = l["max_unit"] if want else 0.0
-            if abs(target - l["cur_unit"]) >= 0.1:
-                actions.append((l["entity"], round(target, 2),
-                                "günstiger Tarif" if want else "Tarif/Ziel"))
-    return actions
-
-
-class TariffEngine:
-    """Runs deferrable ``tariff_shift`` loads during cheap tariff periods.
-
-    Universal: the cheap/expensive decision comes from ``store.tariff_cheap_now``
-    which adapts to whatever price information is registered (dynamic forecast,
-    threshold, or HT/NT window). Only touches devices that opted into tariff
-    shifting and are NOT also driven by the PV-surplus engine.
-    """
-
-    def __init__(self, store, call_service: Callable[..., Awaitable]):
-        self._store = store
-        self._call_service = call_service
-
-    def _loads(self) -> list[dict]:
+    def _tariff_loads(self) -> list[dict]:
+        """Deferrable tariff-shift loads — those NOT also driven by the PV-surplus
+        engine (batteries are grid-charged by the PV controllers, not here)."""
         lt = time.localtime()
         now_min = lt.tm_hour * 60 + lt.tm_min
         out: list[dict] = []
         for d in self._store.strategy_devices():
             cfg = d["cfg"]
-            # Batteries are grid-charged by the ControlEngine (SoC-aware), not here.
             if (not cfg.get("tariff_shift") or cfg.get("self_consumption")
                     or d.get("kind") == "battery"):
                 continue
@@ -512,20 +496,59 @@ class TariffEngine:
                 })
         return out
 
-    async def run_once(self, now: float) -> None:
+    async def run_cycle(self, now: float) -> None:
+        """Unified Input → Process → Output cycle. The PV-surplus controllers run
+        every tick; the tariff controller runs only at its slower interval."""
         if not self._store.control_enabled():
             return
-        cheap = bool(self._store.tariff_cheap_now().get("cheap"))
-        for entity, command, reason in decide_tariff_actions(now, cheap, self._loads()):
-            domain = entity.split(".", 1)[0]
-            try:
-                if command in ("on", "off"):
-                    await self._call_service(
-                        domain, "turn_on" if command == "on" else "turn_off", entity)
-                    self._store.note_switch(entity, command == "on", reason)
-                    _LOGGER.info("Tariff: %s %s (%s)", command, entity, reason)
-                elif domain in ("number", "input_number"):
-                    await self._call_service(domain, "set_value", entity, {"value": command})
-                    _LOGGER.info("Tariff: %s -> %s (%s)", entity, command, reason)
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.warning("Tariff action failed for %s: %s", entity, err)
+        image = self.build_image(now)                       # Input
+        # Tariff inputs are only gathered when the tariff controller is due.
+        tariff_due = (now - self._last_run.get(TariffShiftController.name, -1e18)
+                      ) >= (const.TARIFF_INTERVAL - 1)
+        if tariff_due:
+            image.extra["tariff_cheap"] = bool(self._store.tariff_cheap_now().get("cheap"))
+            image.extra["tariff_loads"] = self._tariff_loads()
+        cmds = CommandSet()                                 # Process (cadence-gated)
+        for c in self.FULL_CHAIN:
+            interval = getattr(c, "interval", const.CONTROL_INTERVAL)
+            if now - self._last_run.get(c.name, -1e18) >= interval - 1:
+                try:
+                    c.process(image, cmds)
+                except Exception as err:  # noqa: BLE001
+                    _LOGGER.warning("Controller %s failed: %s", c.name, err)
+                self._last_run[c.name] = now
+        await apply_commands(self._call_service, self._store, cmds)   # Output
+
+
+def decide_tariff_actions(
+    now: float, cheap: bool, loads: list[dict]
+) -> list[tuple[str, object, str]]:
+    """Plan tariff-shift actions: run deferrable loads while the tariff is cheap,
+    OR once their latest-start deadline is reached (then run regardless of price,
+    so e.g. a washing machine still finishes in time).
+
+    Returns ``(entity, command, reason)`` where command is ``"on"``/``"off"`` for
+    switchable loads or a numeric setpoint (entity's own unit) for modulating
+    loads. Respects min-runtime / min-off guards; a satisfied load is idled.
+    """
+    actions: list[tuple[str, object, str]] = []
+    for l in loads:
+        due = _deadline_due(l.get("deadline_min"), l.get("now_min", 0))
+        want = (cheap or due) and not l.get("satisfied")
+        forced = due and not cheap
+        if l["mode"] == "switch":
+            if want and not l["is_on"] and (now - l["last_off"]) >= l["min_off_s"]:
+                actions.append((l["entity"], "on",
+                                "Deadline – Start erzwungen" if forced else "günstiger Tarif"))
+            elif (not want and l["is_on"] and (now - l["last_on"]) >= l["min_runtime_s"]
+                  # A non-interruptible load is only stopped once satisfied (done),
+                  # never merely because the tariff stopped being cheap.
+                  and (l.get("interruptible", True) or l.get("satisfied"))):
+                actions.append((l["entity"], "off",
+                                "Ziel erreicht" if l.get("satisfied") else "Tarif nicht günstig"))
+        else:  # setpoint / modulating
+            target = l["max_unit"] if want else 0.0
+            if abs(target - l["cur_unit"]) >= 0.1:
+                actions.append((l["entity"], round(target, 2),
+                                "günstiger Tarif" if want else "Tarif/Ziel"))
+    return actions

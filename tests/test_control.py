@@ -200,6 +200,31 @@ def test_engine_min_soc_keeps_charging_below_reserve_then_diverts():
     assert ("number.hz", {"value": 1700.0}) in above
 
 
+def test_run_cycle_folds_in_tariff_and_throttles_to_its_interval():
+    from smart_energy_agent import const
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((service, entity))
+
+    s = Store()
+    s._settings["control_enabled"] = True
+    s._config = {"consumers": [{"id": "c1", "name": "WM", "control": {"switch": "switch.wm"}}]}
+    s._settings["strategy_loads"] = {"consumers:c1": {"tariff_shift": True}}
+    s._live_by_id = {"switch.wm": {"state": "off"}}
+    s.tariff_cheap_now = lambda: {"cheap": True}      # type: ignore[method-assign]
+    eng = ControlEngine(s, cs)
+
+    asyncio.run(eng.run_cycle(1000.0))
+    assert ("turn_on", "switch.wm") in calls          # tariff controller ran on the first tick
+    calls.clear()
+    asyncio.run(eng.run_cycle(1060.0))                # 60 s later: tariff not due (interval 300 s)
+    assert ("turn_on", "switch.wm") not in calls
+    calls.clear()
+    asyncio.run(eng.run_cycle(1000.0 + const.TARIFF_INTERVAL))   # due again
+    assert ("turn_on", "switch.wm") in calls
+
+
 def test_tariff_switches_on_when_cheap_and_off_when_not():
     sw = {"entity": "switch.boiler", "mode": "switch", "is_on": False,
           "last_on": 0, "last_off": 0, "min_runtime_s": 0, "min_off_s": 0, "satisfied": False}
