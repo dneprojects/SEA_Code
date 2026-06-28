@@ -48,6 +48,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # full history: the beta number counts commits since the version bump
 
       - name: Get app information
         id: info
@@ -95,7 +97,27 @@ jobs:
             echo "appname=${NAME}" >> "$GITHUB_OUTPUT"
           else
             echo "mode=Beta" >> "$GITHUB_OUTPUT"
-            echo "version=${BASE}-beta.${RUN}" >> "$GITHUB_OUTPUT"
+            # Beta number resets to 1 on every version bump: count commits since
+            # the commit that introduced the current "version: ${BASE}" line in
+            # config.yaml (inclusive, so the bump commit itself is beta.1).
+            # Falls back to the global run number if history is unavailable.
+            BUMP="$(git log -1 --format=%H -S"version: ${BASE}" -- config.yaml 2>/dev/null || true)"
+            if [[ -n "$BUMP" ]]; then
+              BETA="$(git rev-list --count "${BUMP}^..HEAD" 2>/dev/null || echo "$RUN")"
+            else
+              BETA="$RUN"
+            fi
+            # Monotonicity guard: never publish a lower beta number than the one
+            # already on the beta channel for the same base (HA pre-releases must
+            # increase). So the reset to beta.1 only becomes visible at the next
+            # version bump, where the published base differs.
+            PUB="$(curl -fsSL "https://raw.githubusercontent.com/${APP_REPO}/beta/${ADDON_DIR}/config.yaml" 2>/dev/null \
+                   | sed -nE 's/^version:[[:space:]]*"?([^"[:space:]]+)"?.*$/\1/p' | head -1)"
+            PUB_BASE="${PUB%-beta.*}"; PUB_N="${PUB##*-beta.}"
+            if [[ "$PUB_BASE" == "$BASE" && "$PUB_N" =~ ^[0-9]+$ && "$PUB_N" -ge "$BETA" ]]; then
+              BETA=$((PUB_N + 1))
+            fi
+            echo "version=${BASE}-beta.${BETA}" >> "$GITHUB_OUTPUT"
             echo "branch=beta" >> "$GITHUB_OUTPUT"
             echo "slug=smart_energy_agent_beta" >> "$GITHUB_OUTPUT"
             echo "image_name=smart_energy_agent_beta" >> "$GITHUB_OUTPUT"
