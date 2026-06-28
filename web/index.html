@@ -169,12 +169,11 @@
     .layout{display:flex;align-items:flex-start}
     .sidebar{width:212px;flex:none;background:var(--card);border-right:1px solid var(--line);
       padding:14px 12px;min-height:560px}
-    .sidebar a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r-sm);
-      color:var(--ink);font-family:var(--ui);font-weight:600;font-size:13px;background:none;margin-bottom:2px;white-space:nowrap}
-    .sidebar a .ico{width:18px;height:18px}
+    .sidebar a{display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:var(--r-sm);
+      color:var(--ink);font-family:var(--ui);font-weight:600;font-size:12.5px;background:none;margin-bottom:2px;white-space:nowrap}
     .sidebar a:hover{background:var(--line2);text-decoration:none}
     .sidebar a.active{background:#fbeceb;color:var(--brand)}
-    .sidebar a .ico{width:20px;height:20px;color:var(--faint);flex:none}
+    .sidebar a .ico{width:18px;height:18px;color:var(--faint);flex:none}
     .sidebar a.active .ico{color:var(--brand)}
     .sidebar a.sub{display:flex;font-size:13.5px;padding-left:12px}
     .navgroup{margin:14px 12px 6px;font-size:11px;font-weight:700;letter-spacing:.06em;
@@ -224,7 +223,11 @@
       height:34px;border:1px solid var(--line);border-radius:var(--r-sm);padding:0 10px;font-family:var(--ui);
       font-size:13px;color:var(--ink);background:var(--card)}
     input:focus,select:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(192,55,45,.12)}
-    input[type=checkbox]{width:17px;height:17px;accent-color:var(--brand)}
+    input[type=checkbox]{width:17px;height:17px;accent-color:var(--brand);vertical-align:middle;margin:0}
+    input[type=radio]{accent-color:var(--brand);vertical-align:middle;margin:0}
+    /* exact (0px) vertical centering of a checkbox/radio with its label text */
+    label:has(> input[type=checkbox]),label:has(> input[type=radio]),.swinline{
+      display:inline-flex;align-items:center;gap:5px}
     .setrow{display:flex;align-items:center;gap:12px;margin:12px 0;flex-wrap:wrap}
     .setrow>label:first-child{width:240px;flex:none;color:var(--ink);font-weight:600}
 

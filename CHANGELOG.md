@@ -2,6 +2,10 @@
 
 ## 0.2.1
 
+- UI-Korrekturen: Menü-Schrift etwas kleiner, damit der längste Eintrag in den
+  (bei Auswahl gefärbten) Kasten passt; bei Erzeuger/Verbraucher sitzen Checkboxen/
+  Radios und ihr Text jetzt **exakt auf einer Höhe** (0 px Versatz).
+
 - UI-Feinschliff: roter **Header bleibt fix** stehen, nur der Inhalt darunter
   scrollt vertikal; **Menü-Texte kleiner** (passen in die Box); Grundeinstellungen
   mit **einheitlich ausgerichteter Eingabespalte**. Im **Handy-Modus**: Hamburger
