@@ -53,6 +53,7 @@ class Store:
             "battery_invert": False,
             "retention_days": None,   # None -> use env/default
             "control_enabled": False,  # master switch for PV-surplus control (safety: off)
+            "tariff_enabled": False,   # switch for tariff load-shifting (safety: off)
             "strategy": DEFAULT_STRATEGY,  # optimization strategy (selection only for now)
             "pv_forecast_entity": "",  # HA entity providing a PV power/energy forecast
             # PV-surplus priority when a battery is present:
@@ -201,7 +202,7 @@ class Store:
 
     def set_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
         for key in ("grid_invert", "battery_invert", "control_enabled",
-                    "surplus_loads_first"):
+                    "tariff_enabled", "surplus_loads_first"):
             if key in patch and patch[key] is not None:
                 self._settings[key] = bool(patch[key])
         if "retention_days" in patch:
@@ -251,6 +252,9 @@ class Store:
 
     def control_enabled(self) -> bool:
         return bool(self._settings.get("control_enabled", False))
+
+    def tariff_enabled(self) -> bool:
+        return bool(self._settings.get("tariff_enabled", False))
 
     def surplus_loads_first(self) -> bool:
         """True = controllable loads have priority over battery charging on PV

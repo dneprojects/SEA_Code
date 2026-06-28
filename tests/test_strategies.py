@@ -57,13 +57,16 @@ def test_tariff_shift_available_with_ht_nt_window():
     assert ov["tariff_shift"]["available"] is True
 
 
-def test_tariff_shift_active_when_opted_and_master_on():
+def test_tariff_shift_active_when_opted_and_switch_on():
     config = {"consumers": [{"id": "c1", "control": {"mode": "switch", "switch": "switch.x"}}]}
-    settings = {"control_enabled": True,
+    settings = {"tariff_enabled": True,
                 "tariff": {"mode": "dynamic", "price_entity": "sensor.price"},
                 "strategy_loads": {"consumers:c1": {"tariff_shift": True}}}
     ov = _ov(config, settings, [])
     assert ov["tariff_shift"]["active"] is True
+    # the PV master switch alone does not activate tariff shifting
+    ov2 = _ov(config, {**settings, "tariff_enabled": False, "control_enabled": True}, [])
+    assert ov2["tariff_shift"]["active"] is False
 
 
 def test_self_consumption_available_with_wallbox_or_battery():

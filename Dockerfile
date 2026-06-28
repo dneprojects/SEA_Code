@@ -6,6 +6,11 @@ FROM ${BUILD_FROM}
 ENV LANG=C.UTF-8 \
     PYTHONUNBUFFERED=1
 
+# Full channel version (e.g. 0.6.0-beta.90), injected by the HA builder as a
+# build-arg; the app reads it at runtime so the reported version never drifts.
+ARG BUILD_VERSION
+ENV SEA_VERSION=${BUILD_VERSION}
+
 # Alpine-based HA base image -> install Python via apk.
 RUN apk add --no-cache python3 py3-pip
 

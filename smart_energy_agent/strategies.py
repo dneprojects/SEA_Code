@@ -45,6 +45,7 @@ def overview(config: dict[str, Any], settings: dict[str, Any],
     price_source = tariff_mod.has_price_source(tariff)
     has_thermo = any(g.get("persons") and g.get("thermostats") for g in (groups or []))
     control_on = bool(settings.get("control_enabled"))
+    tariff_on = bool(settings.get("tariff_enabled"))
     sl = settings.get("strategy_loads", {}) or {}
 
     out: list[dict[str, Any]] = []
@@ -71,7 +72,7 @@ def overview(config: dict[str, Any], settings: dict[str, Any],
     if not ctrl:
         miss.append("steuerbare/verschiebbare Last")
     add("tariff_shift", "Dynamischer Tarif: Lastverschiebung", miss, True,
-        control_on and price_source and any(
+        tariff_on and price_source and any(
             isinstance(v, dict) and v.get("tariff_shift") for v in sl.values()),
         "Verschiebbare Lasten und Speicher (Batterie/thermisch) in günstige Zeiten legen – "
         "besonders bei sehr niedrigen oder negativen Preisen.")

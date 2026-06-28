@@ -438,7 +438,7 @@
 
       <!-- Verlauf & Prognose -->
       <section id="view-history" hidden>
-        <div class="page-h"><svg class="ico"><use href="#i-hist"/></svg><h1>Verlauf &amp; Prognose</h1></div>
+        <div class="page-h"><svg class="ico"><use href="#i-hist"/></svg><h1>Verlauf</h1></div>
         <div class="controls" style="flex-wrap:wrap;gap:8px">
           <span class="seg" id="range-seg">
             <button data-range="24h" class="active" onclick="setRange('24h')">24 h</button>
@@ -1647,13 +1647,15 @@
           ? `<div class="sub" style="margin-top:6px">Tarif jetzt:
                <b style="color:${st.cheap?'#3f9b2f':'var(--muted)'}">${st.cheap?'günstig':'nicht günstig'}</b>
                · ${st.status}</div>` : '';
-        return `<div class="sub" style="margin-bottom:4px">${st.desc||''} Benötigt den Master-Schalter „Steuerung aktiv“.</div>${miss}
+        return `<label style="font-weight:bold;color:var(--fg)">
+            <input type="checkbox" ${appSettings.tariff_enabled?"checked":""} onchange="toggleTariff(this.checked)"> Dynamischer Tarif: Lastverschiebung aktiv</label>
+          <div class="sub" style="margin:4px 0">${st.desc||''}</div>${miss}
           <div class="panel-title" style="margin:8px 0 6px">Verschiebbare Geräte</div>
           ${deviceRows('tariff_shift')}${statusLine}`;
       }
       if (st.key === "setback") {
         return `<label style="font-weight:bold;color:var(--fg)">
-            <input type="checkbox" ${st.active?"checked":""} onchange="toggleSetbackStrategy(this.checked)"> Absenkung aktiv</label>
+            <input type="checkbox" ${st.active?"checked":""} onchange="toggleSetbackStrategy(this.checked)"> Temperaturabsenkung aktiv</label>
           <div class="sub" style="margin:4px 0">${st.desc||''}</div>${miss}
           <button class="btn" onclick="showView('thermostats')">Gruppen / Räume konfigurieren →</button>`;
       }
@@ -1767,8 +1769,8 @@
         li.push(_warn("keine verschiebbare Last aktiviert"));
       const bt = _battTariff();
       if (bt.length) li.push(_inf(`Speicher im Tarifbetrieb: ${bt.map(d=>d.name).join(", ")}`));
-      li.push(appSettings.control_enabled ? _ok("Master-Schalter „Steuerung aktiv“ ein")
-                                          : _no("Master-Schalter „Steuerung aktiv“ ist aus"));
+      li.push(appSettings.tariff_enabled ? _ok("Schalter „Lastverschiebung aktiv“ ein")
+                                         : _no("Schalter „Lastverschiebung aktiv“ ist aus"));
       if (appSettings.current_price_ct!=null) li.push(_inf(`Aktueller Preis: <b>${appSettings.current_price_ct} ct/kWh</b>`));
       return _ul(li);
     }
@@ -1852,6 +1854,13 @@
       try {
         await fetch(api("/api/settings"), { method:"POST",
           headers:{"Content-Type":"application/json"}, body:JSON.stringify({control_enabled:on}) });
+      } catch(e) {}
+      loadConsumers();  // refresh status badge (verfügbar <-> aktiv)
+    }
+    async function toggleTariff(on) {
+      try {
+        await fetch(api("/api/settings"), { method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({tariff_enabled:on}) });
       } catch(e) {}
       loadConsumers();  // refresh status badge (verfügbar <-> aktiv)
     }
@@ -1946,8 +1955,7 @@
     }
     function renderThermo() {
       const el = document.getElementById("thermo");
-      let h = `<div class="setrow"><label>Absenkung aktiv</label>
-          <input type="checkbox" title="Hauptschalter für die Temperaturabsenkung" ${sbData.enabled?"checked":""} onchange="sbData.enabled=this.checked;saveSb(false)"></div>
+      let h = `<p class="sub" style="margin:0 0 8px">Hauptschalter „Temperaturabsenkung aktiv" auf der Seite <b>Strategien</b>.</p>
         <div class="setrow"><label>Frostschutz (°C)</label>
           <input type="number" step="0.5" title="Diese Temperatur wird nie unterschritten" value="${sbData.frost_c!=null?sbData.frost_c:7}" style="width:80px"
                  onchange="sbData.frost_c=parseFloat(this.value);saveSb(false)"></div>`;

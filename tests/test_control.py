@@ -246,6 +246,7 @@ def test_run_cycle_folds_in_tariff_and_throttles_to_its_interval():
 
     s = Store()
     s._settings["control_enabled"] = True
+    s._settings["tariff_enabled"] = True
     s._config = {"consumers": [{"id": "c1", "name": "WM", "control": {"switch": "switch.wm"}}]}
     s._settings["strategy_loads"] = {"consumers:c1": {"tariff_shift": True}}
     s._live_by_id = {"switch.wm": {"state": "off"}}
@@ -260,6 +261,31 @@ def test_run_cycle_folds_in_tariff_and_throttles_to_its_interval():
     calls.clear()
     asyncio.run(eng.run_cycle(1000.0 + const.TARIFF_INTERVAL))   # due again
     assert ("turn_on", "switch.wm") in calls
+
+
+def test_run_cycle_tariff_runs_independently_of_pv_master():
+    from smart_energy_agent import const
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((service, entity))
+
+    s = Store()
+    s._settings["control_enabled"] = False    # PV master OFF
+    s._settings["tariff_enabled"] = True       # tariff switch ON
+    s._config = {"consumers": [{"id": "c1", "name": "WM", "control": {"switch": "switch.wm"}}]}
+    s._settings["strategy_loads"] = {"consumers:c1": {"tariff_shift": True}}
+    s._live_by_id = {"switch.wm": {"state": "off"}}
+    s.tariff_cheap_now = lambda: {"cheap": True}      # type: ignore[method-assign]
+    eng = ControlEngine(s, cs)
+
+    asyncio.run(eng.run_cycle(1000.0))
+    assert ("turn_on", "switch.wm") in calls           # tariff ran despite master off
+    # both switches off -> nothing happens at all
+    s._settings["tariff_enabled"] = False
+    calls.clear()
+    asyncio.run(eng.run_cycle(1000.0 + const.TARIFF_INTERVAL * 2))
+    assert calls == []
 
 
 def test_tariff_switches_on_when_cheap_and_off_when_not():

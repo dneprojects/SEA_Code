@@ -2,6 +2,18 @@
 
 ## 0.6.0
 
+- Fix: Die angezeigte Version entspricht jetzt der tatsächlich laufenden (vorher
+  blieb „0.2.1" stehen) — sie wird zur Laufzeit aus dem Build übernommen.
+
+- Neu: Eigener Schalter „Dynamischer Tarif: Lastverschiebung aktiv" auf der
+  Strategieseite — die Tarif-Lastverschiebung lässt sich jetzt unabhängig von der
+  PV-Überschusssteuerung ein-/ausschalten.
+
+- Der Schalter „Temperaturabsenkung aktiv" (vorher „Absenkung aktiv") steht nur
+  noch auf der Strategieseite, nicht mehr zusätzlich bei den Thermostat-Einstellungen.
+
+- UI: Seitentitel „Verlauf" (vorher „Verlauf & Prognose").
+
 - UI: jede Seite hat jetzt eine Überschrift mit dem passenden Menü-Icon (vorher nur
   das Dashboard) und eine klarere Gliederung mit Unterüberschriften. „Erzeuger/
   Verbraucher" erscheint nun als Seitentitel statt als schlichte Zeile.

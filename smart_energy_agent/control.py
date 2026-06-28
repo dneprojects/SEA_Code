@@ -512,21 +512,28 @@ class ControlEngine:
     async def run_cycle(self, now: float) -> None:
         """Unified Input → Process → Output cycle. The PV-surplus controllers run
         every tick; the tariff controller runs only at its slower interval."""
-        if not self._store.control_enabled():
+        # Two independent switches: the master for PV-surplus + peak shaving, and
+        # a separate one for tariff load-shifting. Either may run on its own.
+        surplus_on = self._store.control_enabled()
+        tariff_on = self._store.tariff_enabled()
+        if not (surplus_on or tariff_on):
             return
         image = self.build_image(now)                       # Input
-        # Peak shaving inputs (only when enabled).
+        # Peak shaving inputs (surplus master on + a configured cap).
         peak_limit = self._store.peak_limit_w()
-        if peak_limit > 0:
+        if surplus_on and peak_limit > 0:
             image.extra["peak"] = {"limit_w": peak_limit, "batteries": self._peak_batteries()}
-        # Tariff inputs are only gathered when the tariff controller is due.
+        # Tariff inputs are gathered only when tariff shifting is on and due.
         tariff_due = (now - self._last_run.get(TariffShiftController.name, -1e18)
                       ) >= (const.TARIFF_INTERVAL - 1)
-        if tariff_due:
+        if tariff_on and tariff_due:
             image.extra["tariff_cheap"] = bool(self._store.tariff_cheap_now().get("cheap"))
             image.extra["tariff_loads"] = self._tariff_loads()
         cmds = CommandSet()                                 # Process (cadence-gated)
         for c in self.FULL_CHAIN:
+            # Tariff controller follows tariff_enabled; all others the master.
+            if (tariff_on if c.name == TariffShiftController.name else surplus_on) is False:
+                continue
             interval = getattr(c, "interval", const.CONTROL_INTERVAL)
             if now - self._last_run.get(c.name, -1e18) >= interval - 1:
                 cmds.current_source = c.name
