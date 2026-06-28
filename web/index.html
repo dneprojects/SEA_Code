@@ -258,11 +258,15 @@
     /* ---- setup device cards (rows/columns, no table lines) ---- */
     #view-setup .swdev{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
       box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
-    #view-setup .swdev>summary{padding:13px 16px;gap:12px}
+    #view-setup .swdev>summary{padding:13px 16px;gap:10px;list-style:none}
+    #view-setup .swdev>summary::-webkit-details-marker{display:none}
     #view-setup .swname{color:var(--ink);font-weight:700}
     #view-setup .swbody{padding:6px 16px 14px;border-top:1px solid var(--line2)}
     #view-setup .swgrid{grid-template-columns:170px minmax(120px,1fr) auto auto;gap:6px 12px}
     #view-setup .swgrid>div{padding:5px 6px;border-radius:var(--r-sm);font-size:13px}
+    /* control/Steuerung & other spanned rows: clean, vertically centered flow */
+    #view-setup .swspan{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    #view-setup .entsel{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
     #view-setup .swhead{color:var(--brand);font-size:11px;letter-spacing:.05em;margin-top:12px}
     #view-setup .swchip{font-size:11px;font-weight:700;color:var(--muted);background:var(--line2);border-radius:999px;padding:3px 9px}
     #view-setup input,#view-setup select{font-size:13px;height:32px}
@@ -271,9 +275,17 @@
     /* ---- strategy boxes ---- */
     #view-consumers .stratbox{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
       box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
-    #view-consumers .stratbox>summary{padding:14px 16px;gap:11px}
+    #view-consumers .stratbox>summary{padding:14px 16px;gap:10px;list-style:none}
+    #view-consumers .stratbox>summary::-webkit-details-marker{display:none}
     #view-consumers .stratbody{padding:14px 16px;border-top:1px solid var(--line2)}
     .badge{color:#fff;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700}
+
+    /* disclosure triangle on every expandable box: ▶ collapsed, ▼ (rotated) when open */
+    #view-setup .swdev>summary::before,
+    #view-consumers .stratbox>summary::before{
+      content:"\25B6";flex:none;font-size:10px;line-height:1;color:var(--muted);transition:transform .15s}
+    #view-setup .swdev[open]>summary::before,
+    #view-consumers .stratbox[open]>summary::before{transform:rotate(90deg)}
 
     footer{background:var(--brand-3);border-top:none;color:#f0d9d7;font-size:12px;padding:14px 26px;margin-top:24px}
 
@@ -818,8 +830,8 @@
     function entInline(path, ug, kind) {
       const val = getByPath(path);
       const summ = val ? `<span class="eid">${val}</span>` : '<span class="sub">—</span>';
-      return `${summ} <button class="btn" title="Entität ${val?'ändern':'wählen'}" onclick="openPicker('${path}','${ug}','${kind}')">${val?'Ändern':'Wählen'}</button>`
-        + (val ? ` <button class="btn" title="Auswahl entfernen" onclick="clearField('${path}')">×</button>` : '');
+      return `<span class="entsel">${summ} <button class="btn" title="Entität ${val?'ändern':'wählen'}" onclick="openPicker('${path}','${ug}','${kind}')">${val?'Ändern':'Wählen'}</button>`
+        + (val ? ` <button class="btn" title="Auswahl entfernen" onclick="clearField('${path}')">×</button>` : '') + `</span>`;
     }
     // --- render ---
     function renderSetup() {

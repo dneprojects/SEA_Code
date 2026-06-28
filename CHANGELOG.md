@@ -2,6 +2,12 @@
 
 ## 0.2.1
 
+- Aufklappbare Boxen (Geräte, Strategien) zeigen jetzt ein **ausgefülltes Dreieck**
+  als Aufklapp-Icon: ▶ zugeklappt, dreht zu ▼ beim Öffnen. Die „Steuerung"-Zeile
+  unter Erzeuger/Verbraucher ist sauber ausgerichtet; die Entitäts-Auswahl
+  (Chip · Ändern · ×) bleibt als Gruppe zusammen und bricht bei Platzmangel
+  gemeinsam um.
+
 - UI-Korrekturen: Menü-Schrift etwas kleiner, damit der längste Eintrag in den
   (bei Auswahl gefärbten) Kasten passt; bei Erzeuger/Verbraucher sitzen Checkboxen/
   Radios und ihr Text jetzt **exakt auf einer Höhe** (0 px Versatz).
