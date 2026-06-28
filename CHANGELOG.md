@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.1
+## 0.6.0
 
 - **Neu: Peak-Shaving** — Einstellung „Netzbezug deckeln bei (W)" (Grundeinstellungen,
   0 = aus): übersteigt der Netzbezug diesen Wert, entlädt die Batterie gezielt, um
