@@ -701,14 +701,28 @@
       // columns below (arranged underneath each other). Desktop: the wide star.
       const mob = (window.innerWidth || 9999) <= 760;
       const FS = mob ? {icon:19, val:15, name:14, sub:12, surL:13, surV:17}
-                     : {icon:15, val:11, name:11, sub:10, surL:11, surV:13};
-      const R = mob ? 30 : 40;
+                     : {icon:16, val:12, name:12, sub:11, surL:12, surV:14};
+      const R = mob ? 36 : 42;
+      const PART_R = mob ? 26 : 28, PART_GAP = mob ? 84 : 74;
       let W, anchors;
       if (mob) {
+        // Vertical phone layout: Haus hub on top, the rest in two (wider, larger)
+        // columns below. Rows are placed sequentially, so expanding a load — its
+        // parts stack downward — pushes all following circles further down.
         W = 360;
-        const colX = k => (k%2 ? 248 : 112), rowY = k => 168 + Math.floor(k/2)*108;
-        anchors = { house:[180,62], pv:[colX(0),rowY(0)], grid:[colX(1),rowY(1)], battery:[colX(2),rowY(2)] };
-        loads.forEach((ld,i) => { const k=3+i; ld.x=colX(k); ld.y=rowY(k); });
+        const Lx = 90, Rx = 270;
+        const items = [{a:'pv'}, {a:'grid'}, {a:'battery'}].concat(loads.map(ld => ({ld})));
+        anchors = { house:[180,72], pv:[0,0], grid:[0,0], battery:[0,0] };
+        let y = 182;
+        for (let k=0; k<items.length; k+=2) {
+          const pair = [items[k], items[k+1]];
+          pair.forEach((it,c) => { if (!it) return; const x = c ? Rx : Lx;
+            if (it.a) anchors[it.a] = [x, y]; else { it.ld.x = x; it.ld.y = y; } });
+          let extra = 0;
+          pair.forEach(it => { if (it && it.ld && flowExpanded.has(it.ld.key) && (it.ld.parts||[]).length>1)
+            extra = Math.max(extra, R + 52 + it.ld.parts.length*PART_GAP); });
+          y += (R + 78) + extra;
+        }
       } else {
         W = 780;
         const step=100, topPad=70, hx=300, hy=220;
@@ -720,7 +734,9 @@
       let maxY = Math.max(anchors.pv[1], anchors.battery[1], anchors.house[1], anchors.grid[1]) + R + 34;
       loads.forEach(ld => { maxY = Math.max(maxY, ld.y + R + 34);
         if (flowExpanded.has(ld.key) && (ld.parts||[]).length>1)
-          maxY = Math.max(maxY, ld.y + (ld.parts.length-1)/2*74 + 28 + 16); });
+          maxY = Math.max(maxY, mob
+            ? ld.y + R + 52 + (ld.parts.length-1)*PART_GAP + PART_R + 20
+            : ld.y + (ld.parts.length-1)/2*74 + 28 + 16); });
       const H = Math.round(maxY + 14);
       const allP = [Math.abs(f.pv_w||0), Math.abs(f.grid_w||0), Math.abs(f.battery_w||0)]
         .concat(loads.map(l=>Math.abs(l.power_w||0)));
@@ -769,9 +785,10 @@
           const exp = flowExpanded.has(ld.key);
           nodes += `<text x="${ld.x+R-4}" y="${ld.y-R+12}" font-size="16" font-weight="bold" fill="${ld.color}" style="cursor:pointer" onclick="toggleFlow('${ld.key}')">${exp?"−":"+"}<title>Einzelleistungen ein-/ausblenden</title></text>`;
           if (exp) ld.parts.forEach((pt,j) => {
-            const px = mob ? (ld.x<W/2 ? ld.x+88 : ld.x-88) : 640, py = ld.y + (j-(ld.parts.length-1)/2)*74;
-            if (pt.power_w) { const [a2,b2,c2,d2]=trim(ld.x,ld.y,px,py,R,28); lines+=line(a2,b2,c2,d2,ld.color,pt.power_w); }
-            nodes += node(px,py,28,ld.color,"",fmtW(pt.power_w),pt.name); });
+            const px = mob ? ld.x : 640,
+                  py = mob ? (ld.y + R + 52 + j*PART_GAP) : (ld.y + (j-(ld.parts.length-1)/2)*74);
+            if (pt.power_w) { const [a2,b2,c2,d2]=trim(ld.x,ld.y,px,py,R,PART_R); lines+=line(a2,b2,c2,d2,ld.color,pt.power_w); }
+            nodes += node(px,py,PART_R,ld.color,"",fmtW(pt.power_w),pt.name); });
         }
       });
       el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;max-width:840px;margin:auto">${lines}${nodes}</svg>`;

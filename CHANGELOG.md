@@ -2,6 +2,11 @@
 
 ## 0.2.1
 
+- Leistungsfluss-Diagramm: auf dem **Handy größere Kreise** mit mehr seitlichem
+  Abstand; expandierte Verbraucher (über „+") **stapeln jetzt nach unten** und
+  schieben die folgenden Kreise nach unten (Rahmen wächst mit). Im Browser Kreise
+  und Schrift minimal größer.
+
 - „Auto angesteckt" (Wallbox) lässt sich jetzt auch mit **Sensor-Entitäten**
   belegen (z. B. ein Coupler-/Plug-Status-Sensor mit Textzustand), nicht nur mit
   Boolean-/Binary-Sensoren — neue, breitere Auswahl-Filtergruppe „connected".
