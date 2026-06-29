@@ -37,6 +37,29 @@ def _f(v: Any, default: float = 0.0) -> float:
         return default
 
 
+def _scale_price(val: float, unit: str) -> float:
+    """Normalise a price value to ct/kWh using the entity's unit."""
+    if "/mwh" in unit:
+        return round(val / 10.0, 3)                       # currency/MWh -> ct/kWh
+    if any(u in unit for u in ("eur/kwh", "€/kwh", "$/kwh", "usd/kwh",
+                               "gbp/kwh", "£/kwh", "chf/kwh")):
+        return round(val * 100.0, 3)                      # currency/kWh -> ct/kWh
+    return round(val, 3)
+
+
+def _parse_ts(v: Any) -> Optional[float]:
+    """Parse an epoch (number) or ISO-8601 timestamp to epoch seconds."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        pass
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(str(v).replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
 class Store:
     """Holds the current set of classified energy entities + user overrides."""
 
@@ -802,6 +825,44 @@ class Store:
             val *= 100.0                      # currency/kWh -> ct/kWh
         # ct/kWh, cent/kWh, öre/kWh or unit-less -> already ct-scale
         return round(val, 3)
+
+    def price_forecast(self) -> list[tuple[float, float]]:
+        """Best-effort upcoming price series ``[(ts, ct/kWh)]`` parsed from the
+        dynamic price entity's attributes (Nordpool ``raw_today``/``raw_tomorrow``,
+        or a generic ``today``/``tomorrow``/``forecast``/``data`` list). Empty if
+        none/unparseable — the optimizer then falls back to the current price."""
+        t = self._settings.get("tariff", {})
+        if t.get("mode") != "dynamic":
+            return []
+        pe = t.get("price_entity") or ""
+        if not pe:
+            return []
+        attrs = self.live_state(pe).get("attributes") or {}
+        unit = str(attrs.get("unit_of_measurement") or "").lower()
+        raw: list = []
+        for key in ("raw_today", "raw_tomorrow", "today", "tomorrow", "forecast", "data", "prices"):
+            v = attrs.get(key)
+            if isinstance(v, list):
+                raw.extend(v)
+        out: list[tuple[float, float]] = []
+        for it in raw:
+            if not isinstance(it, dict):
+                continue
+            ts = next((_parse_ts(it[k]) for k in
+                       ("start", "startsAt", "start_time", "from", "time", "timestamp",
+                        "start_timestamp", "hour") if k in it and it[k] is not None), None)
+            val = None
+            for vk in ("value", "price", "total", "marketprice", "amount", "ct"):
+                if it.get(vk) is not None:
+                    try:
+                        val = float(it[vk]); break
+                    except (TypeError, ValueError):
+                        val = None
+            if ts is None or val is None:
+                continue
+            out.append((ts, _scale_price(val, unit)))
+        out.sort()
+        return out
 
     def current_price_ct(self) -> Optional[float]:
         """Current purchase price in ct/kWh based on the configured tariff."""

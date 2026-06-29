@@ -892,6 +892,18 @@ class ControlEngine:
             pts = []
         if not pts:
             return None
+        fc = self._store.price_forecast()        # upcoming dynamic prices, if any
+        def price_for(ts: Optional[float]) -> Optional[float]:
+            if fc and ts is not None:
+                p = None
+                for t0, pr in fc:
+                    if t0 <= ts:
+                        p = pr
+                    else:
+                        break
+                if p is not None:
+                    return p
+            return self._store.price_at(ts)
         slots = []
         for i, pt in enumerate(pts):
             ts = pt.get("ts")
@@ -899,7 +911,7 @@ class ControlEngine:
             dt_h = max(0.05, (nxt - ts) / 3600.0) if (ts and nxt) else 0.25
             slots.append({"pv_w": pt.get("pv_w") or 0.0,
                           "load_w": pt.get("load_w", pt.get("watt")) or 0.0,
-                          "price_ct": self._store.price_at(ts), "dt_h": dt_h})
+                          "price_ct": price_for(ts), "dt_h": dt_h})
         return {"slots": slots, "soc": bat.soc or 0.0, "capacity_kwh": bat.capacity_kwh,
                 "reserve": bat.grid_soc_min, "soc_max": bat.grid_soc_max,
                 "max_w": bat.max_w, "wpu": bat.wpu,

@@ -20,3 +20,6 @@ consumers.json
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Image sources (not shipped)
+*.xcf
