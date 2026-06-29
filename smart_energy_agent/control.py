@@ -530,13 +530,15 @@ class ControlEngine:
             image.extra["tariff_cheap"] = bool(self._store.tariff_cheap_now().get("cheap"))
             image.extra["tariff_loads"] = self._tariff_loads()
         cmds = CommandSet()                                 # Process (cadence-gated)
-        for c in self.FULL_CHAIN:
+        n = len(self.FULL_CHAIN)
+        for idx, c in enumerate(self.FULL_CHAIN):
             # Tariff controller follows tariff_enabled; all others the master.
             if (tariff_on if c.name == TariffShiftController.name else surplus_on) is False:
                 continue
             interval = getattr(c, "interval", const.CONTROL_INTERVAL)
             if now - self._last_run.get(c.name, -1e18) >= interval - 1:
                 cmds.current_source = c.name
+                cmds.current_priority = n - idx          # chain order -> priority
                 try:
                     c.process(image, cmds)
                 except Exception as err:  # noqa: BLE001

@@ -16,6 +16,7 @@ the process-image construction live in ``control.py``.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional, Protocol
 
@@ -39,32 +40,114 @@ class Command:
 
 
 @dataclass
-class CommandSet:
-    """Collects commands; first writer per entity wins.
+class Constraint:
+    """A narrowing of the allowed value of a numeric resource (one entity).
 
-    Controllers run highest-priority first, so an entity commanded by an earlier
-    controller is locked for the rest of the cycle (later controllers may only
-    command *other* entities). Empty-entity commands are ignored.
+    This is the OpenEMS "controllers may only further constrain" model: instead
+    of a single owner writing a final setpoint, every controller contributes a
+    constraint — an allowed interval ``[lo, hi]`` and/or a desired ``target``.
+    The resolver intersects all constraints for an entity in priority order
+    (highest first) and clamps the highest-priority ``target`` into the surviving
+    interval. A plain numeric command is just a constraint that only sets a
+    target; a reserve/limit controller adds a ``hi``/``lo`` bound that the target
+    must respect — so strategies compose on shared resources (e.g. the battery)
+    instead of one silently winning.
     """
 
-    _by_entity: dict[str, Command] = field(default_factory=dict)
-    _order: list[str] = field(default_factory=list)
-    current_source: str = ""   # set by the runner before each controller runs
+    entity: str
+    lo: float = -math.inf
+    hi: float = math.inf
+    target: Optional[float] = None
+    priority: float = 0.0
+    source: str = ""
+    reason: str = ""
+
+
+@dataclass
+class CommandSet:
+    """Collects controller output and resolves it into final writes.
+
+    Switches (``on``/``off``) keep first-writer-per-entity-wins (a switch has no
+    range to narrow). Numeric setpoints are collected as :class:`Constraint`\\ s
+    and resolved by priority: the highest-priority ``target`` wins and is clamped
+    into the intersection of all bounds. ``current_source``/``current_priority``
+    are stamped by the runner before each controller so output is traceable and
+    ordered by controller priority.
+    """
+
+    _switches: dict[str, Command] = field(default_factory=dict)
+    _constraints: list[Constraint] = field(default_factory=list)
+    _order: list[str] = field(default_factory=list)   # entities by first appearance
+    current_source: str = ""
+    current_priority: float = 0.0
+
+    def _touch(self, entity: str) -> None:
+        if entity not in self._order:
+            self._order.append(entity)
 
     def add(self, cmd: Command) -> bool:
-        if not cmd.entity or cmd.entity in self._by_entity:
+        """Add a switch command (first writer wins) or a numeric target."""
+        if not cmd.entity:
             return False
         if not cmd.source:
             cmd.source = self.current_source     # trace: who decided this
-        self._by_entity[cmd.entity] = cmd
-        self._order.append(cmd.entity)
+        if cmd.kind in ("on", "off"):
+            if cmd.entity in self._switches:
+                return False                     # switch already owned this cycle
+            self._switches[cmd.entity] = cmd
+            self._touch(cmd.entity)
+            return True
+        self._constraints.append(Constraint(
+            entity=cmd.entity, target=cmd.value, priority=self.current_priority,
+            source=cmd.source, reason=cmd.reason))
+        self._touch(cmd.entity)
         return True
 
+    def constrain(self, entity: str, *, lo: float = -math.inf, hi: float = math.inf,
+                  target: Optional[float] = None, reason: str = "") -> None:
+        """Add a bound and/or target for a numeric resource (the constraint API)."""
+        if not entity:
+            return
+        self._constraints.append(Constraint(
+            entity=entity, lo=lo, hi=hi, target=target,
+            priority=self.current_priority, source=self.current_source, reason=reason))
+        self._touch(entity)
+
     def has(self, entity: str) -> bool:
-        return entity in self._by_entity
+        return entity in self._switches or any(c.entity == entity for c in self._constraints)
+
+    def _resolve(self, bounds: Optional[dict[str, tuple[float, float]]] = None) -> list[Command]:
+        """Resolve switches + constraints into the final per-entity commands.
+
+        ``bounds`` optionally gives a device's hard ``[min, max]`` per entity as
+        the starting interval; controller constraints narrow it from there.
+        """
+        bounds = bounds or {}
+        out: dict[str, Command] = dict(self._switches)
+        by_entity: dict[str, list[Constraint]] = {}
+        for c in self._constraints:
+            by_entity.setdefault(c.entity, []).append(c)
+        for entity, cs in by_entity.items():
+            lo, hi = bounds.get(entity, (-math.inf, math.inf))
+            order = sorted(range(len(cs)), key=lambda i: (-cs[i].priority, i))  # high prio first
+            target: Optional[float] = None
+            src, reason = self.current_source, ""
+            for i in order:
+                c = cs[i]
+                nlo, nhi = max(lo, c.lo), min(hi, c.hi)
+                if nlo <= nhi:
+                    lo, hi = nlo, nhi
+                # else: this lower-priority bound can't be honoured -> dropped
+                if target is None and c.target is not None:
+                    target, src, reason = c.target, c.source, c.reason
+            if target is None:
+                continue                         # a pure bound with no target -> no write
+            val = min(max(target, lo), hi)
+            out[entity] = Command(entity, "set", round(val, 2), reason, src)
+        return [out[e] for e in self._order if e in out]
 
     def commands(self) -> list[Command]:
-        return [self._by_entity[e] for e in self._order]
+        return self._resolve()
 
     def trace(self) -> list[dict[str, Any]]:
         """Serializable record of what each controller decided (for debugging)."""
@@ -105,8 +188,10 @@ class Cycle:
 
     def run(self, image: ProcessImage) -> CommandSet:
         cmds = CommandSet()
-        for c in self._controllers:
+        n = len(self._controllers)
+        for i, c in enumerate(self._controllers):
             cmds.current_source = getattr(c, "name", "")
+            cmds.current_priority = n - i        # earlier controller -> higher priority
             try:
                 c.process(image, cmds)
             except Exception as err:  # noqa: BLE001
