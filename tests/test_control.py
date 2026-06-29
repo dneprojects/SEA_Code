@@ -265,11 +265,11 @@ def test_ess_reserve_clamps_discharge_and_charge_as_hard_bounds():
 
 def test_evcs_gate_logic():
     from smart_energy_agent.control import evcs_gate
-    base = {"connected_set": True, "connected": True, "soc": 40.0, "target_soc": 80.0,
+    base = {"connected_set": True, "connected": True, "satisfied": False,
             "from_grid": False, "deadline_min": None, "now_min": 600}
     assert evcs_gate(base, 0.0) is None                          # surplus-only -> generic decides
     assert evcs_gate({**base, "connected": False}, 0.0)[0] is False     # unplugged -> off
-    assert evcs_gate({**base, "soc": 80.0}, 0.0)[0] is False     # target SoC reached -> off
+    assert evcs_gate({**base, "satisfied": True}, 0.0)[0] is False      # target SoC reached -> off
     assert evcs_gate({**base, "from_grid": True}, 0.0)[0] is True       # grid allowed + plugged -> on
     assert evcs_gate({**base, "deadline_min": 590}, 0.0)[0] is True     # deadline due -> on
     # connection not configured -> never gates on the plug signal
@@ -280,7 +280,7 @@ def test_evcs_controller_switch_and_setpoint():
     from smart_energy_agent.control import EvcsController
     from smart_energy_agent.control_core import CommandSet, ProcessImage
     off = {"switch": "switch.wb", "setpoint": "", "mode": "switch", "min_unit": 6.0,
-           "connected_set": True, "connected": False, "soc": None, "target_soc": 0,
+           "connected_set": True, "connected": False, "satisfied": False,
            "from_grid": False, "deadline_min": None, "now_min": 600}
     img = ProcessImage(now=0.0); img.extra["evcs"] = [off]
     cmds = CommandSet(); EvcsController().process(img, cmds)

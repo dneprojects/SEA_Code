@@ -484,7 +484,7 @@ class Store:
         if not key:
             return False
         cfg = self._settings.setdefault("strategy_loads", {}).setdefault(key, {})
-        for f in ("self_consumption", "tariff_shift", "interruptible"):
+        for f in ("self_consumption", "tariff_shift", "interruptible", "charge_from_grid"):
             if f in patch:
                 cfg[f] = bool(patch[f])
         for f in ("priority", "pv_threshold_w", "min_runtime_min", "min_off_min", "max_starts_per_day"):

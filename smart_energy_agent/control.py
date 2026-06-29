@@ -380,8 +380,8 @@ def evcs_gate(e: dict, now: float) -> Optional[tuple[bool, str]]:
     """
     if e["connected_set"] and not e["connected"]:
         return (False, "nicht angesteckt")
-    if e["target_soc"] > 0 and e["soc"] is not None and e["soc"] >= e["target_soc"]:
-        return (False, f"Ziel-SoC {round(e['target_soc'])} % erreicht")
+    if e["satisfied"]:
+        return (False, "Ziel-SoC erreicht")
     if _deadline_due(e["deadline_min"], e["now_min"]):
         return (True, "Deadline – Laden erzwungen")
     if e["from_grid"] and e["connected"]:
@@ -553,7 +553,7 @@ class ControlEngine:
                 "switch": dev.switch_entity, "setpoint": dev.setpoint_entity, "mode": dev.mode,
                 "min_unit": round(dev.min_w / dev.wpu, 2),
                 "connected_set": bool(dev.ready_entity), "connected": dev.ready,
-                "soc": dev.soc, "target_soc": dev.target_soc, "from_grid": dev.charge_from_grid,
+                "satisfied": dev.satisfied, "from_grid": dev.charge_from_grid,
                 "deadline_min": _hhmm_to_min(dev.latest_start), "now_min": now_min,
             })
         return out

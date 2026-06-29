@@ -1030,6 +1030,7 @@
               `<button class="btn" title="Entität ändern – „nicht zugeordnet“ wählen zum Entfernen" onclick="pickReady('${key}')">Ändern</button>`)
           : frow("Auto angesteckt", '<span class="sub">— optional —</span>',
               `<button class="btn" title="Entität wählen, die anzeigt ob ein Auto angesteckt/ladebereit ist (optional)" onclick="pickReady('${key}')">Wählen</button>`);
+        h += frow("Laden aus Netz", `<label class="opt" title="An: lädt, sobald angesteckt – die Differenz zum PV-Überschuss kommt aus dem Netz. Aus: lädt nur aus PV-Überschuss und pausiert, wenn der Überschuss nicht für die Ladeleistung reicht."><input type="checkbox" ${cfg.charge_from_grid?'checked':''} onchange="setLoad('${key}','charge_from_grid',this.checked)"> <span class="sub">sonst nur Überschuss</span></label>`);
       }
       // Stop condition: battery is always its own SoC; the wallbox stops at the
       // vehicle SoC (its dedicated SoC entity); other devices pick any entity.
