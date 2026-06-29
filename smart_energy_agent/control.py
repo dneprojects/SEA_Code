@@ -370,8 +370,10 @@ class EssReserveController:
             # SoC-max charge cap — lifted during a battery-care full charge
             if b["charge"] and not b.get("care") and b["soc_max"] < 100 and soc >= b["soc_max"]:
                 cmds.constrain(b["charge"], hi=0.0, reason=f"SoC-Max {round(b['soc_max'])} %")
-            # emergency backup: actively recharge to the reserve
-            if b["charge"] and emerg > 0 and soc < emerg:
+            # emergency backup: actively recharge to the reserve — but skip in
+            # expensive tariff windows unless critically low (< half the reserve).
+            if (b["charge"] and emerg > 0 and soc < emerg
+                    and (not b.get("expensive") or soc < emerg * 0.5)):
                 wpu = b.get("wpu") or 1.0
                 cmds.add(Command(b["charge"], "set", round(b.get("max_w", 0.0) / wpu, 2),
                                  f"Notstromreserve laden ({round(emerg)} %)"))
@@ -392,13 +394,16 @@ def active_peak_limit(now_min: int, default_limit: float, slots: list) -> float:
     return default_limit
 
 
-def plan_feed_in_limit(export_w: float, limit_w: float, batteries: list[dict]) -> list[Command]:
+def plan_feed_in_limit(export_w: float, limit_w: float,
+                       batteries: list[dict]) -> tuple[list[Command], float]:
     """Cap grid export at ``limit_w`` by force-charging the battery with the
-    excess. batteries: ``{charge, max_w, wpu, soc, soc_max}``."""
+    excess. Returns ``(commands, absorbed_w)``. batteries: ``{charge, max_w, wpu,
+    soc, soc_max}``."""
     out: list[Command] = []
     over = export_w - limit_w
+    absorbed = 0.0
     if over <= 0:
-        return out
+        return out, 0.0
     for b in batteries:
         if not b["charge"] or over <= 0:
             continue
@@ -411,12 +416,15 @@ def plan_feed_in_limit(export_w: float, limit_w: float, batteries: list[dict]) -
         out.append(Command(b["charge"], "set", round(power / wpu, 2),
                            f"Einspeise-Limit (Export {round(export_w)} W)"))
         over -= power
-    return out
+        absorbed += power
+    return out, absorbed
 
 
 class FeedInLimitController:
-    """Caps grid export at a configured limit by force-charging the battery
-    (grid-code feed-in limitation). No-op without a limit/over-export."""
+    """Caps grid export at a configured limit by force-charging the battery, and
+    (if the battery can't absorb it) curtailing PV via a power-limit entity —
+    releasing the limit again when export is back under the cap. No-op without a
+    limit/over-export."""
 
     name = "feed_in_limit"
 
@@ -425,8 +433,17 @@ class FeedInLimitController:
         if not fi or fi["limit_w"] <= 0:
             return
         export = max(0.0, -image.grid_w)
-        for cmd in plan_feed_in_limit(export, fi["limit_w"], fi["batteries"]):
+        out, absorbed = plan_feed_in_limit(export, fi["limit_w"], fi["batteries"])
+        for cmd in out:
             cmds.add(cmd)
+        pv_limit, pv_max = fi.get("pv_limit"), fi.get("pv_limit_max", 0.0)
+        if pv_limit and pv_max > 0:
+            remaining = export - fi["limit_w"] - absorbed
+            if remaining > 0 and image.pv_w > 0:           # curtail PV
+                cmds.add(Command(pv_limit, "set", round(max(0.0, image.pv_w - remaining), 1),
+                                 "Einspeise-Limit: PV abregeln"))
+            else:                                          # release to full power
+                cmds.add(Command(pv_limit, "set", round(pv_max, 1), "Einspeise-Limit: PV frei"))
 
 
 class BatteryCareController:
@@ -659,8 +676,11 @@ class ControlEngine:
         self._call_service = call_service
         self._last_run: dict[str, float] = {}   # controller name -> last run time
         self.last_trace: list[dict] = []        # last cycle's command trace (debug)
-        self._staged_energy: dict[str, dict] = {}   # staged device key -> {day, kwh}
-        self._soh_state: dict[str, int] = {}        # battery key -> day-ordinal of last full charge
+        # Runtime state restored from disk so it survives restarts.
+        st = store.get_controller_state() if hasattr(store, "get_controller_state") else {}
+        self._staged_energy: dict[str, dict] = dict(st.get("staged_energy") or {})  # key -> {day, kwh}
+        self._soh_state: dict[str, int] = dict(st.get("soh_state") or {})           # key -> last-full day-ordinal
+        self._last_state_save = 0.0
 
     def _build(self) -> list[ConsumerDecision]:
         """Switchable PV-surplus auto-consumers, as decision records."""
@@ -762,6 +782,7 @@ class ControlEngine:
             now=now,
             surplus_signed=self._surplus_signed(balance),
             grid_w=float(balance.get("grid_w", 0.0) or 0.0),
+            pv_w=float(balance.get("pv_w", 0.0) or 0.0),
             consumers=self._build(),
             mods=self._mods(),
         )
@@ -774,7 +795,7 @@ class ControlEngine:
                  "reserve": dev.grid_soc_min}
                 for dev in select(self._store, CAP_DISCHARGE)]
 
-    def _storage_inputs(self) -> tuple[list[dict], list[dict]]:
+    def _storage_inputs(self, expensive: bool = False) -> tuple[list[dict], list[dict]]:
         """Reserve/emergency/care inputs for all storage. Tracks each battery's
         last full-charge day for the periodic battery-care cycle, and returns
         ``(ess_batteries, care_batteries)``."""
@@ -799,8 +820,19 @@ class ControlEngine:
                              "max_w": d.max_w, "wpu": d.wpu})
             ess.append({"discharge": d.discharge_entity, "charge": d.setpoint_entity, "soc": soc,
                         "reserve": d.grid_soc_min, "soc_max": d.grid_soc_max, "max_w": d.max_w,
-                        "wpu": d.wpu, "emergency": emerg, "care": care_active})
+                        "wpu": d.wpu, "emergency": emerg, "care": care_active, "expensive": expensive})
         return ess, care
+
+    def _persist_state(self, now: float) -> None:
+        """Persist daily staged energy + last-full-charge state (throttled)."""
+        if now - self._last_state_save < 300:
+            return
+        self._last_state_save = now
+        try:
+            self._store.save_controller_state(
+                {"staged_energy": self._staged_energy, "soh_state": self._soh_state})
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.debug("controller state not persisted: %s", err)
 
     def _is_on(self, entity: str) -> bool:
         return str(self._store.live_state(entity).get("state", "")).lower() in ON_STATES
@@ -968,15 +1000,21 @@ class ControlEngine:
         image = self.build_image(now)                       # Input
         lt = time.localtime(now)
         now_min = lt.tm_hour * 60 + lt.tm_min
+        expensive = tariff_on and not bool(self._store.tariff_cheap_now().get("cheap"))
         # Storage reserve / emergency-backup / care (runs whenever we control).
-        ess, care = self._storage_inputs()
+        ess, care = self._storage_inputs(expensive)
+        self._persist_state(now)
         if ess:
             image.extra["ess_batteries"] = ess
             fi_limit = self._store.feed_in_limit_w()
             if fi_limit > 0:                                # grid feed-in limit
-                image.extra["feed_in"] = {"limit_w": fi_limit, "batteries": [
-                    {"charge": e["charge"], "max_w": e["max_w"], "wpu": e["wpu"],
-                     "soc": e["soc"], "soc_max": e["soc_max"]} for e in ess]}
+                image.extra["feed_in"] = {
+                    "limit_w": fi_limit,
+                    "pv_limit": self._store.pv_limit_entity(),
+                    "pv_limit_max": self._store.pv_limit_max_w(),
+                    "batteries": [
+                        {"charge": e["charge"], "max_w": e["max_w"], "wpu": e["wpu"],
+                         "soc": e["soc"], "soc_max": e["soc_max"]} for e in ess]}
         if care:
             image.extra["care"] = care
         # Peak shaving inputs — the effective cap may vary by time slot.
@@ -991,7 +1029,6 @@ class ControlEngine:
             staged = self._staged_inputs()
             if staged:
                 image.extra["staged"] = staged
-            expensive = tariff_on and not bool(self._store.tariff_cheap_now().get("cheap"))
             hp = self._heatpump_inputs(expensive)
             if hp:
                 image.extra["heatpumps"] = hp

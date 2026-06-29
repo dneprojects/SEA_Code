@@ -168,6 +168,7 @@ class ProcessImage:
     now: float
     surplus_signed: float = 0.0
     grid_w: float = 0.0          # raw grid power: + = import, − = export
+    pv_w: float = 0.0            # PV production (W)
     consumers: list[Any] = field(default_factory=list)
     mods: list[dict[str, Any]] = field(default_factory=list)
     extra: dict[str, Any] = field(default_factory=dict)

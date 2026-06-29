@@ -86,12 +86,19 @@ class Store:
             # Feed-in limit (W): cap grid export by force-charging the battery (and
             # optionally curtailing PV). 0 = off.
             "feed_in_limit_w": 0.0,
+            # Optional PV-inverter power-limit entity (W) used to curtail when the
+            # battery can't absorb; pv_limit_max_w is the value to release to.
+            "pv_limit_entity": "",
+            "pv_limit_max_w": 0.0,
             # Emergency backup reserve (%): keep/charge the battery to this SoC for
             # outages; no strategy discharges below it. 0 = off.
             "emergency_reserve_soc": 0.0,
             # Battery care: periodic full charge (every N days) to recalibrate SoC.
             # 0 = off.
             "soh_cycle_days": 0.0,
+            # Persisted controller runtime state (daily staged energy, last full
+            # charge per battery) so it survives restarts.
+            "controller_state": {},
 
             # Electricity tariff: purchase price + feed-in compensation.
             "tariff": {
@@ -241,7 +248,10 @@ class Store:
                     max(0.0, min(100.0, float(ms))) if ms not in (None, "") else 0.0)
             except (TypeError, ValueError):
                 pass
-        for key in ("peak_limit_w", "feed_in_limit_w", "emergency_reserve_soc", "soh_cycle_days"):
+        if "pv_limit_entity" in patch:
+            self._settings["pv_limit_entity"] = str(patch["pv_limit_entity"] or "")
+        for key in ("peak_limit_w", "feed_in_limit_w", "emergency_reserve_soc",
+                    "soh_cycle_days", "pv_limit_max_w"):
             if key in patch:
                 pv = patch[key]
                 try:
@@ -392,6 +402,15 @@ class Store:
         except (TypeError, ValueError):
             return 0.0
 
+    def pv_limit_entity(self) -> str:
+        return str(self._settings.get("pv_limit_entity", "") or "")
+
+    def pv_limit_max_w(self) -> float:
+        try:
+            return float(self._settings.get("pv_limit_max_w", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
     def emergency_reserve_soc(self) -> float:
         try:
             return float(self._settings.get("emergency_reserve_soc", 0.0) or 0.0)
@@ -403,6 +422,14 @@ class Store:
             return float(self._settings.get("soh_cycle_days", 0.0) or 0.0)
         except (TypeError, ValueError):
             return 0.0
+
+    def get_controller_state(self) -> dict:
+        s = self._settings.get("controller_state", {})
+        return s if isinstance(s, dict) else {}
+
+    def save_controller_state(self, state: dict) -> None:
+        self._settings["controller_state"] = state
+        self._save_settings()
 
     # --- tariff --------------------------------------------------------------
     def tariff(self) -> dict[str, Any]:

@@ -358,12 +358,28 @@ def test_active_peak_limit_time_slots():
 def test_plan_feed_in_limit():
     from smart_energy_agent.control import plan_feed_in_limit
     bats = [{"charge": "number.bc", "max_w": 5000, "wpu": 1, "soc": 50, "soc_max": 100}]
-    c = plan_feed_in_limit(4000, 1000, bats)                   # absorb 3000 into the battery
-    assert c and c[0].entity == "number.bc" and c[0].value == 3000
-    assert plan_feed_in_limit(500, 1000, bats) == []           # export under limit
-    assert plan_feed_in_limit(4000, 1000, [{**bats[0], "soc": 100}]) == []   # battery full
-    big = plan_feed_in_limit(20000, 0, bats)
-    assert big and big[0].value == 5000                        # clamped to battery max
+    c, ab = plan_feed_in_limit(4000, 1000, bats)               # absorb 3000 into the battery
+    assert c and c[0].entity == "number.bc" and c[0].value == 3000 and ab == 3000
+    assert plan_feed_in_limit(500, 1000, bats) == ([], 0.0)    # export under limit
+    full, _ = plan_feed_in_limit(4000, 1000, [{**bats[0], "soc": 100}])
+    assert full == []                                          # battery full
+    big, ab2 = plan_feed_in_limit(20000, 0, bats)
+    assert big and big[0].value == 5000 and ab2 == 5000        # clamped to battery max
+
+
+def test_feed_in_controller_curtails_pv_when_battery_full_and_releases():
+    from smart_energy_agent.control import FeedInLimitController
+    from smart_energy_agent.control_core import CommandSet, ProcessImage
+    fi = {"limit_w": 1000, "pv_limit": "number.pv", "pv_limit_max": 10000,
+          "batteries": [{"charge": "number.bc", "max_w": 5000, "wpu": 1, "soc": 100, "soc_max": 100}]}
+    img = ProcessImage(now=0.0, grid_w=-6000.0, pv_w=7000.0)   # exporting 6000, battery full
+    img.extra["feed_in"] = fi
+    cmds = CommandSet(); FeedInLimitController().process(img, cmds)
+    assert {c.entity: c.value for c in cmds.commands()}["number.pv"] == 2000   # 7000 - (6000-1000)
+    img2 = ProcessImage(now=0.0, grid_w=-500.0, pv_w=3000.0)   # under limit -> release
+    img2.extra["feed_in"] = fi
+    cmds2 = CommandSet(); FeedInLimitController().process(img2, cmds2)
+    assert {c.entity: c.value for c in cmds2.commands()}["number.pv"] == 10000
 
 
 def test_ess_reserve_emergency_forces_charge_and_floor():
@@ -381,6 +397,19 @@ def test_ess_reserve_emergency_forces_charge_and_floor():
     out = {c.entity: c.value for c in cmds.commands()}
     assert out["number.bc"] == 5000     # soc < emergency -> actively recharge backup
     assert out["number.bd"] == 0        # below reserve floor -> discharge blocked
+
+
+def test_ess_reserve_emergency_skips_recharge_when_expensive():
+    from smart_energy_agent.control import EssReserveController
+    from smart_energy_agent.control_core import CommandSet, ProcessImage
+    base = {"discharge": "number.bd", "charge": "number.bc", "reserve": 0.0, "soc_max": 100.0,
+            "max_w": 5000, "wpu": 1, "emergency": 30.0, "care": False}
+    img = ProcessImage(now=0.0); img.extra["ess_batteries"] = [{**base, "soc": 20.0, "expensive": True}]
+    cmds = CommandSet(); EssReserveController().process(img, cmds)
+    assert "number.bc" not in {c.entity for c in cmds.commands()}   # expensive + not critical -> skip
+    img2 = ProcessImage(now=0.0); img2.extra["ess_batteries"] = [{**base, "soc": 10.0, "expensive": True}]
+    cmds2 = CommandSet(); EssReserveController().process(img2, cmds2)
+    assert {c.entity: c.value for c in cmds2.commands()}["number.bc"] == 5000   # critically low -> charge
 
 
 def test_battery_care_controller_forces_full_charge():
@@ -419,6 +448,29 @@ def test_plan_optimized_charge():
     # guards
     assert plan_optimized_charge([], 50, 0, 20, 5000, 1) is None
     assert plan_optimized_charge([slot(0, 1000, 20)] * 6, 50, 0, 20, 0, 1) is None
+
+
+def test_run_cycle_charges_battery_from_surplus_end_to_end():
+    """Full chain wiring: a configured battery charges from PV surplus."""
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((service, entity, data))
+
+    s = Store()
+    s._settings["control_enabled"] = True
+    s._config = {"battery": [{"id": "b1", "name": "Bat", "charge_power": "number.bc",
+                              "discharge_power": "number.bd", "soc": "sensor.soc"}]}
+    s._settings["strategy_loads"] = {
+        "battery:b1": {"self_consumption": True, "max_w": 5000, "w_per_unit": 1, "priority": 5}}
+    s._live_by_id = {"number.bc": {"state": "0"}, "number.bd": {"state": "0"},
+                     "sensor.soc": {"state": "50"}}
+    s.balance = lambda: {"grid_w": -3000.0, "battery_w": 0.0, "battery_soc": 50.0, "pv_w": 4000.0}
+    s.tariff_cheap_now = lambda: {"cheap": False}        # type: ignore[method-assign]
+    eng = ControlEngine(s, cs)
+    asyncio.run(eng.run_cycle(1000.0))
+    charged = [c for c in calls if c[1] == "number.bc"]
+    assert charged and charged[-1][2]["value"] > 0       # battery charged from surplus
 
 
 def test_run_cycle_folds_in_tariff_and_throttles_to_its_interval():
