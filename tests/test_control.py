@@ -237,6 +237,32 @@ def test_peak_shaving_clamps_to_battery_power_and_respects_reserve_and_cap():
     assert cmds.commands() == []
 
 
+def test_ess_reserve_clamps_discharge_and_charge_as_hard_bounds():
+    from smart_energy_agent.control import EssReserveController
+    from smart_energy_agent.control_core import Command, CommandSet, ProcessImage
+
+    def _run(batt, target_entity, target_val):
+        img = ProcessImage(now=0.0)
+        img.extra["ess_batteries"] = [batt]
+        cmds = CommandSet()
+        cmds.current_priority = 1                       # a lower-priority strategy target
+        cmds.add(Command(target_entity, "set", target_val, "strategy"))
+        cmds.current_priority = 99                      # reserve runs highest in the chain
+        EssReserveController().process(img, cmds)
+        return {c.entity: c.value for c in cmds.commands()}[target_entity]
+
+    base = {"discharge": "number.bd", "charge": "number.bc", "soc": 15.0,
+            "reserve": 20.0, "soc_max": 100.0}
+    # below reserve -> discharge forced to 0 regardless of the strategy's target
+    assert _run(base, "number.bd", 500.0) == 0.0
+    # above reserve -> discharge target passes through
+    assert _run({**base, "soc": 50.0}, "number.bd", 500.0) == 500.0
+    # at/above max SoC -> charge forced to 0
+    assert _run({**base, "soc": 95.0, "soc_max": 90.0}, "number.bc", 1500.0) == 0.0
+    # reserve 0 (default) -> never clamps
+    assert _run({**base, "soc": 0.0, "reserve": 0.0}, "number.bd", 500.0) == 500.0
+
+
 def test_run_cycle_folds_in_tariff_and_throttles_to_its_interval():
     from smart_energy_agent import const
     calls = []

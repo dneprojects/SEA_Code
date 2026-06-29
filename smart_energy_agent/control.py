@@ -343,6 +343,32 @@ class PeakShavingController:
             over -= power
 
 
+class EssReserveController:
+    """Battery reserve / care as hard constraints — the highest priority.
+
+    Below the configured reserve SoC the battery may not be force-discharged by
+    ANY controller (peak shaving, tariff arbitrage, the future optimizer); above
+    the max SoC it may not be force-charged. It only emits bounds, never targets,
+    so it can never *start* an action — it only narrows what others may do. No
+    reserve/max configured (reserve 0 / max 100) → adds nothing (behaviour
+    equivalent).
+    """
+
+    name = "ess_reserve"
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        for b in image.extra.get("ess_batteries", []):
+            soc = b.get("soc")
+            if soc is None:
+                continue
+            if b["discharge"] and b["reserve"] > 0 and soc <= b["reserve"]:
+                cmds.constrain(b["discharge"], hi=0.0,
+                               reason=f"SoC-Reserve {round(b['reserve'])} %")
+            if b["charge"] and b["soc_max"] < 100 and soc >= b["soc_max"]:
+                cmds.constrain(b["charge"], hi=0.0,
+                               reason=f"SoC-Max {round(b['soc_max'])} %")
+
+
 class ControlEngine:
     """Builds the process image from the store and runs the unified control cycle
     (PV-surplus every tick + tariff shifting at its slower cadence)."""
@@ -427,8 +453,9 @@ class ControlEngine:
     # chain (stable for direct/unit-test callers); run_cycle() adds peak shaving
     # (a hard constraint, first) and tariff shifting (last, slow cadence).
     CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
-    FULL_CHAIN: list[Controller] = (
-        [PeakShavingController()] + CHAIN + [TariffShiftController(), RuleController()])
+    FULL_CHAIN: list[Controller] = [
+        EssReserveController(), PeakShavingController(), *CHAIN,
+        TariffShiftController(), RuleController()]
 
     def _surplus_signed(self, balance: dict) -> float:
         # PV-surplus signal: + = export available, − = deficit. Folds in battery
@@ -521,6 +548,12 @@ class ControlEngine:
         if not (surplus_on or tariff_on):
             return
         image = self.build_image(now)                       # Input
+        # Battery reserve/care inputs (safety guard, always available).
+        ess = [{"discharge": d.discharge_entity, "charge": d.setpoint_entity,
+                "soc": d.soc, "reserve": d.grid_soc_min, "soc_max": d.grid_soc_max}
+               for d in devices(self._store) if d.is_ess]
+        if ess:
+            image.extra["ess_batteries"] = ess
         # Peak shaving inputs (surplus master on + a configured cap).
         peak_limit = self._store.peak_limit_w()
         if surplus_on and peak_limit > 0:
@@ -539,8 +572,15 @@ class ControlEngine:
         cmds = CommandSet()                                 # Process (cadence-gated)
         n = len(self.FULL_CHAIN)
         for idx, c in enumerate(self.FULL_CHAIN):
-            # Tariff controller follows tariff_enabled; all others the master.
-            if (tariff_on if c.name == TariffShiftController.name else surplus_on) is False:
+            # Reserve is a safety guard (runs whenever the cycle runs); the tariff
+            # controller follows tariff_enabled; everything else the PV master.
+            if c.name == EssReserveController.name:
+                active = surplus_on or tariff_on
+            elif c.name == TariffShiftController.name:
+                active = tariff_on
+            else:
+                active = surplus_on
+            if not active:
                 continue
             interval = getattr(c, "interval", const.CONTROL_INTERVAL)
             if now - self._last_run.get(c.name, -1e18) >= interval - 1:
