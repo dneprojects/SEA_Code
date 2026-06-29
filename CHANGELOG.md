@@ -2,6 +2,10 @@
 
 ## 0.7.0
 
+- UI: Der Menüpunkt „Erzeuger/Verbraucher" heißt jetzt **„Komponenten"** und enthält
+  zusätzlich die **Fahrzeug-Verwaltung** (die separate Seite „Fahrzeuge" entfällt) —
+  alle Anlagen-Komponenten an einem Ort.
+
 - Neu: **Wärmepumpe SG-Ready** — zwei Relais (4 Zustände: normal / Anhebung / Zwang /
   Sperre) werden aus dem PV-Überschuss (und teurem Tarif) angesteuert.
 
