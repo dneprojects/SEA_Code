@@ -343,6 +343,57 @@ def test_plan_sg_ready_states():
     assert plan_sg_ready(5000, 0) == (False, False)             # no threshold -> normal
 
 
+def test_active_peak_limit_time_slots():
+    from smart_energy_agent.control import active_peak_limit
+    slots = [{"start": "17:00", "end": "20:00", "limit_w": 3000}]
+    assert active_peak_limit(18 * 60, 0, slots) == 3000        # inside slot
+    assert active_peak_limit(10 * 60, 5000, slots) == 5000     # outside -> default
+    night = [{"start": "22:00", "end": "06:00", "limit_w": 2000}]   # overnight wrap
+    assert active_peak_limit(23 * 60, 0, night) == 2000
+    assert active_peak_limit(2 * 60, 0, night) == 2000
+    assert active_peak_limit(12 * 60, 0, night) == 0
+    assert active_peak_limit(12 * 60, 4000, []) == 4000        # no slots -> default
+
+
+def test_plan_feed_in_limit():
+    from smart_energy_agent.control import plan_feed_in_limit
+    bats = [{"charge": "number.bc", "max_w": 5000, "wpu": 1, "soc": 50, "soc_max": 100}]
+    c = plan_feed_in_limit(4000, 1000, bats)                   # absorb 3000 into the battery
+    assert c and c[0].entity == "number.bc" and c[0].value == 3000
+    assert plan_feed_in_limit(500, 1000, bats) == []           # export under limit
+    assert plan_feed_in_limit(4000, 1000, [{**bats[0], "soc": 100}]) == []   # battery full
+    big = plan_feed_in_limit(20000, 0, bats)
+    assert big and big[0].value == 5000                        # clamped to battery max
+
+
+def test_ess_reserve_emergency_forces_charge_and_floor():
+    from smart_energy_agent.control import EssReserveController
+    from smart_energy_agent.control_core import Command, CommandSet, ProcessImage
+    img = ProcessImage(now=0.0)
+    img.extra["ess_batteries"] = [{"discharge": "number.bd", "charge": "number.bc", "soc": 15.0,
+                                   "reserve": 0.0, "soc_max": 100.0, "max_w": 5000, "wpu": 1,
+                                   "emergency": 30.0, "care": False}]
+    cmds = CommandSet()
+    cmds.current_priority = 1
+    cmds.add(Command("number.bd", "set", 2000.0, "strategy discharge"))   # low-prio target
+    cmds.current_priority = 99
+    EssReserveController().process(img, cmds)
+    out = {c.entity: c.value for c in cmds.commands()}
+    assert out["number.bc"] == 5000     # soc < emergency -> actively recharge backup
+    assert out["number.bd"] == 0        # below reserve floor -> discharge blocked
+
+
+def test_battery_care_controller_forces_full_charge():
+    from smart_energy_agent.control import BatteryCareController
+    from smart_energy_agent.control_core import CommandSet, ProcessImage
+    img = ProcessImage(now=0.0)
+    img.extra["care"] = [{"charge": "number.bc", "discharge": "number.bd", "max_w": 5000, "wpu": 1}]
+    cmds = CommandSet()
+    BatteryCareController().process(img, cmds)
+    out = {c.entity: c.value for c in cmds.commands()}
+    assert out["number.bc"] == 5000 and out["number.bd"] == 0
+
+
 def test_plan_optimized_charge():
     from smart_energy_agent.control import plan_optimized_charge
 

@@ -80,6 +80,18 @@ class Store:
             # Peak shaving: cap grid import (W) by discharging the battery above
             # this draw. 0 = off. Needs a battery with a discharge-power setpoint.
             "peak_limit_w": 0.0,
+            # Time-slot peak shaving: per-window import caps, e.g.
+            # [{"start":"17:00","end":"20:00","limit_w":3000}]. Overrides peak_limit_w in-window.
+            "peak_slots": [],
+            # Feed-in limit (W): cap grid export by force-charging the battery (and
+            # optionally curtailing PV). 0 = off.
+            "feed_in_limit_w": 0.0,
+            # Emergency backup reserve (%): keep/charge the battery to this SoC for
+            # outages; no strategy discharges below it. 0 = off.
+            "emergency_reserve_soc": 0.0,
+            # Battery care: periodic full charge (every N days) to recalibrate SoC.
+            # 0 = off.
+            "soh_cycle_days": 0.0,
 
             # Electricity tariff: purchase price + feed-in compensation.
             "tariff": {
@@ -229,12 +241,24 @@ class Store:
                     max(0.0, min(100.0, float(ms))) if ms not in (None, "") else 0.0)
             except (TypeError, ValueError):
                 pass
-        if "peak_limit_w" in patch:
-            pl = patch["peak_limit_w"]
-            try:
-                self._settings["peak_limit_w"] = max(0.0, float(pl)) if pl not in (None, "") else 0.0
-            except (TypeError, ValueError):
-                pass
+        for key in ("peak_limit_w", "feed_in_limit_w", "emergency_reserve_soc", "soh_cycle_days"):
+            if key in patch:
+                pv = patch[key]
+                try:
+                    self._settings[key] = max(0.0, float(pv)) if pv not in (None, "") else 0.0
+                except (TypeError, ValueError):
+                    pass
+        if "peak_slots" in patch and isinstance(patch["peak_slots"], list):
+            slots = []
+            for s in patch["peak_slots"]:
+                if not isinstance(s, dict):
+                    continue
+                try:
+                    slots.append({"start": str(s.get("start", "")), "end": str(s.get("end", "")),
+                                  "limit_w": max(0.0, float(s.get("limit_w") or 0))})
+                except (TypeError, ValueError):
+                    pass
+            self._settings["peak_slots"] = slots
         if "rules" in patch and isinstance(patch["rules"], list):
             self._settings["rules"] = patch["rules"]
         if patch.get("strategy") in STRATEGY_VALUES:
@@ -281,7 +305,7 @@ class Store:
         if mode == "ht_nt" and ts is not None:
             lt = time.localtime(ts)
             hhmm = lt.tm_hour * 60 + lt.tm_min
-            def _m(s: str) -> Optional[int]:
+            def _m(s: Any) -> Optional[int]:
                 try:
                     h, m = str(s).split(":"); return int(h) * 60 + int(m)
                 except (ValueError, AttributeError):
@@ -290,15 +314,11 @@ class Store:
             in_nt = False
             if ns is not None and ne is not None:
                 in_nt = (ns <= hhmm < ne) if ns <= ne else (hhmm >= ns or hhmm < ne)
-            try:
-                return float(t.get("nt_price_ct") if in_nt else t.get("ht_price_ct"))
-            except (TypeError, ValueError):
-                return self.current_price_ct()
+            p = _f(t.get("nt_price_ct") if in_nt else t.get("ht_price_ct"), -1.0)
+            return p if p >= 0 else self.current_price_ct()
         if mode == "static":
-            try:
-                return float(t.get("price_ct"))
-            except (TypeError, ValueError):
-                return self.current_price_ct()
+            p = _f(t.get("price_ct"), -1.0)
+            return p if p >= 0 else self.current_price_ct()
         return self.current_price_ct()
 
     def control_rules(self) -> list:
@@ -359,6 +379,28 @@ class Store:
         0 = off."""
         try:
             return float(self._settings.get("peak_limit_w", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def peak_slots(self) -> list:
+        s = self._settings.get("peak_slots", [])
+        return s if isinstance(s, list) else []
+
+    def feed_in_limit_w(self) -> float:
+        try:
+            return float(self._settings.get("feed_in_limit_w", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def emergency_reserve_soc(self) -> float:
+        try:
+            return float(self._settings.get("emergency_reserve_soc", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def soh_cycle_days(self) -> float:
+        try:
+            return float(self._settings.get("soh_cycle_days", 0.0) or 0.0)
         except (TypeError, ValueError):
             return 0.0
 

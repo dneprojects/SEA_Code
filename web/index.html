@@ -528,6 +528,21 @@
           <input type="number" id="set-peak" min="0" step="100" style="width:100px"
             title="Peak-Shaving: Übersteigt der Netzbezug diesen Wert, wird die Batterie entladen, um darunter zu bleiben. 0 = aus. Benötigt eine Batterie mit Entladeleistungs-Sollwert-Entität.">
           <span class="sub">0 = aus — entlädt die Batterie über dieser Bezugsgrenze</span></div>
+        <div class="setrow"><label>Zeitfenster Netzbezug-Limit</label>
+          <span id="peak-slots"></span>
+          <button class="btn btnx" title="Zeitfenster hinzufügen" onclick="addPeakSlot()">+</button></div>
+        <div class="setrow"><label>Einspeisung deckeln bei (W)</label>
+          <input type="number" id="set-feedin" min="0" step="100" style="width:100px"
+            title="Einspeise-Limit: Übersteigt die Einspeisung diesen Wert, wird die Batterie zwangsgeladen, um darunter zu bleiben. 0 = aus.">
+          <span class="sub">0 = aus — lädt die Batterie über dieser Einspeisegrenze</span></div>
+        <div class="setrow"><label>Notstrom-Reserve (%)</label>
+          <input type="number" id="set-emerg" min="0" max="100" style="width:80px"
+            title="Backup-Reserve: Batterie wird auf diesen SoC gehalten/geladen und von keiner Strategie darunter entladen. 0 = aus.">
+          <span class="sub">0 = aus — Reserve für Stromausfall</span></div>
+        <div class="setrow"><label>Batteriepflege alle (Tage)</label>
+          <input type="number" id="set-soh" min="0" step="1" style="width:80px"
+            title="Periodische Vollladung zur SoC-Kalibrierung: alle N Tage wird bis 100 % geladen. 0 = aus.">
+          <span class="sub">0 = aus — Vollladung zur Kalibrierung</span></div>
         <div class="setrow"><button class="btn" title="Grundeinstellungen speichern" onclick="saveSettings()">Speichern</button>
           <span id="set-msg" class="sub"></span></div>
 
@@ -1516,6 +1531,11 @@
       document.getElementById("set-loadsfirst").value = s.surplus_loads_first ? "1" : "0";
       document.getElementById("set-minsoc").value = (s.surplus_battery_min_soc || 0);
       document.getElementById("set-peak").value = (s.peak_limit_w || 0);
+      document.getElementById("set-feedin").value = (s.feed_in_limit_w || 0);
+      document.getElementById("set-emerg").value = (s.emergency_reserve_soc || 0);
+      document.getElementById("set-soh").value = (s.soh_cycle_days || 0);
+      peakSlots = Array.isArray(s.peak_slots) ? s.peak_slots : [];
+      renderPeakSlots();
       const info = [
         ["Version", s.version||"–"],
         ["HA-Verbindung", s.ha_connected ? ("verbunden ("+(s.ha_version||"")+")") : "nicht verbunden"],
@@ -1533,6 +1553,10 @@
         surplus_loads_first: document.getElementById("set-loadsfirst").value === "1",
         surplus_battery_min_soc: document.getElementById("set-minsoc").value || 0,
         peak_limit_w: document.getElementById("set-peak").value || 0,
+        feed_in_limit_w: document.getElementById("set-feedin").value || 0,
+        emergency_reserve_soc: document.getElementById("set-emerg").value || 0,
+        soh_cycle_days: document.getElementById("set-soh").value || 0,
+        peak_slots: peakSlots,
       };
       const msg = document.getElementById("set-msg");
       try {
@@ -1542,6 +1566,20 @@
         loadSettings();
       } catch(e) { msg.textContent = "Fehler beim Speichern"; }
     }
+    // Time-slot peak-shaving editor (saved with the basic settings).
+    let peakSlots = [];
+    function renderPeakSlots() {
+      const el = document.getElementById("peak-slots"); if (!el) return;
+      el.innerHTML = peakSlots.length ? peakSlots.map((s,i)=>
+        `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px">
+          <input type="time" value="${s.start||''}" onchange="setPeakSlot(${i},'start',this.value)">–<input type="time" value="${s.end||''}" onchange="setPeakSlot(${i},'end',this.value)">
+          <input type="number" value="${s.limit_w!=null?s.limit_w:''}" style="width:78px" title="Grenze (W)" onchange="setPeakSlot(${i},'limit_w',this.value)"><span class="sub">W</span>
+          <button class="btn btnx" title="Zeitfenster entfernen" onclick="delPeakSlot(${i})">×</button></span>`).join("")
+        : '<span class="sub">keine — fester Wert oben gilt</span>';
+    }
+    function addPeakSlot() { peakSlots.push({start:"17:00",end:"20:00",limit_w:3000}); renderPeakSlots(); }
+    function setPeakSlot(i,f,v) { peakSlots[i][f] = (f==='limit_w') ? (parseFloat(v)||0) : v; }
+    function delPeakSlot(i) { peakSlots.splice(i,1); renderPeakSlots(); }
 
     // ---------- Tarife ----------
     function tariffModeChanged() {

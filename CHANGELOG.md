@@ -2,6 +2,13 @@
 
 ## 0.7.0
 
+- Neu: **Einspeise-Limit** — übersteigt die Einspeisung eine Grenze (W), wird die
+  Batterie zwangsgeladen, um darunter zu bleiben.
+- Neu: **Notstrom-Reserve (%)** — die Batterie wird auf diesen Ladezustand gehalten/
+  geladen und von keiner Strategie darunter entladen (Backup für Stromausfall).
+- Neu: **Zeitfenster-Peak-Shaving** — pro Tageszeit eigene Netzbezugs-Grenzen.
+- Neu: **Batteriepflege** — periodische Vollladung (alle N Tage) zur SoC-Kalibrierung.
+
 - UI: Der Menüpunkt „Erzeuger/Verbraucher" heißt jetzt **„Komponenten"** und enthält
   zusätzlich die **Fahrzeug-Verwaltung** (die separate Seite „Fahrzeuge" entfällt) —
   alle Anlagen-Komponenten an einem Ort.

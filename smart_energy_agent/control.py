@@ -362,12 +362,87 @@ class EssReserveController:
             soc = b.get("soc")
             if soc is None:
                 continue
-            if b["discharge"] and b["reserve"] > 0 and soc <= b["reserve"]:
-                cmds.constrain(b["discharge"], hi=0.0,
-                               reason=f"SoC-Reserve {round(b['reserve'])} %")
-            if b["charge"] and b["soc_max"] < 100 and soc >= b["soc_max"]:
-                cmds.constrain(b["charge"], hi=0.0,
-                               reason=f"SoC-Max {round(b['soc_max'])} %")
+            emerg = b.get("emergency", 0.0)
+            floor = max(b.get("reserve", 0.0), emerg)
+            # never force-discharge below the effective reserve floor
+            if b["discharge"] and floor > 0 and soc <= floor:
+                cmds.constrain(b["discharge"], hi=0.0, reason=f"Reserve {round(floor)} %")
+            # SoC-max charge cap — lifted during a battery-care full charge
+            if b["charge"] and not b.get("care") and b["soc_max"] < 100 and soc >= b["soc_max"]:
+                cmds.constrain(b["charge"], hi=0.0, reason=f"SoC-Max {round(b['soc_max'])} %")
+            # emergency backup: actively recharge to the reserve
+            if b["charge"] and emerg > 0 and soc < emerg:
+                wpu = b.get("wpu") or 1.0
+                cmds.add(Command(b["charge"], "set", round(b.get("max_w", 0.0) / wpu, 2),
+                                 f"Notstromreserve laden ({round(emerg)} %)"))
+
+
+def active_peak_limit(now_min: int, default_limit: float, slots: list) -> float:
+    """Effective grid-import cap now: a matching time-slot wins, else the default."""
+    for s in slots or []:
+        st, en = _hhmm_to_min(s.get("start")), _hhmm_to_min(s.get("end"))
+        if st is None or en is None:
+            continue
+        inside = (st <= now_min < en) if st <= en else (now_min >= st or now_min < en)
+        if inside:
+            try:
+                return float(s.get("limit_w") or 0)
+            except (TypeError, ValueError):
+                return default_limit
+    return default_limit
+
+
+def plan_feed_in_limit(export_w: float, limit_w: float, batteries: list[dict]) -> list[Command]:
+    """Cap grid export at ``limit_w`` by force-charging the battery with the
+    excess. batteries: ``{charge, max_w, wpu, soc, soc_max}``."""
+    out: list[Command] = []
+    over = export_w - limit_w
+    if over <= 0:
+        return out
+    for b in batteries:
+        if not b["charge"] or over <= 0:
+            continue
+        if b["soc"] is not None and b["soc"] >= b["soc_max"]:
+            continue                                       # already full
+        power = min(b["max_w"], over)
+        if power <= 0:
+            continue
+        wpu = b["wpu"] or 1.0
+        out.append(Command(b["charge"], "set", round(power / wpu, 2),
+                           f"Einspeise-Limit (Export {round(export_w)} W)"))
+        over -= power
+    return out
+
+
+class FeedInLimitController:
+    """Caps grid export at a configured limit by force-charging the battery
+    (grid-code feed-in limitation). No-op without a limit/over-export."""
+
+    name = "feed_in_limit"
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        fi = image.extra.get("feed_in")
+        if not fi or fi["limit_w"] <= 0:
+            return
+        export = max(0.0, -image.grid_w)
+        for cmd in plan_feed_in_limit(export, fi["limit_w"], fi["batteries"]):
+            cmds.add(cmd)
+
+
+class BatteryCareController:
+    """Battery care: a periodic full charge (SoC calibration). The engine decides
+    which batteries are due; here we just drive them to full (the SoC-max cap is
+    lifted for them in EssReserveController)."""
+
+    name = "battery_care"
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        for b in image.extra.get("care", []):
+            wpu = b["wpu"] or 1.0
+            cmds.add(Command(b["charge"], "set", round(b["max_w"] / wpu, 2),
+                             "Batteriepflege: Vollladung"))
+            if b["discharge"]:
+                cmds.add(Command(b["discharge"], "set", 0.0, "Batteriepflege"))
 
 
 def evcs_gate(e: dict, now: float) -> Optional[tuple[bool, str]]:
@@ -585,6 +660,7 @@ class ControlEngine:
         self._last_run: dict[str, float] = {}   # controller name -> last run time
         self.last_trace: list[dict] = []        # last cycle's command trace (debug)
         self._staged_energy: dict[str, dict] = {}   # staged device key -> {day, kwh}
+        self._soh_state: dict[str, int] = {}        # battery key -> day-ordinal of last full charge
 
     def _build(self) -> list[ConsumerDecision]:
         """Switchable PV-surplus auto-consumers, as decision records."""
@@ -661,8 +737,9 @@ class ControlEngine:
     # (a hard constraint, first) and tariff shifting (last, slow cadence).
     CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
     FULL_CHAIN: list[Controller] = [
-        EssReserveController(), PeakShavingController(), OptimizingController(),
-        EvcsController(), StagedLoadController(), HeatPumpController(), *CHAIN,
+        BatteryCareController(), EssReserveController(), FeedInLimitController(),
+        PeakShavingController(), OptimizingController(), EvcsController(),
+        StagedLoadController(), HeatPumpController(), *CHAIN,
         TariffShiftController(), RuleController()]
 
     def _surplus_signed(self, balance: dict) -> float:
@@ -696,6 +773,34 @@ class ControlEngine:
                  "max_w": dev.max_w, "wpu": dev.wpu, "soc": dev.soc,
                  "reserve": dev.grid_soc_min}
                 for dev in select(self._store, CAP_DISCHARGE)]
+
+    def _storage_inputs(self) -> tuple[list[dict], list[dict]]:
+        """Reserve/emergency/care inputs for all storage. Tracks each battery's
+        last full-charge day for the periodic battery-care cycle, and returns
+        ``(ess_batteries, care_batteries)``."""
+        lt = time.localtime()
+        day_ord = lt.tm_year * 366 + lt.tm_yday
+        emerg = self._store.emergency_reserve_soc()
+        cycle_days = self._store.soh_cycle_days()
+        ess, care = [], []
+        for d in devices(self._store):
+            if not (d.has_cap(CAP_CHARGE) or d.has_cap(CAP_DISCHARGE)):
+                continue
+            soc = d.soc
+            care_active = False
+            if cycle_days > 0 and d.setpoint_entity:
+                if soc is not None and soc >= 99:
+                    self._soh_state[d.key] = day_ord            # full today -> done
+                else:
+                    last = self._soh_state.get(d.key)
+                    care_active = last is None or (day_ord - last) >= cycle_days
+            if care_active:
+                care.append({"charge": d.setpoint_entity, "discharge": d.discharge_entity,
+                             "max_w": d.max_w, "wpu": d.wpu})
+            ess.append({"discharge": d.discharge_entity, "charge": d.setpoint_entity, "soc": soc,
+                        "reserve": d.grid_soc_min, "soc_max": d.grid_soc_max, "max_w": d.max_w,
+                        "wpu": d.wpu, "emergency": emerg, "care": care_active})
+        return ess, care
 
     def _is_on(self, entity: str) -> bool:
         return str(self._store.live_state(entity).get("state", "")).lower() in ON_STATES
@@ -861,16 +966,21 @@ class ControlEngine:
         if not (surplus_on or tariff_on or optimizer_on):
             return
         image = self.build_image(now)                       # Input
-        # Storage reserve/care inputs (safety guard, always available). Capability-
-        # driven: any chargeable/dischargeable storage, incl. a future V2G vehicle.
-        ess = [{"discharge": d.discharge_entity, "charge": d.setpoint_entity,
-                "soc": d.soc, "reserve": d.grid_soc_min, "soc_max": d.grid_soc_max}
-               for d in devices(self._store)
-               if d.has_cap(CAP_CHARGE) or d.has_cap(CAP_DISCHARGE)]
+        lt = time.localtime(now)
+        now_min = lt.tm_hour * 60 + lt.tm_min
+        # Storage reserve / emergency-backup / care (runs whenever we control).
+        ess, care = self._storage_inputs()
         if ess:
             image.extra["ess_batteries"] = ess
-        # Peak shaving inputs (surplus master on + a configured cap).
-        peak_limit = self._store.peak_limit_w()
+            fi_limit = self._store.feed_in_limit_w()
+            if fi_limit > 0:                                # grid feed-in limit
+                image.extra["feed_in"] = {"limit_w": fi_limit, "batteries": [
+                    {"charge": e["charge"], "max_w": e["max_w"], "wpu": e["wpu"],
+                     "soc": e["soc"], "soc_max": e["soc_max"]} for e in ess]}
+        if care:
+            image.extra["care"] = care
+        # Peak shaving inputs — the effective cap may vary by time slot.
+        peak_limit = active_peak_limit(now_min, self._store.peak_limit_w(), self._store.peak_slots())
         if surplus_on and peak_limit > 0:
             image.extra["peak"] = {"limit_w": peak_limit, "batteries": self._peak_batteries()}
         # EVCS (wallbox) gate inputs for participating chargers.
@@ -908,8 +1018,9 @@ class ControlEngine:
         for idx, c in enumerate(self.FULL_CHAIN):
             # Reserve is a safety guard (runs whenever the cycle runs); the tariff
             # controller follows tariff_enabled; everything else the PV master.
-            if c.name == EssReserveController.name:
-                active = surplus_on or tariff_on or optimizer_on
+            if c.name in (EssReserveController.name, BatteryCareController.name,
+                          FeedInLimitController.name):
+                active = surplus_on or tariff_on or optimizer_on   # battery safety/grid guards
             elif c.name == TariffShiftController.name:
                 active = tariff_on
             elif c.name == OptimizingController.name:
