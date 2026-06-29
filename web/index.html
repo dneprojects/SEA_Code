@@ -1051,8 +1051,21 @@
             + frow("Ziel-SoC netzladen", `<input type="number" class="fnum" title="Bis zu diesem SoC netzladen" value="${cfg.grid_soc_max}" onchange="setLoad('${key}','grid_soc_max',this.value)"> <span class="sub">%</span>`);
         }
       }
+      // Multi-stage loads (e.g. a 3-relay heating rod): one switch entity per stage.
+      if (d.kind==='water_heater' || d.kind==='heat_pump') {
+        const stg = cfg.stages || [];
+        h += `<div class="fhead">Stufen (Relais) – optional</div>`;
+        h += stg.length
+          ? stg.map((e,si)=>frow(`Stufe ${si+1}`, `<span class="eid" title="${esc(e)}">${esc(e)}</span>`,
+              `<button class="btn" title="Stufe entfernen" onclick="removeStage('${key}',${si})">×</button>`)).join("")
+          : `<div class="frow"><div class="fl"></div><div class="fm"><span class="sub">keine – wird über Schalten/Sollwert geregelt</span></div></div>`;
+        h += `<div class="frow"><div class="fl"></div><div class="fm"><button class="btn" onclick="addStage('${key}')">+ Stufe</button> <span class="sub">je Relais eine Schalt-Entität; „max. Leistung" wird gleichmäßig verteilt</span></div></div>`;
+      }
       return h;
     }
+    function stagesOf(key) { const sd = (typeof stratByKey!=='undefined') && stratByKey[key]; return (sd && sd.cfg && Array.isArray(sd.cfg.stages)) ? sd.cfg.stages.slice() : []; }
+    function addStage(key) { openPickerCb("", "switch", "", eid => { const s = stagesOf(key); s.push(eid); setLoad(key, 'stages', s); }); }
+    function removeStage(key, i) { const s = stagesOf(key); s.splice(i, 1); setLoad(key, 'stages', s); }
     // --- mutations ---
     function setVal(path, val) { setByPath(path, val); saveConfig(); }
     function clearField(path) { setByPath(path, ""); saveConfig(); }

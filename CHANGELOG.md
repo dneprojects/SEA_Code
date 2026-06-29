@@ -2,6 +2,10 @@
 
 ## 0.6.0
 
+- Neu: **Mehrstufiger Heizstab** — bei Warmwasser/Wärmepumpe lassen sich mehrere
+  Schalt-Stufen (Relais) zuordnen; sie werden je nach PV-Überschuss zu-/abgeschaltet
+  (max. Leistung gleichmäßig verteilt), notfalls bis zum „spätesten Start" erzwungen.
+
 - Neu: **Fahrzeuge** als eigene Objekte (Seite „Fahrzeuge", mehrere möglich), getrennt
   von der Wallbox. Je nach Fähigkeit: nur SoC (Stopp-Signal), ladbar (Wallbox lädt bis
   Ziel-SoC) oder bidirektional (V2H/V2G – nimmt wie ein Speicher an Eigenverbrauch,
