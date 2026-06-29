@@ -1785,12 +1785,18 @@ class Store:
           * surplus_sink – like direct, but PV surplus up to sink_cap_w is used
             instead of exported (e.g. heating rod / EV), valued as avoided
             purchase: lowers cost by absorbed·(price − feed)
-        savings = baseline_cost − actual_cost.
+          * ideal       – theoretical best case: PV fully self-consumed (big
+            enough storage) and the remaining net grid demand bought entirely at
+            the cheapest price observed in the window (perfect tariff
+            arbitrage). For a static tariff this collapses to "direct"; the gap
+            to it appears as Mehrkosten and shows the optimization potential of
+            a bigger battery / bidirectional charging on a dynamic tariff.
+        savings = baseline_cost − actual_cost (negative for the ideal baseline).
         """
         empty = {
             "pv_kwh": 0.0, "house_kwh": 0.0, "import_kwh": 0.0, "export_kwh": 0.0,
             "self_kwh": 0.0, "sink_kwh": 0.0, "baseline_eur": 0.0, "actual_eur": 0.0,
-            "savings_eur": 0.0, "baseline": baseline, "samples": 0,
+            "savings_eur": 0.0, "price_min_ct": 0.0, "baseline": baseline, "samples": 0,
         }
         if self._db is None:
             return empty
@@ -1813,6 +1819,7 @@ class Store:
         max_dt = 2 * const.RECORD_INTERVAL
         pv_k = house_k = imp_k = exp_k = sink_k = 0.0
         base_eur = act_eur = 0.0
+        pmin: float | None = None
         prev = None
         for r in rows:
             if prev is not None:
@@ -1828,12 +1835,13 @@ class Store:
                 imp = max(g, 0.0) / 1000.0 * h
                 exp = max(-g, 0.0) / 1000.0 * h
                 price = (prev[4] / 100.0) if prev[4] is not None else cur_price
+                pmin = price if pmin is None else min(pmin, price)
                 pv_k += pv; house_k += house; imp_k += imp; exp_k += exp
                 act_eur += imp * price - exp * feed
                 # baseline cost for this interval
                 if baseline == "full_feed":
                     base_eur += house * price - pv * feed
-                else:
+                elif baseline != "ideal":
                     self_d = min(pv, house)
                     imp_d = house - self_d
                     exp_d = pv - self_d
@@ -1845,6 +1853,14 @@ class Store:
                     base_eur += bc
             prev = r
 
+        # ideal baseline: aggregate (computed after the loop). PV fully
+        # self-consumed; net grid demand bought at the cheapest window price,
+        # net PV surplus credited at the feed-in tariff.
+        if baseline == "ideal":
+            p = pmin if pmin is not None else cur_price
+            net = house_k - pv_k
+            base_eur = net * p if net > 0 else net * feed
+
         return {
             "pv_kwh": round(pv_k, 2),
             "house_kwh": round(house_k, 2),
@@ -1855,6 +1871,7 @@ class Store:
             "baseline_eur": round(base_eur, 2),
             "actual_eur": round(act_eur, 2),
             "savings_eur": round(base_eur - act_eur, 2),
+            "price_min_ct": round((pmin if pmin is not None else cur_price) * 100.0, 2),
             "baseline": baseline,
             "samples": len(rows),
         }

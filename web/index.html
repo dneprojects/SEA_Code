@@ -480,7 +480,10 @@
             <option value="full_feed">Volleinspeisung (kein Eigenverbrauch)</option>
             <option value="direct">Direkter Eigenverbrauch (ohne Speicher/Steuerung)</option>
             <option value="surplus_sink">PV-Überschuss-Senke (Heizstab/Auto)</option>
+            <option value="ideal">Ideal (perfekte Speicher-/Tarifnutzung)</option>
           </select>
+          <button class="btn" title="Beschreibung der Vergleichs-Baselines" aria-label="Info"
+            style="padding:0;width:22px;height:22px;border-radius:50%;line-height:1" onclick="showSavHelp()">ⓘ</button>
           <span id="sav-cap-wrap" style="display:none">
             <span class="sub">Leistungsgrenze (W)</span>
             <input type="number" id="sav-cap" title="Maximale Leistung der Überschuss-Senke (W)" value="3000" step="500" style="width:90px" onchange="loadSavings()">
@@ -492,7 +495,6 @@
         <div class="cards" id="sav-cards"></div>
         <div class="panel-title">Energiebilanz im Zeitraum</div>
         <table class="info-tbl"><tbody id="sav-info"></tbody></table>
-        <p class="sub" id="sav-explain" style="margin-top:10px"></p>
       </section>
 
       <!-- Verbraucher -->
@@ -1507,13 +1509,18 @@
       try { d = await fetch(api("/api/savings")+"?range="+savRange+"&baseline="+baseline+"&cap="+cap).then(r=>r.json()); } catch(e) {}
       const eur = (x) => x!=null ? x.toFixed(2).replace(".",",")+" €" : "–";
       const kwh = (x) => x!=null ? x.toFixed(1).replace(".",",")+" kWh" : "–";
+      const sav = d.savings_eur;
+      const isSave = sav==null || sav>=0;
+      const savCard =
+        `<div class="card" style="border-color:${isSave?'#bfe3bf':'#f1c3bf'}">`+
+        `<div class="v" style="color:${isSave?'#2f9b3f':'var(--brand)'}">${eur(sav!=null?Math.abs(sav):null)}</div>`+
+        `<div class="l">${isSave?'Ersparnis vs. Baseline':'Mehrkosten vs. Baseline'}</div></div>`;
       const cards = [
-        { v:eur(d.savings_eur), l:"Ersparnis vs. Baseline", cls:"surplus" },
         { v:kwh(d.self_kwh), l:"selbst genutzt (Ist)" },
         { v:eur(d.baseline_eur), l:"Baseline-Kosten" },
         { v:eur(d.actual_eur), l:"Ist-Kosten" },
       ];
-      document.getElementById("sav-cards").innerHTML = cards.map(c =>
+      document.getElementById("sav-cards").innerHTML = savCard + cards.map(c =>
         `<div class="card ${c.cls||''}"><div class="v">${c.v}</div><div class="l">${c.l}</div></div>`).join("");
       const info = [
         ["PV-Erzeugung", kwh(d.pv_kwh)],
@@ -1522,15 +1529,33 @@
         ["Einspeisung (Ist)", kwh(d.export_kwh)],
       ];
       if (baseline === "surplus_sink") info.push(["Überschuss-Senke (Baseline)", kwh(d.sink_kwh)]);
+      if (baseline === "ideal" && d.price_min_ct!=null)
+        info.push(["günstigster Preis im Zeitraum", d.price_min_ct.toFixed(2).replace(".",",")+" ct/kWh"]);
       info.push(["Messpunkte", d.samples!=null?d.samples:"–"]);
       document.getElementById("sav-info").innerHTML = info.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("");
-      const explain = {
-        full_feed: "Referenz: die gesamte PV-Erzeugung wird eingespeist (Einspeisevergütung) und der gesamte Verbrauch aus dem Netz bezogen (Bezugspreis). Die Differenz zur Ist-Situation zeigt den Wert von Eigenverbrauch und Speicher.",
-        direct: "Referenz: direkter Eigenverbrauch ohne Speicher und ohne Steuerung — nur die zeitgleich anfallende PV-Leistung deckt den Verbrauch, der Rest wird eingespeist bzw. bezogen. Die Differenz zeigt den Zusatznutzen von Speicher und aktiver Steuerung.",
-        surplus_sink: "Referenz: wie direkter Eigenverbrauch, aber PV-Überschuss wird bis zur Leistungsgrenze von einer Senke (Heizstab/Auto) genutzt statt eingespeist. Die Differenz zeigt den Mehrwert gegenüber dieser einfachen Überschuss-Nutzung.",
-      };
-      document.getElementById("sav-explain").textContent =
-        (explain[baseline] || "") + " Schätzung auf Basis der aufgezeichneten Messpunkte und der hinterlegten Tarife.";
+    }
+    const SAV_BASELINES = {
+      full_feed: ["Volleinspeisung (kein Eigenverbrauch)",
+        "Die gesamte PV-Erzeugung wird eingespeist (zur Einspeisevergütung) und der gesamte Verbrauch aus dem Netz bezogen (zum Bezugspreis). Die Differenz zur Ist-Situation zeigt den Gesamtwert von Eigenverbrauch und Speicher."],
+      direct: ["Direkter Eigenverbrauch (ohne Speicher/Steuerung)",
+        "Nur die zeitgleich anfallende PV-Leistung deckt den Verbrauch, der Rest wird eingespeist bzw. bezogen — kein Speicher, keine aktive Steuerung. Die Differenz zeigt den Zusatznutzen von Speicher und Steuerung."],
+      surplus_sink: ["PV-Überschuss-Senke (Heizstab/Auto)",
+        "Wie direkter Eigenverbrauch, aber PV-Überschuss wird bis zur eingestellten Leistungsgrenze von einer einfachen Senke (Heizstab/Auto) genutzt statt eingespeist. Die Differenz zeigt den Mehrwert gegenüber dieser einfachen Überschuss-Nutzung."],
+      ideal: ["Ideal (perfekte Speicher-/Tarifnutzung)",
+        "Theoretischer Bestfall: PV wird vollständig selbst genutzt (Speicher groß genug) und der verbleibende Netzbedarf komplett zum günstigsten Preis im Zeitraum bezogen — perfekte Tarif-Arbitrage. Bei einem statischen Tarif entspricht das dem direkten Eigenverbrauch (kein Potenzial). Bei dynamischem Tarif erscheint die Lücke als <b>Mehrkosten</b> und zeigt das Optimierungspotenzial einer größeren Batterie oder bidirektionalem Laden."],
+    };
+    function showSavHelp() {
+      const cur = document.getElementById("sav-baseline").value;
+      document.getElementById("strathelp-title").textContent = "Einsparung – Vergleichs-Baselines";
+      let body = `<div class="sub" style="margin-bottom:10px">Die Ersparnis ist die Differenz zwischen den Kosten des gewählten Referenzszenarios (Baseline) und den tatsächlichen Netzkosten. Schätzung auf Basis der aufgezeichneten Messpunkte und der hinterlegten Tarife.</div>`;
+      for (const k in SAV_BASELINES) {
+        const [t, d] = SAV_BASELINES[k];
+        const hot = k===cur;
+        body += `<div style="margin-top:10px${hot?';padding:8px;border:1px solid var(--border);background:#f7f7f7':''}">`+
+          `<b style="color:var(--brand)">${t}</b>${hot?' <span class="sub">(aktuell gewählt)</span>':''}<div style="margin-top:3px">${d}</div></div>`;
+      }
+      document.getElementById("strathelp-body").innerHTML = body;
+      document.getElementById("strathelp").style.display = "flex";
     }
 
     // ---------- Einstellungen ----------

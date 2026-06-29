@@ -11,6 +11,12 @@
 - **Batterie-Tarif vereinheitlicht**: das einfache Schwellen-Netzladen läuft nur bei aktivem
   Tarif und nur, wenn der Prognose-Optimierer aus ist (sonst hat der Optimierer Vorrang).
 - **Hilfe-Button (ⓘ)** mit Beschreibung für **jede** Strategie.
+- **Einsparungsseite** überarbeitet: Ersparnis wird **grün**, Mehrkosten **rot** dargestellt
+  (Betrag ohne Vorzeichen, Beschriftung „Ersparnis vs. Baseline" bzw. „Mehrkosten vs. Baseline").
+  Die Erklärung der Vergleichs-Baselines liegt jetzt im **ⓘ-Popup** neben dem Auswahlfeld.
+- Neue Baseline **„Ideal (perfekte Speicher-/Tarifnutzung)"**: PV voll selbst genutzt und der
+  Netzbedarf komplett zum günstigsten Preis im Zeitraum — die Mehrkosten zeigen das
+  Optimierungspotenzial einer größeren Batterie oder bidirektionalem Laden bei dynamischem Tarif.
 
 ## 0.7.0
 
