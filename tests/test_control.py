@@ -263,6 +263,40 @@ def test_ess_reserve_clamps_discharge_and_charge_as_hard_bounds():
     assert _run({**base, "soc": 0.0, "reserve": 0.0}, "number.bd", 500.0) == 500.0
 
 
+def test_evcs_gate_logic():
+    from smart_energy_agent.control import evcs_gate
+    base = {"connected_set": True, "connected": True, "soc": 40.0, "target_soc": 80.0,
+            "from_grid": False, "deadline_min": None, "now_min": 600}
+    assert evcs_gate(base, 0.0) is None                          # surplus-only -> generic decides
+    assert evcs_gate({**base, "connected": False}, 0.0)[0] is False     # unplugged -> off
+    assert evcs_gate({**base, "soc": 80.0}, 0.0)[0] is False     # target SoC reached -> off
+    assert evcs_gate({**base, "from_grid": True}, 0.0)[0] is True       # grid allowed + plugged -> on
+    assert evcs_gate({**base, "deadline_min": 590}, 0.0)[0] is True     # deadline due -> on
+    # connection not configured -> never gates on the plug signal
+    assert evcs_gate({**base, "connected_set": False, "connected": False}, 0.0) is None
+
+
+def test_evcs_controller_switch_and_setpoint():
+    from smart_energy_agent.control import EvcsController
+    from smart_energy_agent.control_core import CommandSet, ProcessImage
+    off = {"switch": "switch.wb", "setpoint": "", "mode": "switch", "min_unit": 6.0,
+           "connected_set": True, "connected": False, "soc": None, "target_soc": 0,
+           "from_grid": False, "deadline_min": None, "now_min": 600}
+    img = ProcessImage(now=0.0); img.extra["evcs"] = [off]
+    cmds = CommandSet(); EvcsController().process(img, cmds)
+    assert {c.entity: c for c in cmds.commands()}["switch.wb"].kind == "off"   # unplugged -> off
+    # connected + surplus-only -> no gate, generic path decides
+    img2 = ProcessImage(now=0.0); img2.extra["evcs"] = [{**off, "connected": True}]
+    cmds2 = CommandSet(); EvcsController().process(img2, cmds2)
+    assert cmds2.commands() == []
+    # modulating wallbox, grid allowed -> forced to its minimum
+    img3 = ProcessImage(now=0.0)
+    img3.extra["evcs"] = [{**off, "switch": "", "setpoint": "number.wb", "mode": "setpoint",
+                           "connected": True, "from_grid": True}]
+    cmds3 = CommandSet(); EvcsController().process(img3, cmds3)
+    assert {c.entity: c for c in cmds3.commands()}["number.wb"].value == 6.0
+
+
 def test_run_cycle_folds_in_tariff_and_throttles_to_its_interval():
     from smart_energy_agent import const
     calls = []

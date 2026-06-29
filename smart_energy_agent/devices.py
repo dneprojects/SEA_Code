@@ -194,6 +194,16 @@ class Device:
     def latest_start(self) -> str:
         return str(self._cfg.get("latest_start", "") or "")
 
+    @property
+    def target_soc(self) -> float:
+        """EVCS: stop charging at this vehicle SoC (%). 0 = no target."""
+        return self._num("target_soc_pct", 0.0)
+
+    @property
+    def charge_from_grid(self) -> bool:
+        """EVCS: charge whenever connected (allow grid), not surplus-only."""
+        return bool(self._cfg.get("charge_from_grid"))
+
     # --- live channels ------------------------------------------------------
     def _state(self, entity: str) -> str:
         if not entity:

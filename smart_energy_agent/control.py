@@ -369,6 +369,55 @@ class EssReserveController:
                                reason=f"SoC-Max {round(b['soc_max'])} %")
 
 
+def evcs_gate(e: dict, now: float) -> Optional[tuple[bool, str]]:
+    """EV charging gate for one wallbox: ``(force_on, reason)`` or ``None``.
+
+    Returns a hard override only when a configured signal demands it; otherwise
+    ``None`` so the generic PV-surplus path keeps deciding (surplus-only charging
+    via the device's nominal power as the on threshold). Order: not-connected and
+    target-SoC force OFF; a charge deadline forces ON; 'charge from grid' charges
+    whenever connected.
+    """
+    if e["connected_set"] and not e["connected"]:
+        return (False, "nicht angesteckt")
+    if e["target_soc"] > 0 and e["soc"] is not None and e["soc"] >= e["target_soc"]:
+        return (False, f"Ziel-SoC {round(e['target_soc'])} % erreicht")
+    if _deadline_due(e["deadline_min"], e["now_min"]):
+        return (True, "Deadline – Laden erzwungen")
+    if e["from_grid"] and e["connected"]:
+        return (True, "Laden (Netz erlaubt)")
+    return None
+
+
+class EvcsController:
+    """EV-charging gates layered on top of the generic surplus control.
+
+    Highest priority among the load controllers, but it only emits an override
+    when a configured signal demands it (see :func:`evcs_gate`) — otherwise it
+    adds nothing and the wallbox is driven by the normal PV-surplus path (so the
+    'surplus only' mode and the ~11 kW on-threshold come for free from the device
+    nominal power). Switch wallboxes are turned on/off; a modulating wallbox is
+    constrained to 0 (off) or to at least its minimum (forced on).
+    """
+
+    name = "evcs"
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        for e in image.extra.get("evcs", []):
+            gate = evcs_gate(e, image.now)
+            if gate is None:
+                continue                                   # generic path decides
+            on, reason = gate
+            label = f"Wallbox: {reason}"
+            if e["mode"] == "switch" and e["switch"]:
+                cmds.add(Command(e["switch"], "on" if on else "off", reason=label))
+            elif e["setpoint"]:
+                if on:
+                    cmds.add(Command(e["setpoint"], "set", e["min_unit"], label))
+                else:
+                    cmds.add(Command(e["setpoint"], "set", 0.0, label))
+
+
 class ControlEngine:
     """Builds the process image from the store and runs the unified control cycle
     (PV-surplus every tick + tariff shifting at its slower cadence)."""
@@ -454,7 +503,7 @@ class ControlEngine:
     # (a hard constraint, first) and tariff shifting (last, slow cadence).
     CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
     FULL_CHAIN: list[Controller] = [
-        EssReserveController(), PeakShavingController(), *CHAIN,
+        EssReserveController(), PeakShavingController(), EvcsController(), *CHAIN,
         TariffShiftController(), RuleController()]
 
     def _surplus_signed(self, balance: dict) -> float:
@@ -490,6 +539,23 @@ class ControlEngine:
             out.append({"discharge": dev.discharge_entity, "charge": dev.setpoint_entity,
                         "max_w": dev.max_w, "wpu": dev.wpu, "soc": dev.soc,
                         "reserve": dev.grid_soc_min})
+        return out
+
+    def _evcs_inputs(self) -> list[dict]:
+        """Gate inputs for participating EV chargers (wallboxes)."""
+        lt = time.localtime()
+        now_min = lt.tm_hour * 60 + lt.tm_min
+        out = []
+        for dev in devices(self._store):
+            if not dev.is_evcs or not dev.self_consumption:
+                continue
+            out.append({
+                "switch": dev.switch_entity, "setpoint": dev.setpoint_entity, "mode": dev.mode,
+                "min_unit": round(dev.min_w / dev.wpu, 2),
+                "connected_set": bool(dev.ready_entity), "connected": dev.ready,
+                "soc": dev.soc, "target_soc": dev.target_soc, "from_grid": dev.charge_from_grid,
+                "deadline_min": _hhmm_to_min(dev.latest_start), "now_min": now_min,
+            })
         return out
 
     async def _modulate(self, surplus_signed: float) -> None:
@@ -558,6 +624,11 @@ class ControlEngine:
         peak_limit = self._store.peak_limit_w()
         if surplus_on and peak_limit > 0:
             image.extra["peak"] = {"limit_w": peak_limit, "batteries": self._peak_batteries()}
+        # EVCS (wallbox) gate inputs for participating chargers.
+        if surplus_on:
+            evcs = self._evcs_inputs()
+            if evcs:
+                image.extra["evcs"] = evcs
         # Tariff inputs are gathered only when tariff shifting is on and due.
         tariff_due = (now - self._last_run.get(TariffShiftController.name, -1e18)
                       ) >= (const.TARIFF_INTERVAL - 1)
