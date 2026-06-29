@@ -65,6 +65,7 @@ class WebServer:
         self._app.router.add_post("/api/thermostats", self._api_thermostats_post)
         self._app.router.add_get("/api/vehicles", self._api_vehicles_get)
         self._app.router.add_post("/api/vehicles", self._api_vehicles_post)
+        self._app.router.add_get("/api/control-trace", self._api_control_trace)
         self._app.router.add_static(
             "/static", str(const.WEB_DIR), show_index=False
         )
@@ -260,6 +261,9 @@ class WebServer:
             "ok": True, "setback": sb,
             "presence": {g.get("id"): self._store.group_present(g) for g in groups},
         })
+
+    async def _api_control_trace(self, _request: web.Request) -> web.Response:
+        return web.json_response(self._store.control_trace())
 
     async def _api_vehicles_get(self, _request: web.Request) -> web.Response:
         chargers = [{"key": d["key"], "name": d["name"]}

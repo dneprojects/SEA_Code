@@ -90,4 +90,20 @@ def overview(config: dict[str, Any], settings: dict[str, Any],
         "laden, teuer entladen, und netzoptimiert (kein Netzladen, wenn die PV den "
         "Speicher noch füllt). Reserve/Peak bleiben übergeordnet.")
 
+    # Netz-/Speicherschutz-Dienste — eingestellt unter Grundeinstellungen.
+    def _on(v: Any) -> bool:
+        try:
+            return float(v or 0) > 0
+        except (TypeError, ValueError):
+            return False
+    add("peak_shaving", "Peak-Shaving (Netzbezug deckeln)", [], True,
+        _on(settings.get("peak_limit_w")) or bool(settings.get("peak_slots")),
+        "Begrenzt den Netzbezug durch gezieltes Entladen der Batterie.")
+    add("feed_in_limit", "Einspeise-Limit", [], True, _on(settings.get("feed_in_limit_w")),
+        "Begrenzt die Einspeisung durch Zwangsladen (und optional PV-Abregelung).")
+    add("emergency_reserve", "Notstrom-Reserve", [], True, _on(settings.get("emergency_reserve_soc")),
+        "Hält die Batterie auf einer Backup-Reserve für Stromausfälle.")
+    add("battery_care", "Batteriepflege", [], True, _on(settings.get("soh_cycle_days")),
+        "Periodische Vollladung der Batterie zur SoC-Kalibrierung.")
+
     return out

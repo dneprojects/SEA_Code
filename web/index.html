@@ -405,6 +405,8 @@
         <div class="cards" id="summary"></div>
         <div class="panel-title">Energiefluss</div>
         <div class="chart-wrap" id="flow"></div>
+        <div class="panel-title">Aktive Steuerung</div>
+        <div id="ctrl-trace"></div>
       </section>
 
       <!-- Einrichtung -->
@@ -524,6 +526,7 @@
           <input type="number" id="set-minsoc" min="0" max="100" style="width:80px"
             title="Nur bei „Verbraucher zuerst“: Bis zu diesem Ladezustand lädt die Batterie zuerst, bevor Verbraucher (Heizstab etc.) ihr die Ladeleistung wegnehmen dürfen. 0 = aus.">
           <span class="sub">0 = aus — nur relevant bei „Verbraucher zuerst“</span></div>
+        <div class="subhead">Netzdienste</div>
         <div class="setrow"><label>Netzbezug deckeln bei (W)</label>
           <input type="number" id="set-peak" min="0" step="100" style="width:100px"
             title="Peak-Shaving: Übersteigt der Netzbezug diesen Wert, wird die Batterie entladen, um darunter zu bleiben. 0 = aus. Benötigt eine Batterie mit Entladeleistungs-Sollwert-Entität.">
@@ -543,6 +546,7 @@
           <input type="number" id="set-pvlimitmax" min="0" step="100" style="width:100px"
             title="Maximale PV-Leistung (W) zum Freigeben der Abregel-Entität, wenn keine Begrenzung nötig ist.">
           <span class="sub">Freigabewert der Abregel-Entität</span></div>
+        <div class="subhead">Speicherschutz &amp; Pflege</div>
         <div class="setrow"><label>Notstrom-Reserve (%)</label>
           <input type="number" id="set-emerg" min="0" max="100" style="width:80px"
             title="Backup-Reserve: Batterie wird auf diesen SoC gehalten/geladen und von keiner Strategie darunter entladen. 0 = aus.">
@@ -850,6 +854,19 @@
         renderSummary(s); renderFlow(f);
         document.getElementById("updated").textContent = "Stand: "+new Date().toLocaleTimeString("de-DE");
       } catch(err) { document.getElementById("ha-text").textContent = "Fehler beim Laden"; }
+      try { renderTrace(await fetch(api("/api/control-trace")).then(r=>r.json())); } catch(e) {}
+    }
+    function renderTrace(t) {
+      const el = document.getElementById("ctrl-trace"); if (!el) return;
+      const items = (t && t.items) || [];
+      if (!items.length) {
+        el.innerHTML = "<p class='sub'>Aktuell greift keine Steuerung ein (kein Befehl im letzten Zyklus).</p>";
+        return;
+      }
+      const fmtV = c => c.kind==="on" ? "ein" : c.kind==="off" ? "aus" : (c.value!=null ? c.value : "");
+      el.innerHTML = `<table class="info-tbl"><tbody>${items.map(c =>
+        `<tr><td><b>${esc(c.source||"")}</b></td><td>${esc(c.entity)}</td>`
+        + `<td class="num">${fmtV(c)}</td><td class="sub">${esc(c.reason||"")}</td></tr>`).join("")}</tbody></table>`;
     }
 
     // ---------- Einrichtung (Wizard) ----------
@@ -1776,6 +1793,10 @@
           <div class="sub" style="margin:4px 0">${st.desc||''}</div>${miss}
           <div class="panel-title" style="margin:8px 0 6px">Verschiebbare Geräte</div>
           ${deviceRows('tariff_shift')}${statusLine}`;
+      }
+      if (["peak_shaving","feed_in_limit","emergency_reserve","battery_care"].includes(st.key)) {
+        return `<div class="sub" style="margin:4px 0">${st.desc||''}</div>${miss}
+          <button class="btn" onclick="showView('basic')">In Grundeinstellungen einstellen →</button>`;
       }
       if (st.key === "optimizer") {
         return `<label style="font-weight:bold;color:var(--fg)">

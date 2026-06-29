@@ -423,6 +423,12 @@ class Store:
         except (TypeError, ValueError):
             return 0.0
 
+    def set_control_trace(self, trace: dict) -> None:
+        self._control_trace = trace          # in-memory: latest control decision
+
+    def control_trace(self) -> dict:
+        return getattr(self, "_control_trace", {})
+
     def get_controller_state(self) -> dict:
         s = self._settings.get("controller_state", {})
         return s if isinstance(s, dict) else {}

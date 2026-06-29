@@ -955,6 +955,7 @@ class ControlEngine:
         cmds = Cycle(self.CHAIN).run(image)           # Process
         cmds.bounds = actuator_bounds(self._store)    # device hard limits
         self.last_trace = cmds.trace()                # who decided what (debug)
+        self._store.set_control_trace({"ts": now, "items": self.last_trace})
         await apply_commands(self._call_service, self._store, cmds)   # Output
         # Return the switch action (if any) for compatibility / logging.
         for cmd in cmds.commands():
@@ -1077,6 +1078,9 @@ class ControlEngine:
                 self._last_run[c.name] = now
         cmds.bounds = actuator_bounds(self._store)          # device hard limits
         self.last_trace = cmds.trace()                      # who decided what (debug)
+        self._store.set_control_trace({"ts": now, "items": self.last_trace,
+                                       "surplus_on": surplus_on, "tariff_on": tariff_on,
+                                       "optimizer_on": optimizer_on})
         await apply_commands(self._call_service, self._store, cmds)   # Output
 
 
