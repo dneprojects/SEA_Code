@@ -405,6 +405,7 @@
       <a href="#" data-view="basic" onclick="showView('basic');return false;"><svg class="ico"><use href="#i-set"/></svg>Grundeinstellungen</a>
       <a href="#" data-view="setup" onclick="showView('setup');return false;"><svg class="ico"><use href="#i-src"/></svg>Erzeuger/Verbraucher</a>
       <a href="#" data-view="thermostats" onclick="showView('thermostats');return false;"><svg class="ico"><use href="#i-thermo"/></svg>Temperaturabsenkung</a>
+      <a href="#" data-view="vehicles" onclick="showView('vehicles');return false;"><svg class="ico"><use href="#i-dev"/></svg>Fahrzeuge</a>
     </nav>
 
     <div class="content">
@@ -587,6 +588,15 @@
         <div id="thermo"></div>
         <span class="sub" id="thermo-msg" style="margin-left:8px"></span>
       </section>
+
+      <!-- Fahrzeuge (eigene Objekte, vom Lader entkoppelt) -->
+      <section id="view-vehicles" hidden>
+        <div class="page-h"><svg class="ico"><use href="#i-dev"/></svg><h1>Fahrzeuge</h1></div>
+        <p class="sub" style="margin:0 0 8px">Fahrzeuge werden unabhängig von der Wallbox angelegt (mehrere möglich). Je nach <b>Fähigkeit</b>: <i>nur SoC</i> (Stopp-Signal), <i>ladbar</i> (Lader lädt bis Ziel-SoC) oder <i>bidirektional</i> (V2H/V2G – nimmt wie ein Speicher an Eigenverbrauch, Peak-Shaving und Reserve teil).</p>
+        <div id="vehicles"></div>
+        <div style="margin-top:10px"><button class="btn" onclick="addVehicle()">+ Fahrzeug</button>
+          <span class="sub" id="veh-msg" style="margin-left:8px"></span></div>
+      </section>
     </div>
   </div>
   </div><!-- /shell -->
@@ -663,7 +673,7 @@
     function showView(name) {
       view = name;
       closeMenu();
-      ["dashboard","setup","devices","history","savings","consumers","basic","thermostats"].forEach(v => {
+      ["dashboard","setup","devices","history","savings","consumers","basic","thermostats","vehicles"].forEach(v => {
         document.getElementById("view-"+v).hidden = (v !== name);
       });
       document.querySelectorAll(".sidebar a").forEach(a =>
@@ -675,6 +685,7 @@
       if (name === "consumers") loadConsumers();
       if (name === "basic") { loadSettings(); loadTariff(); }
       if (name === "thermostats") loadThermostats();
+      if (name === "vehicles") loadVehicles();
     }
 
     // ---------- Dashboard ----------
@@ -1986,6 +1997,69 @@
     let sbPresence = {};
     function thFlash(m) { const e=document.getElementById("thermo-msg"); if (e){ e.textContent=m; setTimeout(()=>e.textContent="",2500);} }
     function thGid() { return "g"+Math.random().toString(36).slice(2,8); }
+    // ---------- Fahrzeuge ----------
+    let vehData = { vehicles: [], chargers: [] };
+    async function loadVehicles() {
+      try { vehData = await fetch(api("/api/vehicles")).then(r=>r.json()); }
+      catch(e) { vehData = {vehicles:[], chargers:[]}; }
+      vehData.vehicles = vehData.vehicles || []; vehData.chargers = vehData.chargers || [];
+      renderVehicles();
+    }
+    async function saveVehicles(rerender) {
+      try {
+        const r = await fetch(api("/api/vehicles"), {method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({vehicles: vehData.vehicles})}).then(r=>r.json());
+        if (r.vehicles) vehData.vehicles = r.vehicles;
+        const m = document.getElementById("veh-msg"); if (m) { m.textContent = "gespeichert"; setTimeout(()=>{ if(m) m.textContent=""; }, 1500); }
+      } catch(e) {}
+      if (rerender) renderVehicles();
+    }
+    function setVeh(i, field, val) { vehData.vehicles[i][field] = val; saveVehicles(false); }
+    function delVeh(i) { vehData.vehicles.splice(i,1); saveVehicles(true); }
+    function addVehicle() { vehData.vehicles.push({name:"Fahrzeug "+(vehData.vehicles.length+1), capability:"soc_only"}); saveVehicles(true); }
+    function pickVeh(i, field, group) { openPickerCb(group||"value","", vehData.vehicles[i][field]||"", eid => setVeh(i, field, eid)); }
+    function vehEntRow(lbl, i, field, group, tip) {
+      const cur = vehData.vehicles[i][field];
+      const disp = cur ? `<span class="eid" title="${esc(cur)}">${esc(cur)}</span>` : '<span class="sub">— nicht gewählt —</span>';
+      return `<div class="setrow"><label title="${tip||''}">${lbl}</label>${disp}
+        <button class="btn" onclick="pickVeh(${i},'${field}','${group||'value'}')">Wählen</button>
+        ${cur?`<button class="btn" title="entfernen" onclick="setVeh(${i},'${field}','')">×</button>`:''}</div>`;
+    }
+    function renderVehicles() {
+      const el = document.getElementById("vehicles");
+      if (!vehData.vehicles.length) { el.innerHTML = "<p class='sub'>Noch keine Fahrzeuge. Mit „+ Fahrzeug“ anlegen.</p>"; return; }
+      const chargerOpts = (cur) => `<option value="">— keiner —</option>` +
+        vehData.chargers.map(c=>`<option value="${esc(c.key)}" ${c.key===cur?'selected':''}>${esc(c.name)}</option>`).join("");
+      const numRow = (lbl,i,field,unit,tip,step) => `<div class="setrow"><label title="${tip||''}">${lbl}</label><input type="number"${step?` step="${step}"`:''} value="${vehData.vehicles[i][field]!=null?vehData.vehicles[i][field]:''}" onchange="setVeh(${i},'${field}',this.value)" style="width:90px">${unit?` <span class="sub">${unit}</span>`:''}</div>`;
+      el.innerHTML = vehData.vehicles.map((v,i) => {
+        const cap = v.capability || "soc_only";
+        let h = `<div style="border:1px solid var(--line);border-radius:var(--r);background:var(--card);box-shadow:var(--shadow);padding:12px 14px;margin-bottom:12px">
+          <div class="setrow"><label>Name</label><input type="text" value="${esc(v.name||'')}" onchange="setVeh(${i},'name',this.value)" style="width:200px">
+            <button class="btn" style="margin-left:auto" title="Fahrzeug löschen" onclick="delVeh(${i})">×</button></div>
+          <div class="setrow"><label>Fähigkeit</label>
+            <select onchange="setVeh(${i},'capability',this.value)">
+              <option value="soc_only" ${cap==='soc_only'?'selected':''}>nur SoC (Stopp-Signal)</option>
+              <option value="chargeable" ${cap==='chargeable'?'selected':''}>ladbar (über Wallbox)</option>
+              <option value="bidirectional" ${cap==='bidirectional'?'selected':''}>bidirektional (V2H/V2G)</option>
+            </select></div>
+          <div class="setrow"><label title="Wallbox, an der dieses Fahrzeug lädt">Verknüpfter Lader</label>
+            <select onchange="setVeh(${i},'charger_key',this.value)">${chargerOpts(v.charger_key)}</select></div>`;
+        h += vehEntRow("SoC-Entität", i, "soc_entity", "value", "Ladezustand des Fahrzeugs (%)");
+        h += numRow("Ziel-SoC (%)", i, "target_soc", "0 = kein Ziel", "Bis zu diesem SoC laden");
+        h += numRow("Kapazität (kWh)", i, "capacity_kwh", "für den Optimierer (später)", "Akkukapazität", "0.1");
+        h += `<div class="setrow"><label title="Deadline – notfalls aus dem Netz">Laden bis (HH:MM)</label><input type="time" value="${v.deadline||''}" onchange="setVeh(${i},'deadline',this.value)"></div>`;
+        h += vehEntRow("anwesend/angesteckt", i, "present_entity", "connected", "optional: zeigt an, dass DIESES Fahrzeug angesteckt ist (bei mehreren Fahrzeugen)");
+        if (cap === "bidirectional") {
+          h += `<div class="subhead">Bidirektional (V2H/V2G)</div>`;
+          h += vehEntRow("Lade-Sollwert", i, "charge_entity", "value", "Sollwert-Entität fürs Laden");
+          h += vehEntRow("Entlade-Sollwert", i, "discharge_entity", "value", "Sollwert-Entität fürs Entladen ins Haus/Netz");
+          h += numRow("max. Leistung (W)", i, "max_w", "W", "max. Lade-/Entladeleistung");
+          h += numRow("W/Einheit", i, "w_per_unit", "", "Watt pro Einheit der Sollwert-Entität");
+          h += numRow("Fahr-Reserve-SoC (%)", i, "reserve_soc", "nie darunter entladen", "Reserve für die Fahrt");
+        }
+        return h + `</div>`;
+      }).join("");
+    }
     async function loadThermostats() {
       try { const r = await fetch(api("/api/thermostats")).then(r=>r.json());
         sbData = r.setback || {enabled:false,frost_c:7,groups:[]}; sbPresence = r.presence || {}; }

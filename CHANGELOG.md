@@ -2,6 +2,11 @@
 
 ## 0.6.0
 
+- Neu: **Fahrzeuge** als eigene Objekte (Seite „Fahrzeuge", mehrere möglich), getrennt
+  von der Wallbox. Je nach Fähigkeit: nur SoC (Stopp-Signal), ladbar (Wallbox lädt bis
+  Ziel-SoC) oder bidirektional (V2H/V2G – nimmt wie ein Speicher an Eigenverbrauch,
+  Peak-Shaving und Reserve teil). Wallbox-Ladestopp folgt dem verknüpften Fahrzeug.
+
 - Neu: Auf der Seite „Verlauf" eine **Energiebilanz** (unter den Detail-Plots), die
   über den aktuell angezeigten Zeitraum gerechnet wird (inkl. Zoom/Pan): PV-Erzeugung,
   Hausverbrauch, Netzbezug/-einspeisung, Batterie geladen/entladen, Eigenverbrauch,
