@@ -2,6 +2,13 @@
 
 ## 0.7.0
 
+- Neu: Dashboard-Panel **„Aktive Steuerung"** — zeigt live, welcher Regler gerade was
+  und warum schaltet. Peak-Shaving, Einspeise-Limit, Notstrom-Reserve und Batteriepflege
+  erscheinen jetzt mit Status auf der **Strategieseite**.
+- Neu: **Regel-Editor** (JSON-logic) auf der Strategieseite; **Batterie-Kapazität** und
+  optionale **PV-Abregel-Entität** konfigurierbar. Tageswerte (Mindestmenge, Pflege)
+  überstehen jetzt Neustarts; der Optimierer nutzt die **Preis-Prognose** dynamischer Tarife.
+
 - Neu: **Einspeise-Limit** — übersteigt die Einspeisung eine Grenze (W), wird die
   Batterie zwangsgeladen, um darunter zu bleiben.
 - Neu: **Notstrom-Reserve (%)** — die Batterie wird auf diesen Ladezustand gehalten/
