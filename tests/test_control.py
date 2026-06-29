@@ -450,6 +450,38 @@ def test_plan_optimized_charge():
     assert plan_optimized_charge([slot(0, 1000, 20)] * 6, 50, 0, 20, 0, 1) is None
 
 
+def test_strategy_preset_arms_master_switches():
+    s = Store()
+    s.set_settings({"strategy": "hybrid"})
+    assert s.control_enabled() and s.tariff_enabled() and s.optimizer_enabled()
+    s.set_settings({"strategy": "self_consumption"})
+    assert s.control_enabled() and not s.tariff_enabled() and not s.optimizer_enabled()
+    s.set_settings({"strategy": "cost"})
+    assert s.tariff_enabled() and s.optimizer_enabled()
+    s.set_settings({"strategy": "autarky"})
+    assert s.control_enabled() and not s.tariff_enabled() and not s.optimizer_enabled()
+
+
+def test_battery_arbitrage_gated_by_tariff_switch_and_optimizer():
+    s = Store()
+    s._config = {"battery": [{"id": "b1", "name": "B", "charge_power": "number.bc",
+                              "discharge_power": "number.bd", "soc": "sensor.soc"}]}
+    s._settings["strategy_loads"] = {"battery:b1": {"tariff_shift": True, "self_consumption": False,
+                                                    "max_w": 5000, "w_per_unit": 1,
+                                                    "grid_soc_min": 10, "grid_soc_max": 90}}
+    s._settings["tariff"] = {"mode": "static", "price_ct": 5, "charge_max_ct": 10}  # cheap -> charge
+    s._live_by_id = {"number.bc": {"state": "0"}, "sensor.soc": {"state": "50"}}
+    eng = ControlEngine(s, None)  # type: ignore[arg-type]
+    s._settings["tariff_enabled"] = False
+    s._settings["optimizer_enabled"] = False
+    assert all(m.get("batt_mode") is None for m in eng._mods())   # tariff off -> no arbitrage
+    s._settings["tariff_enabled"] = True
+    bm = next((m for m in eng._mods() if m["entity"] == "number.bc"), None)
+    assert bm and bm.get("batt_mode") == "charge"                 # tariff on -> arbitrage
+    s._settings["optimizer_enabled"] = True
+    assert all(m.get("batt_mode") is None for m in eng._mods())   # optimizer owns the battery
+
+
 def test_run_cycle_charges_battery_from_surplus_end_to_end():
     """Full chain wiring: a configured battery charges from PV surplus."""
     calls = []

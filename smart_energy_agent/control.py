@@ -719,7 +719,11 @@ class ControlEngine:
         for dev in devices(self._store):
             if dev.mode != "setpoint" or not dev.setpoint_entity:
                 continue
-            grid_charge = dev.is_battery and dev.tariff_shift
+            # Battery threshold arbitrage only when tariff shifting is on and the
+            # forecast optimizer is off (the optimizer otherwise owns the battery).
+            grid_charge = (dev.is_battery and dev.tariff_shift
+                           and self._store.tariff_enabled()
+                           and not self._store.optimizer_enabled())
             if not dev.self_consumption and not grid_charge:
                 continue
             if dev.max_w <= 0:

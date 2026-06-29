@@ -500,7 +500,8 @@
         <div class="page-h"><svg class="ico"><use href="#i-strat"/></svg><h1>Strategien</h1></div>
         <div class="panel-title">Globale Strategie</div>
         <div class="setrow"><label>Optimierungsstrategie</label>
-          <select id="set-strategy" title="Globaler Modus: Eigenverbrauch, Kosten (Tarif), Hybrid oder Autarkie" onchange="strategyChanged();saveStrategy()"></select></div>
+          <select id="set-strategy" title="Voreinstellung: setzt die Master-Schalter (PV-Überschuss immer an; Tarif + Optimierer an bei Hybrid/Kosten, aus bei Eigenverbrauch/Autarkie). Einzelne Schalter unten lassen sich danach feinjustieren." onchange="strategyChanged();saveStrategy()"></select></div>
+        <div class="setrow"><span class="sub">Wählt eine Voreinstellung der Schalter unten – danach frei anpassbar.</span></div>
         <div class="setrow"><span class="sub" id="set-strategy-desc"></span></div>
         <div class="panel-title">Geräte-Strategien</div>
         <p class="sub" style="margin:8px 0 6px">Verfügbare Strategien werden automatisch aus den konfigurierten Entitäten ermittelt. Box aufklappen für die Einstellungen.</p>
@@ -527,10 +528,10 @@
             <option value="0">Batterie zuerst (Speicher füllen)</option>
             <option value="1">Verbraucher zuerst (PV direkt nutzen)</option></select>
           <span class="sub">Verbraucher laufen nie aus der Batterie</span></div>
-        <div class="setrow"><label>Batterie-Mindest-SoC (%)</label>
+        <div class="setrow"><label>Lade-Vorrang bis SoC (%)</label>
           <input type="number" id="set-minsoc" min="0" max="100" style="width:80px"
-            title="Nur bei „Verbraucher zuerst“: Bis zu diesem Ladezustand lädt die Batterie zuerst, bevor Verbraucher (Heizstab etc.) ihr die Ladeleistung wegnehmen dürfen. 0 = aus.">
-          <span class="sub">0 = aus — nur relevant bei „Verbraucher zuerst“</span></div>
+            title="Nur bei „Verbraucher zuerst“: Bis zu diesem Ladezustand lädt die Batterie zuerst, bevor Verbraucher (Heizstab etc.) ihr die Ladeleistung wegnehmen dürfen. 0 = aus. (Nicht zu verwechseln mit der Reserve-/Notstrom-SoC, die das Entladen begrenzt.)">
+          <span class="sub">0 = aus — Lade-Vorrang, nicht die Entlade-Reserve</span></div>
         <div class="subhead">Netzdienste</div>
         <div class="setrow"><label>Netzbezug deckeln bei (W)</label>
           <input type="number" id="set-peak" min="0" step="100" style="width:100px"
@@ -1081,6 +1082,7 @@
       if (d.kind==='battery') {
         h += frow("Kapazität (kWh)", `<input type="number" class="fnum" step="0.1" title="Akkukapazität – für den Prognose-Optimierer (netzoptimiertes Laden)" value="${cfg.capacity_kwh!=null?cfg.capacity_kwh:''}" onchange="setLoad('${key}','capacity_kwh',this.value)"> <span class="sub">kWh</span>`);
         h += frow("Stopp bei SoC ≥", `<input type="number" class="fnum" title="Bei diesem Ladezustand (%) stoppt das Laden; 0 = aus" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)"> <span class="sub">%</span>`);
+        h += frow("Reserve-SoC", `<input type="number" class="fnum" title="Entlade-Untergrenze: Peak-Shaving, Tarif und Optimierer entladen nie darunter (gemeinsam mit der globalen Notstrom-Reserve). 0 = aus." value="${cfg.grid_soc_min}" onchange="setLoad('${key}','grid_soc_min',this.value)"> <span class="sub">% – nie darunter entladen</span>`);
       } else if (cfg.limit_entity) {
         h += frow(stopLbl, `<span class="eid" title="${esc(cfg.limit_entity)}">${cfg.limit_entity}</span> <span class="sub">≥</span> <input type="number" class="fnum" title="Lade-Ziel (z. B. % SoC); 0 = aus" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)">`,
           pickBtn(`pickLimit('${key}')`, 'Entität ändern'));
@@ -1092,8 +1094,7 @@
       if (d.kind==='battery') {
         h += frow("Tarif-Netzladen", `<label class="opt" title="Tarifgesteuertes Netzladen (günstig/negativ) und erzwungenes Entladen (teuer). Preis-Schwellen unter Einstellungen → Tarife; Entladen benötigt eine Entladeleistungs-Sollwert-Entität."><input type="checkbox" ${cfg.tariff_shift?'checked':''} onchange="setLoad('${key}','tariff_shift',this.checked)"> <span class="sub">aus dem Netz laden/entladen</span></label>`);
         if (cfg.tariff_shift) {
-          h += frow("Reserve-SoC", `<input type="number" class="fnum" title="Reserve-SoC: nicht darunter entladen; darunter aus dem Netz nachladen (0 = aus)" value="${cfg.grid_soc_min}" onchange="setLoad('${key}','grid_soc_min',this.value)"> <span class="sub">%</span>`)
-            + frow("Ziel-SoC netzladen", `<input type="number" class="fnum" title="Bis zu diesem SoC netzladen" value="${cfg.grid_soc_max}" onchange="setLoad('${key}','grid_soc_max',this.value)"> <span class="sub">%</span>`);
+          h += frow("Ziel-SoC netzladen", `<input type="number" class="fnum" title="Bis zu diesem SoC aus dem Netz nachladen (günstige Phasen). Reserve-SoC steht oben." value="${cfg.grid_soc_max}" onchange="setLoad('${key}','grid_soc_max',this.value)"> <span class="sub">%</span>`);
         }
       }
       // Multi-stage loads (e.g. a 3-relay heating rod): one switch entity per stage.
@@ -1553,6 +1554,7 @@
           headers:{"Content-Type":"application/json"},
           body:JSON.stringify({strategy: document.getElementById("set-strategy").value}) });
       } catch(e) {}
+      loadConsumers();   // the preset (re)armed the master switches -> refresh badges/toggles
     }
     async function loadSettings() {
       let s = {};
@@ -1847,6 +1849,41 @@
           werden die Raum-Thermostate abgesenkt. Vor der erwarteten Rückkehr wird vorausschauend
           vorgeheizt, sodass es bei Ankunft wieder warm ist.</p>`,
       },
+      optimizer: {
+        title: "Prognose-Optimierer (Batterie)",
+        func: `<p>Plant die Batterie vorausschauend über einen 24-h-Horizont aus PV-Prognose,
+          Verbrauchsprognose und Strompreis: <i>günstig laden, teuer entladen</i> (ToU-Arbitrage über
+          die Preisverteilung) und <b>netzoptimiert</b> – es wird nicht aus dem Netz geladen, wenn die
+          PV den Speicher tagsüber ohnehin füllt. Bei dynamischem Tarif wird die Preis-Prognose der
+          Tarif-Entität genutzt. Reserve, Peak-Shaving und Notstrom-Reserve bleiben immer übergeordnet.
+          Ersetzt das einfache „Tarif-Netzladen“ der Batterie, solange er aktiv ist.</p>`,
+      },
+      peak_shaving: {
+        title: "Peak-Shaving (Netzbezug deckeln)",
+        func: `<p>Übersteigt der Netzbezug die Grenze („Netzbezug deckeln bei“ in den
+          Grundeinstellungen), wird die Batterie gezielt entladen, um darunter zu bleiben – begrenzt
+          durch ihre Leistung und die Reserve. Optionale <b>Zeitfenster</b> erlauben unterschiedliche
+          Grenzen je Tageszeit. Hohe Priorität: greift vor Eigenverbrauch und Tarif.</p>`,
+      },
+      feed_in_limit: {
+        title: "Einspeise-Limit",
+        func: `<p>Begrenzt die Netz-Einspeisung auf einen Maximalwert: Übersteigt die Einspeisung die
+          Grenze, wird der Überschuss in die Batterie geladen. Reicht das nicht (Batterie voll), kann
+          optional die PV über eine Leistungsgrenz-Entität abgeregelt werden – und wieder freigegeben,
+          sobald die Einspeisung unter der Grenze liegt. Für Einspeise-Deckel (z. B. 70 %).</p>`,
+      },
+      emergency_reserve: {
+        title: "Notstrom-Reserve",
+        func: `<p>Hält die Batterie auf einem Backup-Ladezustand für Stromausfälle: Keine Strategie
+          entlädt unter diese Reserve, und liegt der SoC darunter, wird gezielt nachgeladen – bei
+          teurem Tarif aber nur, wenn der SoC kritisch niedrig ist (unter der halben Reserve).</p>`,
+      },
+      battery_care: {
+        title: "Batteriepflege",
+        func: `<p>Lädt die Batterie periodisch (alle N Tage) auf 100 %, um die SoC-Anzeige zu
+          kalibrieren. Während der Vollladung wird die normale Ladeobergrenze vorübergehend aufgehoben.
+          Die fällige Vollladung wird über Neustarts hinweg gemerkt.</p>`,
+      },
     };
     // small bullet/format helpers for the dynamic sections
     const _ok = t => `<li>✓ ${t}</li>`;
@@ -1977,15 +2014,15 @@
     function showStratHelp(key) {
       const m = STRAT_META[key]; if (!m) return;
       const st = (stratList||[]).find(x=>x.key===key) || {};
-      let pre, ex;
+      let pre = "", ex = "";
       if (key==='self_consumption') { pre = helpPrereq_self(st); ex = helpExample_self(); }
       else if (key==='tariff_shift') { pre = helpPrereq_tariff(st); ex = helpExample_tariff(); }
-      else { pre = helpPrereq_setback(); ex = helpExample_setback(); }
+      else if (key==='setback') { pre = helpPrereq_setback(); ex = helpExample_setback(); }
       document.getElementById("strathelp-title").textContent = m.title;
-      document.getElementById("strathelp-body").innerHTML =
-        `<div><b>Funktionsweise</b>${m.func}</div>`
-        + `<div style="margin-top:10px"><b>Voraussetzungen</b> <span class="sub">(deine Konfiguration)</span>${pre}</div>`
-        + `<div style="margin-top:10px"><b>Beispiel</b> <span class="sub">(deine Geräte)</span>${ex}</div>`;
+      let body = `<div><b>Funktionsweise</b>${m.func}</div>`;
+      if (pre) body += `<div style="margin-top:10px"><b>Voraussetzungen</b> <span class="sub">(deine Konfiguration)</span>${pre}</div>`;
+      if (ex) body += `<div style="margin-top:10px"><b>Beispiel</b> <span class="sub">(deine Geräte)</span>${ex}</div>`;
+      document.getElementById("strathelp-body").innerHTML = body;
       document.getElementById("strathelp").style.display = "flex";
     }
     function closeStratHelp() { document.getElementById("strathelp").style.display = "none"; }

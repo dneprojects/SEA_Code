@@ -296,6 +296,7 @@ class Store:
             self._settings["rules"] = patch["rules"]
         if patch.get("strategy") in STRATEGY_VALUES:
             self._settings["strategy"] = patch["strategy"]
+            self._apply_strategy_preset(patch["strategy"])
         if "pv_forecast_entity" in patch:
             self._settings["pv_forecast_entity"] = str(patch["pv_forecast_entity"] or "")
         if isinstance(patch.get("tariff"), dict):
@@ -319,6 +320,15 @@ class Store:
     def retention_days(self) -> int:
         rd = self._settings.get("retention_days")
         return rd if isinstance(rd, int) and rd > 0 else const.get_history_days()
+
+    def _apply_strategy_preset(self, strategy: str) -> None:
+        """Selecting a global strategy arms a master-switch preset (PV-surplus
+        always on; tariff + forecast optimizer on for hybrid/cost, off for
+        self-consumption/autarky). The user can still fine-tune afterward."""
+        full = strategy in ("hybrid", "cost")
+        self._settings["control_enabled"] = True
+        self._settings["tariff_enabled"] = full
+        self._settings["optimizer_enabled"] = full
 
     def control_enabled(self) -> bool:
         return bool(self._settings.get("control_enabled", False))

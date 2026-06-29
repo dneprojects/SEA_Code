@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.0
+
+- Die **Strategie-Auswahl** wirkt jetzt als **Voreinstellung**: sie setzt die Master-Schalter
+  (PV-Überschuss immer an; Tarif + Optimierer an bei Hybrid/Kosten, aus bei Eigenverbrauch/
+  Autarkie) — danach frei feinjustierbar.
+- **Reserve-SoC der Batterie** ist jetzt immer einstellbar (nicht mehr hinter „Tarif-Netzladen"
+  versteckt); „Batterie-Mindest-SoC" heißt zur Klarheit **„Lade-Vorrang bis SoC"** (das ist die
+  Lade-Vorrang-Schwelle, nicht die Entlade-Reserve).
+- **Batterie-Tarif vereinheitlicht**: das einfache Schwellen-Netzladen läuft nur bei aktivem
+  Tarif und nur, wenn der Prognose-Optimierer aus ist (sonst hat der Optimierer Vorrang).
+- **Hilfe-Button (ⓘ)** mit Beschreibung für **jede** Strategie.
+
 ## 0.7.0
 
 - Neu: Dashboard-Panel **„Aktive Steuerung"** — zeigt live, welcher Regler gerade was
