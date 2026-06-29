@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0
+
+- Neu: **Prognose-Optimierer (Batterie)** — lädt/entlädt die Batterie vorausschauend
+  nach PV-Prognose und Strompreis (günstig laden, teuer entladen) und netzoptimiert
+  (kein Netzladen, wenn die PV den Speicher noch füllt). Auf der Strategieseite
+  aktivierbar; Reserve/Peak-Shaving bleiben übergeordnet. Standardmäßig aus.
+
+- Neu: **Fähigkeits-Modell** intern — Geräte werden über Fähigkeiten (Speicher,
+  ladbar, schaltbar, Stufen …) angesprochen; ein späteres V2G-Fahrzeug nimmt damit
+  automatisch an Reserve/Peak/Eigenverbrauch teil.
+
 ## 0.6.0
 
 - Neu: **Mehrstufiger Heizstab** — bei Warmwasser/Wärmepumpe lassen sich mehrere

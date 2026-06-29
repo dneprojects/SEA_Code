@@ -459,6 +459,74 @@ class StagedLoadController:
                 cmds.add(Command(entity, what, reason=reason))
 
 
+def plan_optimized_charge(slots: list[dict], soc: float, capacity_kwh: float,
+                          reserve_soc: float, max_w: float, wpu: float,
+                          soc_max: float = 100.0) -> Optional[dict]:
+    """Forecast-aware battery action for the current slot (slots[0] = now).
+
+    Each slot: ``pv_w``, ``load_w``, ``price_ct``, ``dt_h``. Returns
+    ``{mode, power_w, reason}`` or ``None`` (idle). PV surplus always charges
+    (free). For ToU it uses the horizon price *distribution* (cheap/expensive
+    terciles) rather than a fixed threshold — and grid-optimized: it won't
+    grid-charge in a cheap slot if the PV forecast will fill the battery anyway
+    (needs a known capacity; otherwise that check is skipped)."""
+    if not slots or max_w <= 0:
+        return None
+    now = slots[0]
+    pv = now.get("pv_w") or 0.0
+    load = now.get("load_w") or 0.0
+    if pv - load > 50 and soc < soc_max:                       # PV surplus -> charge free
+        return {"mode": "charge", "power_w": min(pv - load, max_w), "reason": "PV-Überschuss"}
+    prices = [float(s["price_ct"]) for s in slots if s.get("price_ct") is not None]
+    if len(prices) < 3:
+        return None
+    srt = sorted(prices)
+    cheap, exp = srt[len(srt) // 3], srt[2 * len(srt) // 3]
+    if now.get("price_ct") is None or exp <= cheap + 0.01:     # no usable price spread
+        return None
+    p = float(now["price_ct"])
+    if p <= cheap and soc < soc_max:                           # cheap -> consider grid-charge
+        if capacity_kwh > 0:
+            room = capacity_kwh * (soc_max - soc) / 100.0
+            pv_kwh = sum(max(0.0, (s.get("pv_w") or 0) - (s.get("load_w") or 0)) / 1000.0
+                         * s.get("dt_h", 0.25) for s in slots)
+            if pv_kwh >= room:
+                return None                                    # PV will fill it -> don't grid-charge
+        return {"mode": "charge", "power_w": max_w, "reason": "Optimierer: günstig laden"}
+    if p >= exp and soc > reserve_soc and load > 0:            # expensive -> discharge to cover load
+        return {"mode": "discharge", "power_w": min(max_w, load), "reason": "Optimierer: teuer entladen"}
+    return None
+
+
+class OptimizingController:
+    """Forecast-based battery optimizer (ToU arbitrage + grid-optimized charge).
+
+    Runs at the tariff cadence; emits a battery charge/discharge target that the
+    reserve/peak constraints still bound. Off (no optimizer inputs) it adds
+    nothing. The plan is computed in :func:`plan_optimized_charge`."""
+
+    name = "optimizer"
+    interval = const.TARIFF_INTERVAL
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        o = image.extra.get("optimizer")
+        if not o:
+            return
+        act = plan_optimized_charge(o["slots"], o["soc"], o["capacity_kwh"],
+                                    o["reserve"], o["max_w"], o["wpu"], o["soc_max"])
+        if not act:
+            return
+        wpu = o["wpu"] or 1.0
+        if act["mode"] == "charge" and o["charge"]:
+            cmds.add(Command(o["charge"], "set", round(act["power_w"] / wpu, 2), act["reason"]))
+            if o["discharge"]:
+                cmds.add(Command(o["discharge"], "set", 0.0, "Optimierer"))
+        elif act["mode"] == "discharge" and o["discharge"]:
+            cmds.add(Command(o["discharge"], "set", round(act["power_w"] / wpu, 2), act["reason"]))
+            if o["charge"]:
+                cmds.add(Command(o["charge"], "set", 0.0, "Optimierer"))
+
+
 class ControlEngine:
     """Builds the process image from the store and runs the unified control cycle
     (PV-surplus every tick + tariff shifting at its slower cadence)."""
@@ -544,8 +612,9 @@ class ControlEngine:
     # (a hard constraint, first) and tariff shifting (last, slow cadence).
     CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
     FULL_CHAIN: list[Controller] = [
-        EssReserveController(), PeakShavingController(), EvcsController(),
-        StagedLoadController(), *CHAIN, TariffShiftController(), RuleController()]
+        EssReserveController(), PeakShavingController(), OptimizingController(),
+        EvcsController(), StagedLoadController(), *CHAIN,
+        TariffShiftController(), RuleController()]
 
     def _surplus_signed(self, balance: dict) -> float:
         # PV-surplus signal: + = export available, − = deficit. Folds in battery
@@ -599,6 +668,34 @@ class ControlEngine:
                 "deadline_min": _hhmm_to_min(dev.latest_start), "now_min": now_min,
             })
         return out
+
+    async def _optimizer_inputs(self) -> Optional[dict]:
+        """Build the optimizer horizon: PV/load forecast slots + per-slot price,
+        plus the first storage battery's state/limits. None if no battery or
+        forecast is available."""
+        bat = next((d for d in devices(self._store)
+                    if d.has_cap(CAP_CHARGE) or d.has_cap(CAP_DISCHARGE)), None)
+        if bat is None:
+            return None
+        try:
+            fb = await self._store.forecast_bundle(hours=24)
+            pts = (fb.get("surplus") or {}).get("points") or []
+        except Exception:  # noqa: BLE001
+            pts = []
+        if not pts:
+            return None
+        slots = []
+        for i, pt in enumerate(pts):
+            ts = pt.get("ts")
+            nxt = pts[i + 1].get("ts") if i + 1 < len(pts) else (ts + 900 if ts else None)
+            dt_h = max(0.05, (nxt - ts) / 3600.0) if (ts and nxt) else 0.25
+            slots.append({"pv_w": pt.get("pv_w") or 0.0,
+                          "load_w": pt.get("load_w", pt.get("watt")) or 0.0,
+                          "price_ct": self._store.price_at(ts), "dt_h": dt_h})
+        return {"slots": slots, "soc": bat.soc or 0.0, "capacity_kwh": bat.capacity_kwh,
+                "reserve": bat.grid_soc_min, "soc_max": bat.grid_soc_max,
+                "max_w": bat.max_w, "wpu": bat.wpu,
+                "charge": bat.setpoint_entity, "discharge": bat.discharge_entity}
 
     def _state_num(self, entity: str) -> Optional[float]:
         if not entity:
@@ -689,7 +786,8 @@ class ControlEngine:
         # a separate one for tariff load-shifting. Either may run on its own.
         surplus_on = self._store.control_enabled()
         tariff_on = self._store.tariff_enabled()
-        if not (surplus_on or tariff_on):
+        optimizer_on = self._store.optimizer_enabled()
+        if not (surplus_on or tariff_on or optimizer_on):
             return
         image = self.build_image(now)                       # Input
         # Storage reserve/care inputs (safety guard, always available). Capability-
@@ -718,6 +816,13 @@ class ControlEngine:
         if tariff_on and tariff_due:
             image.extra["tariff_cheap"] = bool(self._store.tariff_cheap_now().get("cheap"))
             image.extra["tariff_loads"] = self._tariff_loads()
+        # Optimizer inputs (forecast-based) at the tariff cadence.
+        opt_due = (now - self._last_run.get(OptimizingController.name, -1e18)
+                   ) >= (const.TARIFF_INTERVAL - 1)
+        if optimizer_on and opt_due:
+            o = await self._optimizer_inputs()
+            if o:
+                image.extra["optimizer"] = o
         # Declarative rules (only when any are configured).
         rules = self._store.control_rules()
         if rules:
@@ -729,9 +834,11 @@ class ControlEngine:
             # Reserve is a safety guard (runs whenever the cycle runs); the tariff
             # controller follows tariff_enabled; everything else the PV master.
             if c.name == EssReserveController.name:
-                active = surplus_on or tariff_on
+                active = surplus_on or tariff_on or optimizer_on
             elif c.name == TariffShiftController.name:
                 active = tariff_on
+            elif c.name == OptimizingController.name:
+                active = optimizer_on
             else:
                 active = surplus_on
             if not active:

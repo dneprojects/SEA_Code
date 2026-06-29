@@ -321,6 +321,33 @@ def test_staged_controller_emits_stage_changes():
     assert {c.entity: c.kind for c in cmds.commands()} == {"switch.s1": "on", "switch.s2": "on"}
 
 
+def test_plan_optimized_charge():
+    from smart_energy_agent.control import plan_optimized_charge
+
+    def slot(pv, load, price):
+        return {"pv_w": pv, "load_w": load, "price_ct": price, "dt_h": 1.0}
+
+    varied = [slot(0, 1000, 10), slot(0, 1000, 15), slot(0, 1000, 20),
+              slot(0, 1000, 25), slot(0, 1000, 28), slot(0, 1000, 30)]
+    # cheapest slot now, capacity unknown -> grid-charge
+    a = plan_optimized_charge(varied, 50, 0, 20, 5000, 1)
+    assert a and a["mode"] == "charge" and a["reason"].startswith("Optimierer")
+    # most expensive now -> discharge to cover load
+    b = plan_optimized_charge([slot(0, 1000, 30)] + varied[:5], 50, 0, 20, 5000, 1)
+    assert b and b["mode"] == "discharge"
+    # PV surplus now wins regardless of price
+    c = plan_optimized_charge([slot(3000, 1000, 30)] + varied[:5], 50, 0, 20, 5000, 1)
+    assert c and c["mode"] == "charge" and c["reason"] == "PV-Überschuss"
+    # grid-optimized: cheap now but the PV forecast will fill the battery -> skip grid-charge
+    pvfill = [slot(0, 500, 10)] + [slot(6000, 500, p) for p in (15, 20, 25, 28, 30)]
+    assert plan_optimized_charge(pvfill, 50, 5, 20, 5000, 1) is None
+    # flat price, no surplus -> idle
+    assert plan_optimized_charge([slot(0, 1000, 20)] * 6, 50, 0, 20, 5000, 1) is None
+    # guards
+    assert plan_optimized_charge([], 50, 0, 20, 5000, 1) is None
+    assert plan_optimized_charge([slot(0, 1000, 20)] * 6, 50, 0, 20, 0, 1) is None
+
+
 def test_run_cycle_folds_in_tariff_and_throttles_to_its_interval():
     from smart_energy_agent import const
     calls = []

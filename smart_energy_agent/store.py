@@ -62,6 +62,7 @@ class Store:
             "retention_days": None,   # None -> use env/default
             "control_enabled": False,  # master switch for PV-surplus control (safety: off)
             "tariff_enabled": False,   # switch for tariff load-shifting (safety: off)
+            "optimizer_enabled": False, # forecast-based battery optimizer (safety: off)
             "rules": [],               # declarative rule engine (list of rule dicts)
             "vehicles": [],            # first-class vehicles (soc_only/chargeable/bidirectional)
             "strategy": DEFAULT_STRATEGY,  # optimization strategy (selection only for now)
@@ -212,7 +213,7 @@ class Store:
 
     def set_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
         for key in ("grid_invert", "battery_invert", "control_enabled",
-                    "tariff_enabled", "surplus_loads_first"):
+                    "tariff_enabled", "optimizer_enabled", "surplus_loads_first"):
             if key in patch and patch[key] is not None:
                 self._settings[key] = bool(patch[key])
         if "retention_days" in patch:
@@ -267,6 +268,38 @@ class Store:
 
     def tariff_enabled(self) -> bool:
         return bool(self._settings.get("tariff_enabled", False))
+
+    def optimizer_enabled(self) -> bool:
+        return bool(self._settings.get("optimizer_enabled", False))
+
+    def price_at(self, ts: Optional[float]) -> Optional[float]:
+        """Expected purchase price (ct/kWh) at epoch ``ts`` for the optimizer's
+        horizon. HT/NT yields a per-slot price (known schedule); static yields the
+        fixed price; dynamic falls back to the current price (no price forecast)."""
+        t = self._settings.get("tariff", {}) or {}
+        mode = t.get("mode", "static")
+        if mode == "ht_nt" and ts is not None:
+            lt = time.localtime(ts)
+            hhmm = lt.tm_hour * 60 + lt.tm_min
+            def _m(s: str) -> Optional[int]:
+                try:
+                    h, m = str(s).split(":"); return int(h) * 60 + int(m)
+                except (ValueError, AttributeError):
+                    return None
+            ns, ne = _m(t.get("nt_start")), _m(t.get("nt_end"))
+            in_nt = False
+            if ns is not None and ne is not None:
+                in_nt = (ns <= hhmm < ne) if ns <= ne else (hhmm >= ns or hhmm < ne)
+            try:
+                return float(t.get("nt_price_ct") if in_nt else t.get("ht_price_ct"))
+            except (TypeError, ValueError):
+                return self.current_price_ct()
+        if mode == "static":
+            try:
+                return float(t.get("price_ct"))
+            except (TypeError, ValueError):
+                return self.current_price_ct()
+        return self.current_price_ct()
 
     def control_rules(self) -> list:
         r = self._settings.get("rules", [])

@@ -225,6 +225,11 @@ class Device:
         return self._num("grid_soc_max", 100.0)
 
     @property
+    def capacity_kwh(self) -> float:
+        """Usable storage capacity (kWh); 0 = unknown (optimizer degrades)."""
+        return self._num("capacity_kwh", 0.0)
+
+    @property
     def min_runtime_s(self) -> int:
         return int(self._cfg.get("min_runtime_min", 0) or 0) * 60
 

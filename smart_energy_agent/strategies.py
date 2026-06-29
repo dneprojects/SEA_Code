@@ -82,4 +82,12 @@ def overview(config: dict[str, Any], settings: dict[str, Any],
         (settings.get("setback") or {}).get("enabled"),
         "Heizen absenken, wenn alle abwesend; vorausschauend vorheizen.")
 
+    has_batt = bool(config.get("battery"))
+    opt_on = bool(settings.get("optimizer_enabled"))
+    miss = [] if has_batt else ["Batterie mit Lade-Sollwert konfigurieren"]
+    add("optimizer", "Prognose-Optimierer (Batterie)", miss, True, opt_on,
+        "Lädt/entlädt die Batterie vorausschauend nach PV-Prognose und Preis: günstig "
+        "laden, teuer entladen, und netzoptimiert (kein Netzladen, wenn die PV den "
+        "Speicher noch füllt). Reserve/Peak bleiben übergeordnet.")
+
     return out

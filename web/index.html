@@ -1715,6 +1715,11 @@
           <div class="panel-title" style="margin:8px 0 6px">Verschiebbare Geräte</div>
           ${deviceRows('tariff_shift')}${statusLine}`;
       }
+      if (st.key === "optimizer") {
+        return `<label style="font-weight:bold;color:var(--fg)">
+            <input type="checkbox" ${appSettings.optimizer_enabled?"checked":""} onchange="toggleOptimizer(this.checked)"> Prognose-Optimierer aktiv</label>
+          <div class="sub" style="margin:4px 0">${st.desc||''}</div>${miss}`;
+      }
       if (st.key === "setback") {
         return `<label style="font-weight:bold;color:var(--fg)">
             <input type="checkbox" ${st.active?"checked":""} onchange="toggleSetbackStrategy(this.checked)"> Temperaturabsenkung aktiv</label>
@@ -1925,6 +1930,13 @@
           headers:{"Content-Type":"application/json"}, body:JSON.stringify({tariff_enabled:on}) });
       } catch(e) {}
       loadConsumers();  // refresh status badge (verfügbar <-> aktiv)
+    }
+    async function toggleOptimizer(on) {
+      try {
+        await fetch(api("/api/settings"), { method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({optimizer_enabled:on}) });
+      } catch(e) {}
+      loadConsumers();
     }
     async function toggleSetbackStrategy(on) {
       try {
