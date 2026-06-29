@@ -54,6 +54,7 @@ class Store:
             "retention_days": None,   # None -> use env/default
             "control_enabled": False,  # master switch for PV-surplus control (safety: off)
             "tariff_enabled": False,   # switch for tariff load-shifting (safety: off)
+            "rules": [],               # declarative rule engine (list of rule dicts)
             "strategy": DEFAULT_STRATEGY,  # optimization strategy (selection only for now)
             "pv_forecast_entity": "",  # HA entity providing a PV power/energy forecast
             # PV-surplus priority when a battery is present:
@@ -224,6 +225,8 @@ class Store:
                 self._settings["peak_limit_w"] = max(0.0, float(pl)) if pl not in (None, "") else 0.0
             except (TypeError, ValueError):
                 pass
+        if "rules" in patch and isinstance(patch["rules"], list):
+            self._settings["rules"] = patch["rules"]
         if patch.get("strategy") in STRATEGY_VALUES:
             self._settings["strategy"] = patch["strategy"]
         if "pv_forecast_entity" in patch:
@@ -255,6 +258,10 @@ class Store:
 
     def tariff_enabled(self) -> bool:
         return bool(self._settings.get("tariff_enabled", False))
+
+    def control_rules(self) -> list:
+        r = self._settings.get("rules", [])
+        return r if isinstance(r, list) else []
 
     def surplus_loads_first(self) -> bool:
         """True = controllable loads have priority over battery charging on PV

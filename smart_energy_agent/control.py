@@ -25,6 +25,7 @@ from .control_core import (
     Command, CommandSet, Controller, Cycle, ProcessImage, apply_commands,
 )
 from .devices import actuator_bounds, devices
+from .rules import RuleController, make_resolver
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -427,7 +428,7 @@ class ControlEngine:
     # (a hard constraint, first) and tariff shifting (last, slow cadence).
     CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
     FULL_CHAIN: list[Controller] = (
-        [PeakShavingController()] + CHAIN + [TariffShiftController()])
+        [PeakShavingController()] + CHAIN + [TariffShiftController(), RuleController()])
 
     def _surplus_signed(self, balance: dict) -> float:
         # PV-surplus signal: + = export available, − = deficit. Folds in battery
@@ -530,6 +531,11 @@ class ControlEngine:
         if tariff_on and tariff_due:
             image.extra["tariff_cheap"] = bool(self._store.tariff_cheap_now().get("cheap"))
             image.extra["tariff_loads"] = self._tariff_loads()
+        # Declarative rules (only when any are configured).
+        rules = self._store.control_rules()
+        if rules:
+            image.extra["rules"] = rules
+            image.extra["rule_resolve"] = make_resolver(image, self._store)
         cmds = CommandSet()                                 # Process (cadence-gated)
         n = len(self.FULL_CHAIN)
         for idx, c in enumerate(self.FULL_CHAIN):
