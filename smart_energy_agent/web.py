@@ -84,7 +84,7 @@ class WebServer:
             self._runner = None
 
     # --- handlers ------------------------------------------------------------
-    async def _index(self, _request: web.Request) -> web.Response:
+    async def _index(self, _request: web.Request) -> web.StreamResponse:
         index_file = const.WEB_DIR / "index.html"
         return web.FileResponse(index_file)
 
@@ -129,6 +129,8 @@ class WebServer:
 
     async def _api_history(self, request: web.Request) -> web.Response:
         q = request.query
+        frm: Optional[int]
+        to: Optional[int]
         try:
             frm, to = int(q["from"]), int(q["to"])
         except (KeyError, ValueError):
@@ -147,7 +149,7 @@ class WebServer:
     def _point(p: dict[str, Any]) -> Optional[tuple[int, float]]:
         """Parse one HA history point -> (epoch_seconds, value), or None."""
         try:
-            v = float(p.get("s", p.get("state")))
+            v = float(p.get("s", p.get("state")))  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return None
         t = p.get("lu", p.get("last_updated", p.get("last_changed")))

@@ -649,7 +649,7 @@ class Store:
                 "switch": "", "setpoint": inst.get("charge_power", ""),
                 "discharge": inst.get("discharge_power", ""),  # forced-discharge actuator (arbitrage)
                 "soc": inst.get("soc", ""),   # SoC entity = the natural stop signal
-                "power_w": _state_power_w(self.live_state(inst.get("power"))) if inst.get("power") else None,
+                "power_w": _state_power_w(self.live_state(str(inst.get("power")))) if inst.get("power") else None,
             })
         # A bidirectional (V2G/V2H) vehicle that is present behaves like storage:
         # emit it with charge + discharge actuators so the capability-driven
@@ -713,13 +713,13 @@ class Store:
         """
         le = cfg.get("limit_entity")
         try:
-            limit = float(cfg.get("limit_max"))
+            limit = float(cfg.get("limit_max"))  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return False
         if not le or limit <= 0:
             return False
         try:
-            return float(self.live_state(le).get("state")) >= limit
+            return float(self.live_state(le).get("state")) >= limit  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return False
 
@@ -813,7 +813,7 @@ class Store:
         per kWh/MWh to ct/kWh. Unit-less or already-ct values pass through.
         """
         try:
-            val = float((state or {}).get("state"))
+            val = float((state or {}).get("state"))  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return None
         unit = str(((state or {}).get("attributes") or {})
@@ -1005,7 +1005,7 @@ class Store:
         unit = (new_state.get("attributes", {}) or {}).get("unit_of_measurement") or e.get("unit")
         if unit in ("W", "kW", "MW"):
             try:
-                val = float(new_state.get("state"))
+                val = float(new_state.get("state"))  # type: ignore[arg-type]
                 factor = 1000.0 if unit == "kW" else (1_000_000.0 if unit == "MW" else 1.0)
                 e["power_w"] = val * factor
             except (TypeError, ValueError):
@@ -1126,7 +1126,7 @@ class Store:
         # Update the live power value for any entity measured/expressed in W/kW.
         if unit in ("W", "kW", "MW"):
             try:
-                val = float(new_state.get("state"))
+                val = float(new_state.get("state"))  # type: ignore[arg-type]
                 factor = 1000.0 if unit == "kW" else (1_000_000.0 if unit == "MW" else 1.0)
                 entity.power_w = val * factor
             except (TypeError, ValueError):
@@ -1304,11 +1304,12 @@ class Store:
         raw = raw if isinstance(raw, dict) else {}
         out: dict[str, Any] = {}
         # grid (single fixed section)
-        g = raw.get("grid") if isinstance(raw.get("grid"), dict) else {}
+        g = raw.get("grid")
+        g = g if isinstance(g, dict) else {}
         grid: dict[str, Any] = {}
         for f in setup_catalog.GRID["fields"]:
-            v = g.get(f["key"])
-            grid[f["key"]] = bool(v) if f["kind"] == "flag" else (str(v) if v else "")
+            v = g.get(f["key"])  # type: ignore[index]
+            grid[f["key"]] = bool(v) if f["kind"] == "flag" else (str(v) if v else "")  # type: ignore[index]
         out["grid"] = grid
         used: set[str] = set()
         for kind in setup_catalog.INSTANCE_KINDS:
@@ -1616,7 +1617,8 @@ class Store:
         entity with its label and live value (regardless of HA device)."""
         groups: list[dict[str, Any]] = []
         g = self._config.get("grid") or {}
-        gitems = self._entity_items(setup_catalog.GRID["fields"], g, invert=bool(g.get("invert")))
+        gitems = self._entity_items(setup_catalog.GRID["fields"], g,  # type: ignore[arg-type]
+                                    invert=bool(g.get("invert")))
         groups.append({"key": "grid", "label": setup_catalog.GRID["label"],
                        "count": len(gitems), "entities": gitems})
         for kind in setup_catalog.INSTANCE_KINDS:
@@ -1788,7 +1790,7 @@ class Store:
                 "SELECT ts, pv_w, grid_w, house_load_w, price_ct "
                 "FROM energy_state WHERE ts >= ? ORDER BY ts", (cutoff,)
             )
-            rows = await cur.fetchall()
+            rows = list(await cur.fetchall())
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("Could not compute savings: %s", err)
             return empty
