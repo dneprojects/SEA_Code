@@ -12,10 +12,23 @@ defaults, …) live here and nowhere else.
 
 from __future__ import annotations
 
+import math
 from typing import Any, Optional
 
 # Entity states that count as "on" for a switchable load.
 ON_STATES = ("on", "heat", "true")
+
+# Device capability categories (the OpenEMS "Nature" analog): controllers select
+# devices by category/capability instead of by concrete kind strings.
+ESS = "ess"                      # battery storage (SoC, charge + optional discharge)
+EVCS = "evcs"                    # EV charging station
+HEAT_PUMP = "heat_pump"
+SETPOINT_LOAD = "setpoint_load"  # modulating numeric load (e.g. heating rod)
+SWITCH_LOAD = "switch_load"      # on/off load
+METER = "meter"                  # nothing controllable
+
+_EVCS_KINDS = ("wallbox", "ev_charger", "evse", "ev", "car", "charger")
+_HEATPUMP_KINDS = ("heat_pump", "heatpump")
 
 
 class Device:
@@ -42,6 +55,47 @@ class Device:
     @property
     def is_battery(self) -> bool:
         return self._d.get("kind") == "battery"
+
+    # --- capability typing (FEMS "Natures") --------------------------------
+    @property
+    def category(self) -> str:
+        """Capability class derived from kind + wiring (see the constants)."""
+        if self.is_battery:
+            return ESS
+        k = self.kind.lower()
+        if k in _EVCS_KINDS:
+            return EVCS
+        if k in _HEATPUMP_KINDS:
+            return HEAT_PUMP
+        if self.setpoint_entity:
+            return SETPOINT_LOAD
+        if self.switch_entity:
+            return SWITCH_LOAD
+        return METER
+
+    @property
+    def is_ess(self) -> bool:
+        return self.is_battery
+
+    @property
+    def is_evcs(self) -> bool:
+        return self.category == EVCS
+
+    @property
+    def can_modulate(self) -> bool:
+        return bool(self.setpoint_entity)
+
+    @property
+    def can_switch(self) -> bool:
+        return bool(self.switch_entity)
+
+    @property
+    def can_force_discharge(self) -> bool:
+        return bool(self.discharge_entity)
+
+    @property
+    def has_soc(self) -> bool:
+        return bool(self._d.get("soc"))
 
     @property
     def priority(self) -> int:
@@ -90,8 +144,13 @@ class Device:
 
     # --- config numbers -----------------------------------------------------
     def _num(self, key: str, default: float) -> float:
+        # Only a missing/blank value falls back to the default — a configured 0
+        # stays 0 (e.g. min_w=0, grid_soc_min=0 are valid settings).
+        v = self._cfg.get(key, default)
+        if v is None or v == "":
+            return float(default)
         try:
-            return float(self._cfg.get(key, default) or default)
+            return float(v)
         except (TypeError, ValueError):
             return float(default)
 
@@ -105,7 +164,7 @@ class Device:
 
     @property
     def wpu(self) -> float:
-        return self._num("w_per_unit", 1.0)
+        return self._num("w_per_unit", 1.0) or 1.0   # 0 would divide -> use 1
 
     @property
     def pv_threshold_w(self) -> float:
@@ -179,7 +238,41 @@ class Device:
         eid = self.switch_entity or self.setpoint_entity
         return self._store.runtime(eid) if eid else {}
 
+    # --- actuator limits ----------------------------------------------------
+    @property
+    def max_unit(self) -> float:
+        """Upper setpoint in the entity's own unit (max_w / w-per-unit)."""
+        return round(self.max_w / self.wpu, 2) if self.max_w > 0 else 0.0
+
+    def actuator_bounds(self) -> dict[str, tuple[float, float]]:
+        """Hard ``[min, max]`` per controllable numeric entity, in its own unit.
+
+        Fed to the controller chain's resolver so no controller (including a
+        future optimizer) can drive a device past its limit. Only an upper bound
+        is set when ``max_w`` is configured; otherwise it stays open (∞).
+        """
+        hi = self.max_w / self.wpu if self.max_w > 0 else math.inf
+        return {ent: (0.0, hi) for ent in (self.setpoint_entity, self.discharge_entity) if ent}
+
 
 def devices(store: Any) -> list[Device]:
     """All strategy devices as typed adapters."""
     return [Device(store, d) for d in store.strategy_devices()]
+
+
+def ess_devices(store: Any) -> list[Device]:
+    """Battery / storage devices."""
+    return [d for d in devices(store) if d.is_ess]
+
+
+def modulating_loads(store: Any) -> list[Device]:
+    """Modulating (setpoint) loads that are not the battery."""
+    return [d for d in devices(store) if d.can_modulate and not d.is_ess]
+
+
+def actuator_bounds(store: Any) -> dict[str, tuple[float, float]]:
+    """Merged hard actuator limits across all devices (for the resolver)."""
+    out: dict[str, tuple[float, float]] = {}
+    for d in devices(store):
+        out.update(d.actuator_bounds())
+    return out

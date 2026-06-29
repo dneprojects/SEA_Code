@@ -80,6 +80,7 @@ class CommandSet:
     _order: list[str] = field(default_factory=list)   # entities by first appearance
     current_source: str = ""
     current_priority: float = 0.0
+    bounds: dict[str, tuple[float, float]] = field(default_factory=dict)  # device [min,max]
 
     def _touch(self, entity: str) -> None:
         if entity not in self._order:
@@ -147,7 +148,7 @@ class CommandSet:
         return [out[e] for e in self._order if e in out]
 
     def commands(self) -> list[Command]:
-        return self._resolve()
+        return self._resolve(self.bounds)
 
     def trace(self) -> list[dict[str, Any]]:
         """Serializable record of what each controller decided (for debugging)."""

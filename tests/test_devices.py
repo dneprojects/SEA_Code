@@ -6,10 +6,11 @@ from smart_energy_agent.devices import Device, devices
 
 
 class FakeStore:
-    def __init__(self, states=None, runtimes=None, truthy=()):
+    def __init__(self, states=None, runtimes=None, truthy=(), devs=None):
         self._s = states or {}
         self._rt = runtimes or {}
         self._truthy = set(truthy)
+        self._devs = devs if devs is not None else [{"key": "x:1", "cfg": {}}]
 
     def live_state(self, eid):
         return self._s.get(eid, {})
@@ -21,7 +22,7 @@ class FakeStore:
         return self._rt.get(eid, {})
 
     def strategy_devices(self):
-        return [{"key": "x:1", "cfg": {}}]
+        return self._devs
 
 
 def _dev(d, **store_kw):
@@ -76,3 +77,48 @@ def test_ready_requires_entity_and_truthy():
 def test_devices_wraps_each_strategy_device():
     out = devices(FakeStore())
     assert len(out) == 1 and isinstance(out[0], Device) and out[0].key == "x:1"
+
+
+def test_category_and_capabilities():
+    bat = _dev({"kind": "battery", "setpoint": "number.bc", "discharge": "number.bd",
+                "soc": "sensor.soc", "cfg": {}})
+    assert bat.category == "ess" and bat.is_ess
+    assert bat.can_modulate and bat.can_force_discharge and bat.has_soc
+    wb = _dev({"kind": "wallbox", "control_mode": "setpoint", "setpoint": "number.wb", "cfg": {}})
+    assert wb.category == "evcs" and wb.is_evcs and not wb.is_ess
+    heat = _dev({"kind": "water_heater", "control_mode": "setpoint", "setpoint": "number.hz", "cfg": {}})
+    assert heat.category == "setpoint_load" and heat.can_modulate and not heat.can_switch
+    pump = _dev({"kind": "pump", "control_mode": "switch", "switch": "switch.p", "cfg": {}})
+    assert pump.category == "switch_load" and pump.can_switch and not pump.can_modulate
+
+
+def test_configured_zero_is_kept_and_wpu_guarded():
+    d = _dev({"cfg": {"grid_soc_max": 0, "min_w": 0}})
+    assert d.grid_soc_max == 0.0          # configured 0 kept (not the 100 default)
+    assert d.min_w == 0.0
+    assert _dev({"cfg": {"w_per_unit": 0}}).wpu == 1.0    # 0 guarded -> 1 (no div/0)
+
+
+def test_actuator_bounds():
+    d = _dev({"kind": "battery", "setpoint": "number.bc", "discharge": "number.bd",
+              "cfg": {"max_w": 3450, "w_per_unit": 690}})
+    b = d.actuator_bounds()
+    assert b["number.bc"] == (0.0, 5.0) and b["number.bd"] == (0.0, 5.0)   # 3450/690 = 5
+    open_hi = _dev({"control_mode": "setpoint", "setpoint": "number.x", "cfg": {}}).actuator_bounds()
+    lo, hi = open_hi["number.x"]
+    assert lo == 0.0 and hi == float("inf")               # no max_w -> open upper bound
+
+
+def test_module_helpers_filter_and_merge_bounds():
+    from smart_energy_agent.devices import actuator_bounds, ess_devices, modulating_loads
+    store = FakeStore(devs=[
+        {"key": "b", "kind": "battery", "setpoint": "number.bc",
+         "cfg": {"max_w": 3450, "w_per_unit": 690}},
+        {"key": "h", "kind": "water_heater", "control_mode": "setpoint", "setpoint": "number.hz",
+         "cfg": {"max_w": 3000}},
+        {"key": "p", "kind": "pump", "control_mode": "switch", "switch": "switch.p", "cfg": {}},
+    ])
+    assert [d.key for d in ess_devices(store)] == ["b"]
+    assert [d.key for d in modulating_loads(store)] == ["h"]
+    bounds = actuator_bounds(store)
+    assert bounds["number.bc"] == (0.0, 5.0) and bounds["number.hz"] == (0.0, 3000.0)

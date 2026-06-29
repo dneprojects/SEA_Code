@@ -37,6 +37,17 @@ def test_constraint_bound_clamps_lower_priority_target():
     assert cs2.commands()[0].value == 1500.0
 
 
+def test_resolve_clamps_to_device_bounds():
+    cs = CommandSet()
+    cs.bounds = {"number.hz": (0.0, 3000.0)}
+    cs.add(Command("number.hz", "set", 5000.0, "too much"))
+    assert cs.commands()[0].value == 3000.0      # clamped to the device max
+    cs2 = CommandSet()
+    cs2.bounds = {"number.hz": (0.0, 3000.0)}
+    cs2.add(Command("number.hz", "set", -10.0, "neg"))
+    assert cs2.commands()[0].value == 0.0        # clamped to the device min
+
+
 def test_cycle_runs_controllers_in_order():
     log = []
 

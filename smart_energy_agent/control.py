@@ -24,7 +24,7 @@ from . import const
 from .control_core import (
     Command, CommandSet, Controller, Cycle, ProcessImage, apply_commands,
 )
-from .devices import devices
+from .devices import actuator_bounds, devices
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -476,6 +476,7 @@ class ControlEngine:
             return None
         image = self.build_image(now)                 # Input
         cmds = Cycle(self.CHAIN).run(image)           # Process
+        cmds.bounds = actuator_bounds(self._store)    # device hard limits
         self.last_trace = cmds.trace()                # who decided what (debug)
         await apply_commands(self._call_service, self._store, cmds)   # Output
         # Return the switch action (if any) for compatibility / logging.
@@ -544,6 +545,7 @@ class ControlEngine:
                 except Exception as err:  # noqa: BLE001
                     _LOGGER.warning("Controller %s failed: %s", c.name, err)
                 self._last_run[c.name] = now
+        cmds.bounds = actuator_bounds(self._store)          # device hard limits
         self.last_trace = cmds.trace()                      # who decided what (debug)
         await apply_commands(self._call_service, self._store, cmds)   # Output
 
