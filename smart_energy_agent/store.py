@@ -593,14 +593,14 @@ class Store:
                     cfg[f] = int(patch[f] or 0)
                 except (TypeError, ValueError):
                     pass
-        for f in ("min_w", "max_w", "w_per_unit", "limit_max",
-                  "grid_soc_min", "grid_soc_max"):  # modulating / stop / grid-charge
+        for f in ("min_w", "max_w", "w_per_unit", "limit_max", "grid_soc_min",
+                  "grid_soc_max", "min_kwh_day", "capacity_kwh"):  # modulating / stop / grid / energy
             if f in patch:
                 try:
                     cfg[f] = float(patch[f] or 0)
                 except (TypeError, ValueError):
                     pass
-        for f in ("limit_entity", "ready_entity", "latest_start"):
+        for f in ("limit_entity", "ready_entity", "latest_start", "sg_relay1", "sg_relay2"):
             if f in patch:
                 cfg[f] = str(patch[f] or "")
         if "stages" in patch and isinstance(patch["stages"], list):

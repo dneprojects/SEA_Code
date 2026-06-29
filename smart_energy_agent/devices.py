@@ -230,6 +230,21 @@ class Device:
         return self._num("capacity_kwh", 0.0)
 
     @property
+    def min_kwh_day(self) -> float:
+        """Staged load: guaranteed minimum energy per day (kWh); 0 = off."""
+        return self._num("min_kwh_day", 0.0)
+
+    @property
+    def sg_relay1(self) -> str:
+        """Heat pump SG-Ready relay 1 (EVU/lock bit)."""
+        return str(self._cfg.get("sg_relay1", "") or "")
+
+    @property
+    def sg_relay2(self) -> str:
+        """Heat pump SG-Ready relay 2 (boost/recommendation bit)."""
+        return str(self._cfg.get("sg_relay2", "") or "")
+
+    @property
     def min_runtime_s(self) -> int:
         return int(self._cfg.get("min_runtime_min", 0) or 0) * 60
 

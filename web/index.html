@@ -1060,9 +1060,21 @@
               `<button class="btn" title="Stufe entfernen" onclick="removeStage('${key}',${si})">×</button>`)).join("")
           : `<div class="frow"><div class="fl"></div><div class="fm"><span class="sub">keine – wird über Schalten/Sollwert geregelt</span></div></div>`;
         h += `<div class="frow"><div class="fl"></div><div class="fm"><button class="btn" onclick="addStage('${key}')">+ Stufe</button> <span class="sub">je Relais eine Schalt-Entität; „max. Leistung" wird gleichmäßig verteilt</span></div></div>`;
+        h += numRow("Mindestmenge/Tag","min_kwh_day","Garantierte Mindest-Energie pro Tag (kWh); notfalls rechtzeitig aus dem Netz. 0 = aus","kWh");
+      }
+      // Heat-pump SG-Ready: two relay entities driving the 4 SG-Ready states.
+      if (d.kind==='heat_pump') {
+        const sgRow = (lbl,fld) => { const cur=cfg[fld];
+          return frow(lbl, cur?`<span class="eid" title="${esc(cur)}">${esc(cur)}</span>`:'<span class="sub">— nicht gewählt —</span>',
+            `<button class="btn" onclick="pickSg('${key}','${fld}')">${cur?'Ändern':'Wählen'}</button>${cur?` <button class="btn" title="entfernen" onclick="setLoad('${key}','${fld}','')">×</button>`:''}`); };
+        h += `<div class="fhead">SG-Ready – optional</div>`;
+        h += sgRow("Relais 1 (Sperre)", "sg_relay1");
+        h += sgRow("Relais 2 (Anhebung)", "sg_relay2");
+        h += `<div class="frow"><div class="fl"></div><div class="fm"><span class="sub">PV-Überschuss ≥ „PV-Schwelle" → Anhebung, ≥ 2× → Zwang; bei teurem Tarif gesperrt</span></div></div>`;
       }
       return h;
     }
+    function pickSg(key, field) { openPickerCb("", "switch", "", eid => setLoad(key, field, eid)); }
     function stagesOf(key) { const sd = (typeof stratByKey!=='undefined') && stratByKey[key]; return (sd && sd.cfg && Array.isArray(sd.cfg.stages)) ? sd.cfg.stages.slice() : []; }
     function addStage(key) { openPickerCb("", "switch", "", eid => { const s = stagesOf(key); s.push(eid); setLoad(key, 'stages', s); }); }
     function removeStage(key, i) { const s = stagesOf(key); s.splice(i, 1); setLoad(key, 'stages', s); }

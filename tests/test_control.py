@@ -321,6 +321,28 @@ def test_staged_controller_emits_stage_changes():
     assert {c.entity: c.kind for c in cmds.commands()} == {"switch.s1": "on", "switch.s2": "on"}
 
 
+def test_staged_force_daily_minimum():
+    from smart_energy_agent.control import staged_force
+    # need 5 kWh, none yet, 3 kW total; midnight target. 12:00 -> 12h left vs 1.67h need -> no
+    assert staged_force(0, 5, 3000, 720, None) is False
+    # 22:30 -> 1.5h left < 1.67h need -> force
+    assert staged_force(0, 5, 3000, 1350, None) is True
+    assert staged_force(5, 5, 3000, 1350, None) is False        # already met
+    assert staged_force(0, 0, 3000, 1350, None) is False        # no minimum
+    assert staged_force(0, 5, 0, 1350, None) is False           # no power
+    # explicit 18:00 target, 16:30 now -> 1.5h left < 1.67h need -> force
+    assert staged_force(0, 5, 3000, 990, 1080) is True
+
+
+def test_plan_sg_ready_states():
+    from smart_energy_agent.control import plan_sg_ready
+    assert plan_sg_ready(0, 1000) == (False, False)             # normal
+    assert plan_sg_ready(1500, 1000) == (False, True)           # recommendation
+    assert plan_sg_ready(2500, 1000) == (True, True)            # forced (>= 2x threshold)
+    assert plan_sg_ready(5000, 1000, expensive=True) == (True, False)   # blocked wins
+    assert plan_sg_ready(5000, 0) == (False, False)             # no threshold -> normal
+
+
 def test_plan_optimized_charge():
     from smart_energy_agent.control import plan_optimized_charge
 

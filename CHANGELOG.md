@@ -2,6 +2,12 @@
 
 ## 0.7.0
 
+- Neu: **Wärmepumpe SG-Ready** — zwei Relais (4 Zustände: normal / Anhebung / Zwang /
+  Sperre) werden aus dem PV-Überschuss (und teurem Tarif) angesteuert.
+
+- Neu: **Mindest-Energie/Tag** für mehrstufige Heizstäbe — wird notfalls rechtzeitig
+  aus dem Netz garantiert (Energie-Pendant zum „spätesten Start").
+
 - Neu: **Prognose-Optimierer (Batterie)** — lädt/entlädt die Batterie vorausschauend
   nach PV-Prognose und Strompreis (günstig laden, teuer entladen) und netzoptimiert
   (kein Netzladen, wenn die PV den Speicher noch füllt). Auf der Strategieseite

@@ -443,20 +443,68 @@ def plan_stages(surplus_signed: float, stages: list[str], stage_power_w: float,
     return []
 
 
+def staged_force(today_kwh: float, min_kwh_day: float, total_power_w: float,
+                 now_min: int, deadline_min: Optional[int]) -> bool:
+    """Whether a staged load must run now to still reach its daily minimum energy.
+
+    Forces on once the time left until the target time (latest_start, else
+    midnight) is only just enough to deliver the remaining deficit at full power
+    — the energy analog of a 'latest start'. 0 minimum / no power → never."""
+    if min_kwh_day <= 0 or total_power_w <= 0:
+        return False
+    deficit = min_kwh_day - today_kwh
+    if deficit <= 0:
+        return False
+    end = deadline_min if deadline_min else 24 * 60
+    time_left_h = max(0.0, (end - now_min) / 60.0)
+    need_h = deficit / (total_power_w / 1000.0)
+    return time_left_h <= need_h
+
+
 class StagedLoadController:
     """Switches a multi-stage load on/off by stage from the PV surplus (the
     full-range heating-rod option: switch / setpoint are handled by the generic
-    controllers, N relays here). No-op without staged devices."""
+    controllers, N relays here). A daily-minimum energy target (min_kwh_day) or a
+    latest-start deadline forces all stages on. No-op without staged devices."""
 
     name = "staged_load"
 
     def process(self, image: ProcessImage, cmds: CommandSet) -> None:
         for s in image.extra.get("staged", []):
-            force = _deadline_due(s["deadline_min"], s["now_min"])
-            reason = "Heizstufe (Deadline)" if force else "Heizstufe (PV-Überschuss)"
+            force = _deadline_due(s["deadline_min"], s["now_min"]) or staged_force(
+                s.get("today_kwh", 0.0), s.get("min_kwh_day", 0.0),
+                s.get("total_power_w", 0.0), s["now_min"], s["deadline_min"])
+            reason = "Heizstufe (Mindestmenge/Deadline)" if force else "Heizstufe (PV-Überschuss)"
             for entity, what in plan_stages(image.surplus_signed, s["stages"],
                                             s["stage_power_w"], s["on_count"], force):
                 cmds.add(Command(entity, what, reason=reason))
+
+
+def plan_sg_ready(surplus_w: float, threshold_w: float,
+                  expensive: bool = False) -> tuple[bool, bool]:
+    """Heat-pump SG-Ready relay pair ``(relay1, relay2)`` for the 4 states:
+    ``[0,0]`` normal · ``[0,1]`` recommendation (soak surplus) · ``[1,1]`` forced
+    on (lots of surplus) · ``[1,0]`` blocked (expensive/peak tariff)."""
+    if expensive:
+        return (True, False)                              # state 1: EVU lock
+    if threshold_w > 0 and surplus_w >= 2 * threshold_w:
+        return (True, True)                               # state 4: forced on
+    if threshold_w > 0 and surplus_w >= threshold_w:
+        return (False, True)                              # state 3: recommendation
+    return (False, False)                                 # state 2: normal
+
+
+class HeatPumpController:
+    """SG-Ready heat pump: maps the PV surplus (and an expensive tariff) onto the
+    2-relay / 4-state SG-Ready signal. No-op without sg-relay devices."""
+
+    name = "heat_pump"
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        for h in image.extra.get("heatpumps", []):
+            r1, r2 = plan_sg_ready(image.surplus_signed, h["threshold_w"], h.get("expensive", False))
+            cmds.add(Command(h["relay1"], "on" if r1 else "off", reason="WP SG-Ready"))
+            cmds.add(Command(h["relay2"], "on" if r2 else "off", reason="WP SG-Ready"))
 
 
 def plan_optimized_charge(slots: list[dict], soc: float, capacity_kwh: float,
@@ -536,6 +584,7 @@ class ControlEngine:
         self._call_service = call_service
         self._last_run: dict[str, float] = {}   # controller name -> last run time
         self.last_trace: list[dict] = []        # last cycle's command trace (debug)
+        self._staged_energy: dict[str, dict] = {}   # staged device key -> {day, kwh}
 
     def _build(self) -> list[ConsumerDecision]:
         """Switchable PV-surplus auto-consumers, as decision records."""
@@ -613,7 +662,7 @@ class ControlEngine:
     CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
     FULL_CHAIN: list[Controller] = [
         EssReserveController(), PeakShavingController(), OptimizingController(),
-        EvcsController(), StagedLoadController(), *CHAIN,
+        EvcsController(), StagedLoadController(), HeatPumpController(), *CHAIN,
         TariffShiftController(), RuleController()]
 
     def _surplus_signed(self, balance: dict) -> float:
@@ -652,9 +701,13 @@ class ControlEngine:
         return str(self._store.live_state(entity).get("state", "")).lower() in ON_STATES
 
     def _staged_inputs(self) -> list[dict]:
-        """Inputs for staged (multi-relay) loads participating in PV surplus."""
+        """Inputs for staged (multi-relay) loads participating in PV surplus.
+        Also accumulates today's delivered energy (per device, reset at midnight)
+        so the daily-minimum guarantee can force stages on in time."""
         lt = time.localtime()
         now_min = lt.tm_hour * 60 + lt.tm_min
+        day = lt.tm_year * 10000 + lt.tm_mon * 100 + lt.tm_mday
+        dt_h = const.CONTROL_INTERVAL / 3600.0
         out = []
         for dev in select(self._store, CAP_STAGED):
             if not dev.self_consumption:
@@ -662,11 +715,29 @@ class ControlEngine:
             stages = dev.stages
             if not stages or dev.max_w <= 0:
                 continue
+            sp = dev.max_w / len(stages)
+            on_count = sum(1 for e in stages if self._is_on(e))
+            acc = self._staged_energy.get(dev.key)
+            if not acc or acc.get("day") != day:
+                acc = {"day": day, "kwh": 0.0}
+            acc["kwh"] += on_count * sp / 1000.0 * dt_h     # estimate from on stages
+            self._staged_energy[dev.key] = acc
             out.append({
-                "stages": stages, "stage_power_w": dev.max_w / len(stages),
-                "on_count": sum(1 for e in stages if self._is_on(e)),
+                "stages": stages, "stage_power_w": sp, "on_count": on_count,
                 "deadline_min": _hhmm_to_min(dev.latest_start), "now_min": now_min,
+                "min_kwh_day": dev.min_kwh_day, "today_kwh": acc["kwh"],
+                "total_power_w": dev.max_w,
             })
+        return out
+
+    def _heatpump_inputs(self, expensive: bool) -> list[dict]:
+        """SG-Ready heat pumps (two relay entities) participating in PV surplus."""
+        out = []
+        for dev in devices(self._store):
+            if not dev.self_consumption or not (dev.sg_relay1 and dev.sg_relay2):
+                continue
+            out.append({"relay1": dev.sg_relay1, "relay2": dev.sg_relay2,
+                        "threshold_w": dev.pv_threshold_w or dev.max_w, "expensive": expensive})
         return out
 
     async def _optimizer_inputs(self) -> Optional[dict]:
@@ -810,6 +881,10 @@ class ControlEngine:
             staged = self._staged_inputs()
             if staged:
                 image.extra["staged"] = staged
+            expensive = tariff_on and not bool(self._store.tariff_cheap_now().get("cheap"))
+            hp = self._heatpump_inputs(expensive)
+            if hp:
+                image.extra["heatpumps"] = hp
         # Tariff inputs are gathered only when tariff shifting is on and due.
         tariff_due = (now - self._last_run.get(TariffShiftController.name, -1e18)
                       ) >= (const.TARIFF_INTERVAL - 1)
