@@ -297,6 +297,30 @@ def test_evcs_controller_switch_and_setpoint():
     assert {c.entity: c for c in cmds3.commands()}["number.wb"].value == 6.0
 
 
+def test_plan_stages_surplus_and_deadline():
+    from smart_energy_agent.control import plan_stages
+    st = ["switch.s1", "switch.s2", "switch.s3"]
+    assert plan_stages(2500, st, 1000, 0) == [("switch.s1", "on"), ("switch.s2", "on")]
+    # importing with 3 on: gross = -1500 + 3000 = 1500 -> target 1 -> shed s2, s3
+    assert plan_stages(-1500, st, 1000, 3) == [("switch.s2", "off"), ("switch.s3", "off")]
+    assert plan_stages(200, st, 1000, 1) == []                  # steady (target == on_count)
+    assert plan_stages(-9999, st, 1000, 0, force=True) == [
+        ("switch.s1", "on"), ("switch.s2", "on"), ("switch.s3", "on")]   # deadline forces all
+    assert plan_stages(5000, [], 1000, 0) == [] and plan_stages(5000, st, 0, 0) == []
+
+
+def test_staged_controller_emits_stage_changes():
+    from smart_energy_agent.control import StagedLoadController
+    from smart_energy_agent.control_core import CommandSet, ProcessImage
+    img = ProcessImage(now=0.0, surplus_signed=2500.0)
+    img.extra["staged"] = [{"stages": ["switch.s1", "switch.s2", "switch.s3"],
+                            "stage_power_w": 1000.0, "on_count": 0,
+                            "deadline_min": None, "now_min": 600}]
+    cmds = CommandSet()
+    StagedLoadController().process(img, cmds)
+    assert {c.entity: c.kind for c in cmds.commands()} == {"switch.s1": "on", "switch.s2": "on"}
+
+
 def test_run_cycle_folds_in_tariff_and_throttles_to_its_interval():
     from smart_energy_agent import const
     calls = []

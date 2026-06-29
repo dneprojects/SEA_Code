@@ -570,6 +570,8 @@ class Store:
         for f in ("limit_entity", "ready_entity", "latest_start"):
             if f in patch:
                 cfg[f] = str(patch[f] or "")
+        if "stages" in patch and isinstance(patch["stages"], list):
+            cfg["stages"] = [str(s) for s in patch["stages"] if s]
         self._save_settings()
         return True
 

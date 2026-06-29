@@ -157,8 +157,8 @@
     .topbar .titlebox{text-align:right}
     .topbar .apptitle{font-family:var(--ui);font-size:24px;font-weight:400;color:#5f6b76;letter-spacing:.01em}
     .topbar .status{display:none}                /* status moved to the dashboard */
-    .bannerwrap{position:relative}
-    .banner{height:96px;width:100%;display:block}
+    .bannerwrap{position:relative;background:#561f1c}   /* fallback if the image is missing */
+    .banner{height:96px;width:100%;display:block;object-fit:cover;object-position:center}
     .banner-overlay{position:absolute;inset:0;display:flex;align-items:center;gap:14px;padding:0 14px;pointer-events:none}
     .menu-btn{display:none;position:static;width:36px;height:36px;border:none;background:none;padding:0;color:#fff;flex:none;
       align-items:center;justify-content:center;cursor:pointer;pointer-events:auto}
@@ -373,19 +373,7 @@
       </div>
     </div>
     <div class="bannerwrap">
-      <svg class="banner" viewBox="0 0 1024 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-        <defs><linearGradient id="rg5" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#561f1c"/><stop offset="0.55" stop-color="#7d2723"/><stop offset="1" stop-color="#c0392e"/></linearGradient></defs>
-        <rect width="1024" height="120" fill="url(#rg5)"/>
-        <g fill="none" stroke-linecap="round">
-          <path d="M0 74 Q170 50 340 74 T680 74 T1024 74" stroke="#fff" stroke-width="1.6" opacity="0.16"/>
-          <path d="M0 88 Q150 66 300 88 T600 88 T900 88 T1024 88" stroke="#ffd9d4" stroke-width="1.3" opacity="0.10"/>
-          <path d="M0 60 Q200 40 400 60 T800 60 T1024 60" stroke="#fff" stroke-width="1.2" opacity="0.20"/>
-        </g>
-        <g stroke="#fff" stroke-width="1.4" fill="none" opacity="0.40" stroke-linecap="round">
-          <circle cx="864" cy="44" r="16"/>
-          <g opacity="0.85"><line x1="864" y1="16" x2="864" y2="9"/><line x1="864" y1="72" x2="864" y2="79"/><line x1="836" y1="44" x2="829" y2="44"/><line x1="892" y1="44" x2="899" y2="44"/><line x1="844" y1="24" x2="839" y2="19"/><line x1="884" y1="64" x2="889" y2="69"/><line x1="884" y1="24" x2="889" y2="19"/><line x1="844" y1="64" x2="839" y2="69"/></g>
-        </g>
-      </svg>
+      <img class="banner" src="sea-banner.png" alt="" aria-hidden="true">
       <div class="banner-overlay">
         <button class="menu-btn" onclick="toggleMenu()" aria-label="Menü"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
         <span class="apptitle-mobile">Smart Energy Agent</span>

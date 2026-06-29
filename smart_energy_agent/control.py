@@ -25,7 +25,7 @@ from .control_core import (
     Command, CommandSet, Controller, Cycle, ProcessImage, apply_commands,
 )
 from .devices import (
-    CAP_CHARGE, CAP_DISCHARGE, actuator_bounds, devices, select)
+    CAP_CHARGE, CAP_DISCHARGE, CAP_STAGED, ON_STATES, actuator_bounds, devices, select)
 from .rules import RuleController, make_resolver
 
 _LOGGER = logging.getLogger(__name__)
@@ -419,6 +419,46 @@ class EvcsController:
                     cmds.add(Command(e["setpoint"], "set", 0.0, label))
 
 
+def plan_stages(surplus_signed: float, stages: list[str], stage_power_w: float,
+                on_count: int, force: bool = False) -> list[tuple[str, str]]:
+    """Pure planner for a staged load (e.g. a 3-relay heating rod).
+
+    The number of stages the PV can support = ``gross_surplus // stage_power``,
+    where ``gross`` adds back the power the currently-on stages already draw (the
+    live surplus already nets them out). Stages fill bottom-up; returns only the
+    *changed* stage switches as ``(entity, "on"/"off")``. ``force`` (a deadline)
+    turns all stages on regardless of surplus."""
+    n = len(stages)
+    if n == 0 or stage_power_w <= 0:
+        return []
+    if force:
+        target = n
+    else:
+        gross = surplus_signed + on_count * stage_power_w
+        target = max(0, min(n, int(gross // stage_power_w)))
+    if target > on_count:
+        return [(stages[i], "on") for i in range(on_count, target)]
+    if target < on_count:
+        return [(stages[i], "off") for i in range(target, on_count)]
+    return []
+
+
+class StagedLoadController:
+    """Switches a multi-stage load on/off by stage from the PV surplus (the
+    full-range heating-rod option: switch / setpoint are handled by the generic
+    controllers, N relays here). No-op without staged devices."""
+
+    name = "staged_load"
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        for s in image.extra.get("staged", []):
+            force = _deadline_due(s["deadline_min"], s["now_min"])
+            reason = "Heizstufe (Deadline)" if force else "Heizstufe (PV-Überschuss)"
+            for entity, what in plan_stages(image.surplus_signed, s["stages"],
+                                            s["stage_power_w"], s["on_count"], force):
+                cmds.add(Command(entity, what, reason=reason))
+
+
 class ControlEngine:
     """Builds the process image from the store and runs the unified control cycle
     (PV-surplus every tick + tariff shifting at its slower cadence)."""
@@ -504,8 +544,8 @@ class ControlEngine:
     # (a hard constraint, first) and tariff shifting (last, slow cadence).
     CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
     FULL_CHAIN: list[Controller] = [
-        EssReserveController(), PeakShavingController(), EvcsController(), *CHAIN,
-        TariffShiftController(), RuleController()]
+        EssReserveController(), PeakShavingController(), EvcsController(),
+        StagedLoadController(), *CHAIN, TariffShiftController(), RuleController()]
 
     def _surplus_signed(self, balance: dict) -> float:
         # PV-surplus signal: + = export available, − = deficit. Folds in battery
@@ -538,6 +578,27 @@ class ControlEngine:
                  "max_w": dev.max_w, "wpu": dev.wpu, "soc": dev.soc,
                  "reserve": dev.grid_soc_min}
                 for dev in select(self._store, CAP_DISCHARGE)]
+
+    def _is_on(self, entity: str) -> bool:
+        return str(self._store.live_state(entity).get("state", "")).lower() in ON_STATES
+
+    def _staged_inputs(self) -> list[dict]:
+        """Inputs for staged (multi-relay) loads participating in PV surplus."""
+        lt = time.localtime()
+        now_min = lt.tm_hour * 60 + lt.tm_min
+        out = []
+        for dev in select(self._store, CAP_STAGED):
+            if not dev.self_consumption:
+                continue
+            stages = dev.stages
+            if not stages or dev.max_w <= 0:
+                continue
+            out.append({
+                "stages": stages, "stage_power_w": dev.max_w / len(stages),
+                "on_count": sum(1 for e in stages if self._is_on(e)),
+                "deadline_min": _hhmm_to_min(dev.latest_start), "now_min": now_min,
+            })
+        return out
 
     def _state_num(self, entity: str) -> Optional[float]:
         if not entity:
@@ -648,6 +709,9 @@ class ControlEngine:
             evcs = self._evcs_inputs()
             if evcs:
                 image.extra["evcs"] = evcs
+            staged = self._staged_inputs()
+            if staged:
+                image.extra["staged"] = staged
         # Tariff inputs are gathered only when tariff shifting is on and due.
         tariff_due = (now - self._last_run.get(TariffShiftController.name, -1e18)
                       ) >= (const.TARIFF_INTERVAL - 1)
