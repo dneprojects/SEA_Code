@@ -63,6 +63,8 @@ class WebServer:
         self._app.router.add_get("/api/categories", self._api_categories)
         self._app.router.add_get("/api/thermostats", self._api_thermostats_get)
         self._app.router.add_post("/api/thermostats", self._api_thermostats_post)
+        self._app.router.add_get("/api/vehicles", self._api_vehicles_get)
+        self._app.router.add_post("/api/vehicles", self._api_vehicles_post)
         self._app.router.add_static(
             "/static", str(const.WEB_DIR), show_index=False
         )
@@ -258,6 +260,19 @@ class WebServer:
             "ok": True, "setback": sb,
             "presence": {g.get("id"): self._store.group_present(g) for g in groups},
         })
+
+    async def _api_vehicles_get(self, _request: web.Request) -> web.Response:
+        chargers = [{"key": d["key"], "name": d["name"]}
+                    for d in self._store.controllable_devices() if d.get("kind") == "ev_charger"]
+        return web.json_response({"vehicles": self._store.vehicles(), "chargers": chargers})
+
+    async def _api_vehicles_post(self, request: web.Request) -> web.Response:
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "invalid json"}, status=400)
+        vehicles = body.get("vehicles") if isinstance(body, dict) else body
+        return web.json_response({"ok": True, "vehicles": self._store.set_vehicles(vehicles or [])})
 
     async def _api_settings_get(self, _request: web.Request) -> web.Response:
         from . import __version__

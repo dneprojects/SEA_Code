@@ -539,20 +539,39 @@ class ControlEngine:
                  "reserve": dev.grid_soc_min}
                 for dev in select(self._store, CAP_DISCHARGE)]
 
+    def _state_num(self, entity: str) -> Optional[float]:
+        if not entity:
+            return None
+        try:
+            return float(self._store.live_state(entity).get("state"))
+        except (TypeError, ValueError):
+            return None
+
     def _evcs_inputs(self) -> list[dict]:
-        """Gate inputs for participating EV chargers (wallboxes)."""
+        """Gate inputs for participating EV chargers (wallboxes). When a vehicle
+        is linked and present, its SoC/target/deadline drive the stop condition;
+        otherwise the charger's own config applies (backward compatible)."""
         lt = time.localtime()
         now_min = lt.tm_hour * 60 + lt.tm_min
         out = []
         for dev in devices(self._store):
             if not dev.is_evcs or not dev.self_consumption:
                 continue
+            veh = self._store.vehicle_for_charger(dev.key)
+            if veh:
+                soc = self._state_num(veh.get("soc_entity", ""))
+                target = float(veh.get("target_soc") or 0)
+                satisfied = bool(target > 0 and soc is not None and soc >= target)
+                deadline_min = _hhmm_to_min(str(veh.get("deadline") or ""))
+            else:
+                satisfied = dev.satisfied
+                deadline_min = _hhmm_to_min(dev.latest_start)
             out.append({
                 "switch": dev.switch_entity, "setpoint": dev.setpoint_entity, "mode": dev.mode,
                 "min_unit": round(dev.min_w / dev.wpu, 2),
                 "connected_set": bool(dev.ready_entity), "connected": dev.ready,
-                "satisfied": dev.satisfied, "from_grid": dev.charge_from_grid,
-                "deadline_min": _hhmm_to_min(dev.latest_start), "now_min": now_min,
+                "satisfied": satisfied, "from_grid": dev.charge_from_grid,
+                "deadline_min": deadline_min, "now_min": now_min,
             })
         return out
 

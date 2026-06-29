@@ -127,7 +127,10 @@ class Device:
             caps.add(CAP_STAGED)
         if self.setpoint_entity:
             caps.add(CAP_MODULATE)
-            if self.is_battery:
+            # A charge setpoint means "chargeable storage" for a battery or any
+            # device that can also discharge (a V2G vehicle) — not for a plain
+            # modulating load (heating rod), which only has CAP_MODULATE.
+            if self.is_battery or self.discharge_entity:
                 caps.add(CAP_CHARGE)
         if self.discharge_entity:           # battery discharge, or a V2G vehicle
             caps.add(CAP_DISCHARGE)

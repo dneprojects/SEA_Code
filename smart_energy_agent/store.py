@@ -29,6 +29,14 @@ from .models import (
 _LOGGER = logging.getLogger(__name__)
 
 
+def _f(v: Any, default: float = 0.0) -> float:
+    """Coerce to float; missing/blank/invalid -> default (a configured 0 is kept)."""
+    try:
+        return float(v) if v not in (None, "") else default
+    except (TypeError, ValueError):
+        return default
+
+
 class Store:
     """Holds the current set of classified energy entities + user overrides."""
 
@@ -55,6 +63,7 @@ class Store:
             "control_enabled": False,  # master switch for PV-surplus control (safety: off)
             "tariff_enabled": False,   # switch for tariff load-shifting (safety: off)
             "rules": [],               # declarative rule engine (list of rule dicts)
+            "vehicles": [],            # first-class vehicles (soc_only/chargeable/bidirectional)
             "strategy": DEFAULT_STRATEGY,  # optimization strategy (selection only for now)
             "pv_forecast_entity": "",  # HA entity providing a PV power/energy forecast
             # PV-surplus priority when a battery is present:
@@ -262,6 +271,42 @@ class Store:
     def control_rules(self) -> list:
         r = self._settings.get("rules", [])
         return r if isinstance(r, list) else []
+
+    # --- vehicles (first-class, decoupled from the charger) -----------------
+    def vehicles(self) -> list[dict[str, Any]]:
+        v = self._settings.get("vehicles", [])
+        return v if isinstance(v, list) else []
+
+    def set_vehicles(self, vehicles: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Replace the vehicle list (the UI sends the whole list). Stamps ids."""
+        if isinstance(vehicles, list):
+            clean: list[dict[str, Any]] = []
+            used: set[str] = {str(v["id"]) for v in vehicles
+                              if isinstance(v, dict) and v.get("id")}
+            for v in vehicles:
+                if not isinstance(v, dict):
+                    continue
+                v = dict(v)
+                if not v.get("id"):
+                    v["id"] = self._gen_id("veh", used)
+                clean.append(v)
+            self._settings["vehicles"] = clean
+            self._save_settings()
+        return self.vehicles()
+
+    def _vehicle_present(self, v: dict[str, Any]) -> bool:
+        """Whether this vehicle is currently connected/present. With no presence
+        entity a vehicle counts as present (single-car case)."""
+        pe = v.get("present_entity")
+        return self.entity_truthy(pe) if pe else True
+
+    def vehicle_for_charger(self, charger_key: str) -> Optional[dict[str, Any]]:
+        """The present vehicle linked to a charger (for the EVCS stop/target), or
+        None when no linked vehicle is currently present."""
+        for v in self.vehicles():
+            if v.get("charger_key") == charger_key and self._vehicle_present(v):
+                return v
+        return None
 
     def surplus_loads_first(self) -> bool:
         """True = controllable loads have priority over battery charging on PV
@@ -475,6 +520,28 @@ class Store:
                 "soc": inst.get("soc", ""),   # SoC entity = the natural stop signal
                 "power_w": _state_power_w(self.live_state(inst.get("power"))) if inst.get("power") else None,
             })
+        # A bidirectional (V2G/V2H) vehicle that is present behaves like storage:
+        # emit it with charge + discharge actuators so the capability-driven
+        # controllers (reserve, peak shaving, self-consumption) pick it up. Its
+        # storage parameters come from the vehicle config (not strategy_loads).
+        for veh in self.vehicles():
+            if (veh.get("capability") != "bidirectional" or not veh.get("discharge_entity")
+                    or not self._vehicle_present(veh)):
+                continue
+            out.append({
+                "key": f"vehicle:{veh.get('id')}", "kind": "vehicle", "kind_label": "Fahrzeug",
+                "name": veh.get("name", "Fahrzeug"), "control_mode": "setpoint",
+                "switch": "", "setpoint": veh.get("charge_entity", ""),
+                "discharge": veh.get("discharge_entity", ""), "soc": veh.get("soc_entity", ""),
+                "power_w": None,
+                "_cfg": {
+                    "self_consumption": True, "priority": 5,
+                    "max_w": _f(veh.get("max_w")), "w_per_unit": _f(veh.get("w_per_unit"), 1.0),
+                    "grid_soc_min": _f(veh.get("reserve_soc")),
+                    "grid_soc_max": _f(veh.get("target_soc"), 100.0),
+                    "limit_entity": veh.get("soc_entity", ""), "limit_max": _f(veh.get("target_soc")),
+                },
+            })
         return out
 
     def strategy_loads(self) -> dict[str, Any]:
@@ -533,6 +600,7 @@ class Store:
                    "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1,
                    "limit_entity": "", "limit_max": 0, "ready_entity": "", "latest_start": "",
                    "grid_soc_min": 0, "grid_soc_max": 100, "interruptible": True}
+            cfg.update(d.get("_cfg", {}))          # device-provided cfg (e.g. a vehicle)
             cfg.update(sl.get(d["key"], {}))
             # The battery's stop signal is always its SoC — fill it in automatically
             # so the UI only asks for the threshold (active once limit_max > 0).
