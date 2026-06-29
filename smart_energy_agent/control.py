@@ -24,7 +24,8 @@ from . import const
 from .control_core import (
     Command, CommandSet, Controller, Cycle, ProcessImage, apply_commands,
 )
-from .devices import actuator_bounds, devices
+from .devices import (
+    CAP_CHARGE, CAP_DISCHARGE, actuator_bounds, devices, select)
 from .rules import RuleController, make_resolver
 
 _LOGGER = logging.getLogger(__name__)
@@ -531,15 +532,12 @@ class ControlEngine:
         )
 
     def _peak_batteries(self) -> list[dict]:
-        """Batteries usable for peak shaving (have a forced-discharge setpoint)."""
-        out = []
-        for dev in devices(self._store):
-            if not dev.is_battery or not dev.discharge_entity:
-                continue
-            out.append({"discharge": dev.discharge_entity, "charge": dev.setpoint_entity,
-                        "max_w": dev.max_w, "wpu": dev.wpu, "soc": dev.soc,
-                        "reserve": dev.grid_soc_min})
-        return out
+        """Storage usable for peak shaving — anything with a forced-discharge
+        actuator (battery today, a V2G vehicle later)."""
+        return [{"discharge": dev.discharge_entity, "charge": dev.setpoint_entity,
+                 "max_w": dev.max_w, "wpu": dev.wpu, "soc": dev.soc,
+                 "reserve": dev.grid_soc_min}
+                for dev in select(self._store, CAP_DISCHARGE)]
 
     def _evcs_inputs(self) -> list[dict]:
         """Gate inputs for participating EV chargers (wallboxes)."""
@@ -614,10 +612,12 @@ class ControlEngine:
         if not (surplus_on or tariff_on):
             return
         image = self.build_image(now)                       # Input
-        # Battery reserve/care inputs (safety guard, always available).
+        # Storage reserve/care inputs (safety guard, always available). Capability-
+        # driven: any chargeable/dischargeable storage, incl. a future V2G vehicle.
         ess = [{"discharge": d.discharge_entity, "charge": d.setpoint_entity,
                 "soc": d.soc, "reserve": d.grid_soc_min, "soc_max": d.grid_soc_max}
-               for d in devices(self._store) if d.is_ess]
+               for d in devices(self._store)
+               if d.has_cap(CAP_CHARGE) or d.has_cap(CAP_DISCHARGE)]
         if ess:
             image.extra["ess_batteries"] = ess
         # Peak shaving inputs (surplus master on + a configured cap).

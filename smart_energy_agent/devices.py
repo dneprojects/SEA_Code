@@ -30,6 +30,20 @@ METER = "meter"                  # nothing controllable
 _EVCS_KINDS = ("wallbox", "ev_charger", "evse", "ev", "car", "charger")
 _HEATPUMP_KINDS = ("heat_pump", "heatpump")
 
+# Capabilities ("Natures"): a device is described by the set of these it has, and
+# controllers select devices by capability rather than by concrete kind — so a
+# new device type (e.g. a V2G vehicle = STORAGE_DISCHARGE) is picked up by the
+# existing controllers without new control logic.
+CAP_METER = "meter"
+CAP_SWITCH = "switch_load"          # on/off actuator
+CAP_MODULATE = "modulating_load"    # power setpoint actuator
+CAP_STAGED = "staged_load"          # N discrete stages (k relays)
+CAP_CHARGE = "storage_charge"       # chargeable storage (charge actuator + SoC)
+CAP_DISCHARGE = "storage_discharge" # dischargeable storage (battery / V2G)
+CAP_SOC = "soc"                     # exposes a state of charge
+CAP_CONNECTABLE = "connectable"     # plugged / ready signal
+CAP_THERMAL = "thermal"             # temperature target
+
 
 class Device:
     """Read-only typed view over one strategy device + the live store."""
@@ -96,6 +110,35 @@ class Device:
     @property
     def has_soc(self) -> bool:
         return bool(self._d.get("soc"))
+
+    @property
+    def stages(self) -> list[str]:
+        """Stage switch entities for a staged load (e.g. a 3-stage heating rod)."""
+        st = self._cfg.get("stages")
+        return [str(s) for s in st if s] if isinstance(st, list) else []
+
+    def capabilities(self) -> set[str]:
+        """The set of capabilities ("Natures") this device exposes, derived from
+        its wiring. Controllers query these instead of the concrete ``kind``."""
+        caps: set[str] = set()
+        if self.switch_entity:
+            caps.add(CAP_SWITCH)
+        if self.stages:
+            caps.add(CAP_STAGED)
+        if self.setpoint_entity:
+            caps.add(CAP_MODULATE)
+            if self.is_battery:
+                caps.add(CAP_CHARGE)
+        if self.discharge_entity:           # battery discharge, or a V2G vehicle
+            caps.add(CAP_DISCHARGE)
+        if self._d.get("soc"):
+            caps.add(CAP_SOC)
+        if self.ready_entity:
+            caps.add(CAP_CONNECTABLE)
+        return caps
+
+    def has_cap(self, cap: str) -> bool:
+        return cap in self.capabilities()
 
     @property
     def priority(self) -> int:
@@ -263,6 +306,11 @@ class Device:
 def devices(store: Any) -> list[Device]:
     """All strategy devices as typed adapters."""
     return [Device(store, d) for d in store.strategy_devices()]
+
+
+def select(store: Any, cap: str) -> list[Device]:
+    """All devices exposing capability ``cap`` (the capability-driven query)."""
+    return [d for d in devices(store) if d.has_cap(cap)]
 
 
 def ess_devices(store: Any) -> list[Device]:

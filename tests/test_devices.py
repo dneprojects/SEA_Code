@@ -109,6 +109,34 @@ def test_actuator_bounds():
     assert lo == 0.0 and hi == float("inf")               # no max_w -> open upper bound
 
 
+def test_capabilities_derived_from_wiring():
+    from smart_energy_agent.devices import (
+        CAP_CHARGE, CAP_CONNECTABLE, CAP_DISCHARGE, CAP_MODULATE, CAP_SOC, CAP_STAGED, CAP_SWITCH)
+    bat = _dev({"kind": "battery", "setpoint": "number.bc", "discharge": "number.bd",
+                "soc": "sensor.soc", "cfg": {}})
+    assert bat.capabilities() == {CAP_MODULATE, CAP_CHARGE, CAP_DISCHARGE, CAP_SOC}
+    heat = _dev({"kind": "water_heater", "control_mode": "setpoint", "setpoint": "number.hz", "cfg": {}})
+    assert heat.capabilities() == {CAP_MODULATE}        # modulating load, not storage
+    sw = _dev({"kind": "pump", "control_mode": "switch", "switch": "switch.p",
+               "cfg": {"ready_entity": "binary_sensor.x"}})
+    assert sw.capabilities() == {CAP_SWITCH, CAP_CONNECTABLE}
+    staged = _dev({"kind": "water_heater", "switch": "switch.s",
+                   "cfg": {"stages": ["switch.s1", "switch.s2"]}})
+    assert CAP_STAGED in staged.capabilities()
+    # V2G vehicle: a discharge actuator but not the battery kind -> still dischargeable storage
+    v2g = _dev({"kind": "vehicle", "discharge": "number.vd", "soc": "sensor.car", "cfg": {}})
+    assert CAP_DISCHARGE in v2g.capabilities() and CAP_SOC in v2g.capabilities()
+
+
+def test_select_filters_by_capability():
+    from smart_energy_agent.devices import CAP_DISCHARGE, select
+    store = FakeStore(devs=[
+        {"key": "b", "kind": "battery", "setpoint": "number.bc", "discharge": "number.bd", "cfg": {}},
+        {"key": "h", "kind": "water_heater", "control_mode": "setpoint", "setpoint": "number.hz", "cfg": {}},
+    ])
+    assert [d.key for d in select(store, CAP_DISCHARGE)] == ["b"]
+
+
 def test_module_helpers_filter_and_merge_bounds():
     from smart_energy_agent.devices import actuator_bounds, ess_devices, modulating_loads
     store = FakeStore(devs=[
