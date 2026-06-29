@@ -104,9 +104,9 @@ def classify_state(
     area_id = meta.get("area_id") or (
         (area_by_device or {}).get(device_id) if device_id else None
     )
-    area = (area_names or {}).get(area_id, area_id)
+    area = (area_names or {}).get(area_id, area_id) if area_id is not None else None
 
-    role: Optional[str] = None
+    role: Optional[EnergyRole] = None
     confidence = 0.0
     reason = ""
 
@@ -283,7 +283,7 @@ def _subrole(domain: str, device_class: Optional[str], unit: Optional[str],
     return SubRole.OTHER
 
 
-def classify_device(meta: dict[str, Any], ents: list[dict[str, Any]]) -> tuple[str, float, str]:
+def classify_device(meta: dict[str, Any], ents: list[dict[str, Any]]) -> tuple[DeviceType, float, str]:
     """Determine the semantic device type from registry meta + entity composition."""
     parts = [meta.get("name"), meta.get("model"), meta.get("manufacturer"), meta.get("integration")]
     # Only let non-diagnostic/config entity names influence the name matching.

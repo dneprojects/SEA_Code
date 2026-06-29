@@ -28,7 +28,7 @@ def _state_power_w(state: Optional[dict[str, Any]]) -> Optional[float]:
     if not state:
         return None
     try:
-        val = float(state.get("state"))
+        val = float(state.get("state"))  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
     unit = (state.get("attributes") or {}).get("unit_of_measurement")
@@ -44,7 +44,7 @@ LOAD_KINDS = ("heat_pump", "water_heater", "ev_charger", "consumers")
 
 def _powers_of(inst: dict[str, Any]) -> list[str]:
     """Entity ids of an instance's named power sub-list."""
-    return [p.get("entity") for p in (inst.get("powers") or []) if isinstance(p, dict) and p.get("entity")]
+    return [str(p["entity"]) for p in (inst.get("powers") or []) if isinstance(p, dict) and p.get("entity")]
 
 
 def balance_from_config(
@@ -65,7 +65,7 @@ def balance_from_config(
     def num(entity_id: Optional[str]) -> Optional[float]:
         st = live_by_id.get(entity_id) if entity_id else None
         try:
-            return float(st.get("state")) if st else None
+            return float(st.get("state")) if st else None  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return None
 
@@ -187,7 +187,7 @@ def compute_balance(
     for e in entities:
         if e.role == EnergyRole.BATTERY and e.include and e.unit == "%":
             try:
-                soc_vals.append(float(e.state))
+                soc_vals.append(float(e.state))  # type: ignore[arg-type]
             except (TypeError, ValueError):
                 pass
     batt_soc = round(sum(soc_vals) / len(soc_vals), 1) if soc_vals else None

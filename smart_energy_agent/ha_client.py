@@ -164,7 +164,8 @@ class HAClient:
     def _dispatch(self, msg: dict[str, Any]) -> None:
         mtype = msg.get("type")
         if mtype == "result":
-            fut = self._pending.pop(msg.get("id"), None)
+            mid = msg.get("id")
+            fut = self._pending.pop(mid, None) if mid is not None else None
             if fut and not fut.done():
                 if msg.get("success", False):
                     fut.set_result(msg.get("result"))

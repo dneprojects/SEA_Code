@@ -141,7 +141,7 @@ def find_kind(key: str) -> Optional[dict[str, Any]]:
 
 def kind_hints(key: str) -> list[str]:
     if key == "grid":
-        return GRID["hints"]
+        return [str(h) for h in GRID["hints"]]
     if key == "price":
         return PRICE_HINTS
     k = find_kind(key)
