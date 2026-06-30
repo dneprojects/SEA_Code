@@ -627,6 +627,10 @@
           <input type="number" id="set-soh" min="0" step="1" style="width:80px"
             title="Periodische Vollladung zur SoC-Kalibrierung: alle N Tage wird bis 100 % geladen. 0 = aus.">
           <span class="sub">0 = aus — Vollladung zur Kalibrierung</span></div>
+        <div class="setrow"><label>Modulation glätten (s)</label>
+          <input type="number" id="set-modsmooth" min="0" step="10" style="width:80px"
+            title="Zeitkonstante für modulierende Lasten (Heizstab etc.): glättet den Überschuss, damit kurze Haus-/Batterie-Spitzen die Last nicht auf 0 takten. 0 = aus (Momentanwert).">
+          <span class="sub">0 = aus — dämpft das Takten regelbarer Lasten</span></div>
         <div class="setrow"><button class="btn" title="Grundeinstellungen speichern" onclick="saveSettings()">Speichern</button>
           <span id="set-msg" class="sub"></span></div>
 
@@ -1721,6 +1725,7 @@
       document.getElementById("set-feedin").value = (s.feed_in_limit_w || 0);
       document.getElementById("set-emerg").value = (s.emergency_reserve_soc || 0);
       document.getElementById("set-soh").value = (s.soh_cycle_days || 0);
+      document.getElementById("set-modsmooth").value = (s.modulation_smoothing_s!=null ? s.modulation_smoothing_s : 120);
       document.getElementById("set-pvlimit").value = s.pv_limit_entity || "";
       document.getElementById("set-pvlimitmax").value = (s.pv_limit_max_w || 0);
       peakSlots = Array.isArray(s.peak_slots) ? s.peak_slots : [];
@@ -1745,6 +1750,7 @@
         feed_in_limit_w: document.getElementById("set-feedin").value || 0,
         emergency_reserve_soc: document.getElementById("set-emerg").value || 0,
         soh_cycle_days: document.getElementById("set-soh").value || 0,
+        modulation_smoothing_s: document.getElementById("set-modsmooth").value || 0,
         pv_limit_entity: document.getElementById("set-pvlimit").value || "",
         pv_limit_max_w: document.getElementById("set-pvlimitmax").value || 0,
         peak_slots: peakSlots,

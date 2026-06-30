@@ -28,6 +28,9 @@
 - **Einsparungsseite** neu gegliedert: Zeitraum und Baseline-Selektor (in einer Karte mit dem
   ⓘ-Button) nutzen die volle Breite; die Prämissen (Tarif, Speicher, PV bzw. Senke) stehen jeweils
   in einer eigenen Zeile.
+- **Modulierende Lasten ruhiger geregelt**: der Überschuss für die Modulation wird jetzt geglättet
+  (neue Einstellung „Modulation glätten (s)", Standard 120 s, 0 = aus). Kurze Haus-/Batterie-Spitzen
+  takten einen Heizstab nicht mehr auf 0 und wieder hoch.
 - **Heizstab/modulierende Lasten**: Stopp-Bedingung (z. B. „Stopp bei ≥ 65 °C") kann jetzt mit
   **Hysterese (Δ)** versehen werden — Wiederanlauf erst unter (Schwelle − Δ). Verhindert das
   schnelle Takten am Limit (ruhige, lange Zyklen statt Sägezahn).

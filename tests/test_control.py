@@ -777,3 +777,20 @@ def test_modulating_battery_device_and_satisfied_limit():
     assert s._device_satisfied("h", cfg) is False         # releases (< 60)
     s._live_by_id = {"sensor.t": {"state": "64"}}
     assert s._device_satisfied("h", cfg) is False         # stays off until >= 65
+
+
+def test_modulation_surplus_smoothing_rides_through_spikes():
+    # EWMA smoothing: a single deep-import spike must not yank the smoothed
+    # surplus to the spike value (which would shed a modulating load to 0).
+    s = Store()
+    s._settings["modulation_smoothing_s"] = 60.0   # tau = 60 s
+    eng = ControlEngine(s, None)  # type: ignore[arg-type]
+    assert eng._smooth_surplus(0.0, 3000.0) == 3000.0      # first call seeds
+    # 60 s later a −2000 W spike: alpha = 60/(60+60) = 0.5
+    assert eng._smooth_surplus(60.0, -2000.0) == 500.0     # stays positive, no full shed
+    # disabled -> passthrough
+    s2 = Store()
+    s2._settings["modulation_smoothing_s"] = 0.0
+    eng2 = ControlEngine(s2, None)  # type: ignore[arg-type]
+    assert eng2._smooth_surplus(0.0, 3000.0) == 3000.0
+    assert eng2._smooth_surplus(60.0, -2000.0) == -2000.0

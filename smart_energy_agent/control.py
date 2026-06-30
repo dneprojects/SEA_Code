@@ -278,7 +278,7 @@ class PvSurplusModulationController:
     name = "pv_surplus_modulation"
 
     def process(self, image: ProcessImage, cmds: CommandSet) -> None:
-        for cmd in plan_modulation(image.mods, image.surplus_signed):
+        for cmd in plan_modulation(image.mods, image.surplus_smoothed):
             cmds.add(cmd)
 
 
@@ -681,6 +681,8 @@ class ControlEngine:
         self._staged_energy: dict[str, dict] = dict(st.get("staged_energy") or {})  # key -> {day, kwh}
         self._soh_state: dict[str, int] = dict(st.get("soh_state") or {})           # key -> last-full day-ordinal
         self._last_state_save = 0.0
+        self._surplus_ewma: Optional[float] = None   # smoothed modulation surplus
+        self._surplus_ewma_t = 0.0                   # last EWMA update time
 
     def _build(self) -> list[ConsumerDecision]:
         """Switchable PV-surplus auto-consumers, as decision records."""
@@ -782,12 +784,31 @@ class ControlEngine:
             self._store.surplus_battery_min_soc(),
         )
 
+    def _smooth_surplus(self, now: float, raw: float) -> float:
+        """EWMA-smoothed surplus for modulating loads, so short house/battery
+        spikes don't slam a continuous load (e.g. heating rod) to 0 and back.
+        Time constant ``modulation_smoothing_s`` (0 = off → raw passthrough)."""
+        try:
+            tau = float(self._store.modulation_smoothing_s())
+        except Exception:  # noqa: BLE001
+            tau = 0.0
+        if tau <= 0 or self._surplus_ewma is None:
+            self._surplus_ewma, self._surplus_ewma_t = raw, now
+            return raw
+        dt = max(0.0, now - self._surplus_ewma_t)
+        alpha = dt / (tau + dt) if dt > 0 else 0.0
+        self._surplus_ewma += alpha * (raw - self._surplus_ewma)
+        self._surplus_ewma_t = now
+        return self._surplus_ewma
+
     def build_image(self, now: float) -> ProcessImage:
         """The Input phase: one consistent snapshot of all controller inputs."""
         balance = self._store.balance()
+        raw_surplus = self._surplus_signed(balance)
         return ProcessImage(
             now=now,
-            surplus_signed=self._surplus_signed(balance),
+            surplus_signed=raw_surplus,
+            surplus_smoothed=self._smooth_surplus(now, raw_surplus),
             grid_w=float(balance.get("grid_w", 0.0) or 0.0),
             pv_w=float(balance.get("pv_w", 0.0) or 0.0),
             consumers=self._build(),
