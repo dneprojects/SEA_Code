@@ -217,10 +217,13 @@
     .sav-top .lbl{color:var(--muted);font-size:13px;white-space:nowrap}
     .sav-top .seg{width:100%}
     .sav-top .seg button{flex:1;padding:0 6px}
-    .sav-card{display:flex;gap:10px;align-items:center;width:100%;
-      background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:6px 10px}
-    .sav-card select{flex:1;border:none;background:transparent;font:inherit;color:var(--ink);outline:none}
+    .sav-card{width:100%;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:6px 10px}
+    .sav-card-head{display:flex;gap:10px;align-items:center}
+    .sav-card-head select{flex:1;border:none;background:transparent;font:inherit;color:var(--ink);outline:none}
     .sav-card .info{flex:none;width:34px;height:30px;border-radius:var(--r-sm);padding:0;line-height:1}
+    .sav-prem-grid{display:grid;grid-template-columns:max-content 1fr;gap:8px 12px;align-items:center}
+    .sav-card.has-prem .sav-prem-grid{margin-top:8px;padding-top:8px;border-top:1px solid var(--alt)}
+    .sav-prem-grid .lbl{color:var(--muted);font-size:13px;white-space:nowrap}
     .sav-prem{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .sav-prem .sub{font-size:12px}
     .sav-prem input{width:80px}
@@ -493,49 +496,52 @@
 
           <span class="lbl">Vergleich gegen:</span>
           <div class="sav-card">
-            <select id="sav-baseline" title="Referenzszenario, gegen das die Ersparnis berechnet wird" onchange="savBaselineChanged()">
-              <option value="full_feed">Volleinspeisung (kein Eigenverbrauch)</option>
-              <option value="direct">Direkter Eigenverbrauch (ohne Speicher/Steuerung)</option>
-              <option value="surplus_sink">PV-Überschuss-Senke (Heizstab/Auto)</option>
-              <option value="dynamic">Dynamischer Tarif (Potenzial mit Speicher)</option>
-            </select>
-            <button class="btn info" title="Beschreibung der Vergleichs-Baselines" aria-label="Info" onclick="showSavHelp()">ⓘ</button>
+            <div class="sav-card-head">
+              <select id="sav-baseline" title="Referenzszenario, gegen das die Ersparnis berechnet wird" onchange="savBaselineChanged()">
+                <option value="full_feed">Volleinspeisung (kein Eigenverbrauch)</option>
+                <option value="direct">Direkter Eigenverbrauch (ohne Speicher/Steuerung)</option>
+                <option value="surplus_sink">PV-Überschuss-Senke (Heizstab/Auto)</option>
+                <option value="dynamic">Dynamischer Tarif (Potenzial mit Speicher)</option>
+              </select>
+              <button class="btn info" title="Beschreibung der Vergleichs-Baselines" aria-label="Info" onclick="showSavHelp()">ⓘ</button>
+            </div>
+            <div class="sav-prem-grid">
+              <!-- dynamic-tariff premises (one per row) -->
+              <span class="lbl prem-dyn" style="display:none">Tarif</span>
+              <span class="sav-prem prem-dyn" style="display:none">
+                <span class="sub">Hoch</span><input type="number" id="sav-phigh" title="Spitzenpreis 17–21 Uhr (ct/kWh)" value="40" step="1" onchange="loadSavings()">
+                <span class="sub">Normal</span><input type="number" id="sav-pnormal" title="Durchschnittspreis (ct/kWh)" value="30" step="1" onchange="loadSavings()">
+                <span class="sub">Niedrig</span><input type="number" id="sav-plow" title="Günstigpreis 0–6 Uhr (ct/kWh)" value="15" step="1" onchange="loadSavings()">
+                <span class="sub">ct/kWh</span>
+              </span>
+              <span class="lbl prem-dyn" style="display:none">Speicher</span>
+              <span class="sav-prem prem-dyn" style="display:none">
+                <input type="number" id="sav-batt" title="Batteriegröße der Simulation (kWh) – Anpassen zeigt das Potenzial" min="0" step="1" onchange="loadSavings()"><span class="sub">kWh</span>
+              </span>
+              <span class="lbl prem-dyn" style="display:none">PV</span>
+              <span class="sav-prem prem-dyn" style="display:none">
+                <input type="number" id="sav-pvkw" title="PV-Spitzenleistung der Simulation (kWp) – skaliert den Ertrag per Dreisatz" min="0" step="0.5" onchange="loadSavings()"><span class="sub">kWp</span>
+              </span>
+
+              <!-- surplus-sink premises (one per row) -->
+              <span class="lbl prem-sink" style="display:none">Senke</span>
+              <span class="sav-prem prem-sink" style="display:none">
+                <select id="sav-sinktype" title="Art der Überschuss-Senke (setzt die Leistung)" onchange="savSinkType()">
+                  <option value="3000">Heizstab (3 kW)</option>
+                  <option value="11000">Auto (11 kW)</option>
+                  <option value="custom">Eigene</option>
+                </select>
+              </span>
+              <span class="lbl prem-sink" style="display:none">Leistung</span>
+              <span class="sav-prem prem-sink" style="display:none">
+                <input type="number" id="sav-cap" title="Maximale Leistung der Überschuss-Senke (W)" value="3000" step="500" onchange="loadSavings()"><span class="sub">W</span>
+              </span>
+              <span class="lbl prem-sink" style="display:none">max./Tag</span>
+              <span class="sav-prem prem-sink" style="display:none">
+                <input type="number" id="sav-sinkday" title="Tages-Energiegrenze der Senke (kWh, 0 = unbegrenzt)" value="0" step="1" onchange="loadSavings()"><span class="sub">kWh (0 = unbegrenzt)</span>
+              </span>
+            </div>
           </div>
-
-          <!-- dynamic-tariff premises (one per row) -->
-          <span class="lbl prem-dyn" style="display:none">Tarif</span>
-          <span class="sav-prem prem-dyn" style="display:none">
-            <span class="sub">Hoch</span><input type="number" id="sav-phigh" title="Spitzenpreis 17–21 Uhr (ct/kWh)" value="40" step="1" onchange="loadSavings()">
-            <span class="sub">Normal</span><input type="number" id="sav-pnormal" title="Durchschnittspreis (ct/kWh)" value="30" step="1" onchange="loadSavings()">
-            <span class="sub">Niedrig</span><input type="number" id="sav-plow" title="Günstigpreis 0–6 Uhr (ct/kWh)" value="15" step="1" onchange="loadSavings()">
-            <span class="sub">ct/kWh</span>
-          </span>
-          <span class="lbl prem-dyn" style="display:none">Speicher</span>
-          <span class="sav-prem prem-dyn" style="display:none">
-            <input type="number" id="sav-batt" title="Batteriegröße der Simulation (kWh) – Anpassen zeigt das Potenzial" min="0" step="1" onchange="loadSavings()"><span class="sub">kWh</span>
-          </span>
-          <span class="lbl prem-dyn" style="display:none">PV</span>
-          <span class="sav-prem prem-dyn" style="display:none">
-            <input type="number" id="sav-pvkw" title="PV-Spitzenleistung der Simulation (kWp) – skaliert den Ertrag per Dreisatz" min="0" step="0.5" onchange="loadSavings()"><span class="sub">kWp</span>
-          </span>
-
-          <!-- surplus-sink premises (one per row) -->
-          <span class="lbl prem-sink" style="display:none">Senke</span>
-          <span class="sav-prem prem-sink" style="display:none">
-            <select id="sav-sinktype" title="Art der Überschuss-Senke (setzt die Leistung)" onchange="savSinkType()">
-              <option value="3000">Heizstab (3 kW)</option>
-              <option value="11000">Auto (11 kW)</option>
-              <option value="custom">Eigene</option>
-            </select>
-          </span>
-          <span class="lbl prem-sink" style="display:none">Leistung</span>
-          <span class="sav-prem prem-sink" style="display:none">
-            <input type="number" id="sav-cap" title="Maximale Leistung der Überschuss-Senke (W)" value="3000" step="500" onchange="loadSavings()"><span class="sub">W</span>
-          </span>
-          <span class="lbl prem-sink" style="display:none">max./Tag</span>
-          <span class="sav-prem prem-sink" style="display:none">
-            <input type="number" id="sav-sinkday" title="Tages-Energiegrenze der Senke (kWh, 0 = unbegrenzt)" value="0" step="1" onchange="loadSavings()"><span class="sub">kWh (0 = unbegrenzt)</span>
-          </span>
         </div>
         <div class="panel-title">Ergebnis</div>
         <div class="cards" id="sav-cards"></div>
@@ -1568,6 +1574,7 @@
       const b = document.getElementById("sav-baseline").value;
       document.querySelectorAll(".prem-dyn").forEach(e => e.style.display = b==="dynamic" ? "" : "none");
       document.querySelectorAll(".prem-sink").forEach(e => e.style.display = b==="surplus_sink" ? "" : "none");
+      document.querySelector(".sav-card").classList.toggle("has-prem", b==="dynamic" || b==="surplus_sink");
       loadSavings();
     }
     function savSinkType() {
