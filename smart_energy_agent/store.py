@@ -1794,8 +1794,9 @@ class Store:
             tariff (p_high/p_normal/p_low by time of day: cheap 0–6 h, peak
             17–21 h, else normal). A battery of batt_kwh is walked over the
             recorded series: it stores PV surplus, discharges to cover the load,
-            grid-charges in the cheap window and is held for the expensive
-            window (arbitrage). PV is scaled to pv_kw (Dreisatz from the
+            grid-charges in the cheap window (only when that actually pays off
+            after round-trip losses, i.e. p_low/η < p_normal) and is held for
+            the expensive window (arbitrage). PV is scaled to pv_kw (Dreisatz from the
             observed peak) to test a PV expansion. nostore_eur = the same scaled
             PV without a battery at the normal price. The gap to the actual cost
             appears as Mehrkosten and shows the optimization potential of a
@@ -1887,12 +1888,15 @@ class Store:
                         chg = min(surplus, pmax_e, room / CE)
                         soc += chg * CE
                         imp_s, exp_s = 0.0, surplus - chg
-                    elif cheap:                                 # cheap: buy + pre-charge
+                    elif cheap:                                 # cheap window: buy the load
                         deficit = -surplus
-                        room = sim_cap - soc
-                        gchg = min(pmax_e, room / CE)
-                        soc += gchg * CE
-                        imp_s, exp_s = deficit + gchg, 0.0
+                        imp_s, exp_s = deficit, 0.0
+                        # grid-charge for later only if arbitrage pays off after losses
+                        if lo / (CE * DE) < nrm:
+                            room = sim_cap - soc
+                            gchg = min(pmax_e, room / CE)
+                            soc += gchg * CE
+                            imp_s += gchg
                     else:                                       # discharge to cover load
                         deficit = -surplus
                         dis = min(deficit, pmax_e, soc * DE)

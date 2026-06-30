@@ -68,6 +68,21 @@ def test_dynamic_pv_factor_scales_generation_by_dreisatz():
     assert abs(base["pv_sim_kwh"] - base["pv_kwh"]) < 1e-6
 
 
+def test_flat_tariff_no_lossy_grid_charge_with_bigger_battery():
+    # Flat price (no spread): a bigger battery must never raise the baseline cost
+    # (no loss-making night grid-charging). Mix of surplus and deficit.
+    rows = []
+    for i in range(40):
+        pv, grid = (3000.0, -2000.0) if i % 2 == 0 else (0.0, 1000.0)
+        rows.append((i * 30, pv, grid, 1000.0, 30.0))
+    s = _store_with_rows(rows)
+    small = asyncio.run(s.savings(3600, baseline="dynamic", batt_kwh=5.0,
+                                  p_high=30.0, p_normal=30.0, p_low=30.0))
+    big = asyncio.run(s.savings(3600, baseline="dynamic", batt_kwh=20.0,
+                                p_high=30.0, p_normal=30.0, p_low=30.0))
+    assert big["baseline_eur"] <= small["baseline_eur"] + 1e-9
+
+
 def test_surplus_sink_daily_energy_cap_limits_absorption():
     # steady PV surplus (4 kW PV, 1 kW house) -> lots of exportable surplus
     rows = [(i * 30, 4000.0, -3000.0, 1000.0, 30.0) for i in range(20)]

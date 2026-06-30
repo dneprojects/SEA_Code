@@ -28,6 +28,9 @@
 - **Einsparungsseite** neu gegliedert: Zeitraum und Baseline-Selektor (in einer Karte mit dem
   ⓘ-Button) nutzen die volle Breite; die Prämissen (Tarif, Speicher, PV bzw. Senke) stehen jeweils
   in einer eigenen Zeile.
+- **Einsparung (dynamische Baseline)**: Netz-Nachladen im Niedrig-Fenster nur noch, wenn es sich
+  nach Wirkungsgrad-Verlusten lohnt (kein Verlustkauf bei flachem Tarif → größerer Speicher
+  verschlechtert das Ergebnis nicht mehr).
 - **Verlauf**: feste Zeiträume sind jetzt **kalender-ausgerichtet** (Tag 0–24 Uhr, Woche ab Montag,
   Monat ab dem 1., Jahr ab 1. Januar) statt rollierend ab „jetzt". ◀ ▶ blättert exakt einen
   Zeitraum weiter (z.B. einen Monat zurück). Neuer Button **„jetzt"** lässt den frei eingegebenen
