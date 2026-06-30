@@ -23,7 +23,15 @@
   **PV-Spitzenleistung** sind mit der aktuellen Anlage vorbelegt — durch Anpassen sieht man das
   Potenzial einer größeren Batterie bzw. eines PV-Ausbaus (Ertrag per Dreisatz skaliert).
 - **PV-Überschuss-Senke**: zusätzlich zur Leistungsgrenze jetzt eine **Tages-Energiegrenze** (kWh)
-  einstellbar (eigener Speicher der Senke, z.B. Warmwassertank/Auto-Akku).
+  einstellbar (eigener Speicher der Senke, z.B. Warmwassertank/Auto-Akku); Auswahl per Selektor
+  (Heizstab/Auto/Eigene).
+- **Einsparungsseite** neu gegliedert: Zeitraum und Baseline-Selektor (in einer Karte mit dem
+  ⓘ-Button) nutzen die volle Breite; die Prämissen (Tarif, Speicher, PV bzw. Senke) stehen jeweils
+  in einer eigenen Zeile.
+- **Verlauf**: feste Zeiträume sind jetzt **kalender-ausgerichtet** (Tag 0–24 Uhr, Woche ab Montag,
+  Monat ab dem 1., Jahr ab 1. Januar) statt rollierend ab „jetzt". ◀ ▶ blättert exakt einen
+  Zeitraum weiter (z.B. einen Monat zurück). Neuer Button **„jetzt"** lässt den frei eingegebenen
+  Zeitraum am aktuellen Zeitpunkt enden (z.B. letzte 24 h / 30 / 365 Tage).
 
 ## 0.7.0
 
