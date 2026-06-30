@@ -132,7 +132,11 @@ def test_engine_heater_backs_off_when_battery_discharges():
         calls.append((entity, data))
 
     s = _heater_store(grid_w=0, batt_w=-900, heater_setpoint_w=600)
-    asyncio.run(ControlEngine(s, cs).run_once(0.0))
+    eng = ControlEngine(s, cs)
+    # debounce: a sustained deficit sheds after MOD_SHED_DEBOUNCE cycles (a single
+    # out-of-sync sample must not). Second cycle confirms it.
+    asyncio.run(eng.run_once(0.0))
+    asyncio.run(eng.run_once(60.0))
     assert ("number.hz", {"value": 0.0}) in calls
 
 
@@ -794,3 +798,15 @@ def test_modulation_surplus_smoothing_rides_through_spikes():
     eng2 = ControlEngine(s2, None)  # type: ignore[arg-type]
     assert eng2._smooth_surplus(0.0, 3000.0) == 3000.0
     assert eng2._smooth_surplus(60.0, -2000.0) == -2000.0
+
+
+def test_decide_modulation_allow_shed_holds_load_on_unconfirmed_import():
+    mods = [{"entity": "number.hz", "domain": "number", "cur_unit": 3000.0,
+             "cur_w": 3000.0, "wpu": 1.0, "min_w": 0.0, "max_w": 3600.0,
+             "priority": 5, "is_batt": False, "batt_mode": None, "discharge": ""}]
+    # deep (possibly glitchy) import: with shedding allowed the load drops to 0 ...
+    assert decide_modulation(-5000.0, mods, allow_shed=True)[0]["power_w"] == 0.0
+    # ... but while import is unconfirmed (export guard / debounce) it is held.
+    assert decide_modulation(-5000.0, mods, allow_shed=False)[0]["power_w"] == 3000.0
+    # surplus available: load rises regardless of the flag (guard only blocks cuts)
+    assert decide_modulation(600.0, mods, allow_shed=False)[0]["power_w"] == 3600.0

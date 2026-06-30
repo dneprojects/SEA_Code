@@ -31,6 +31,9 @@
 - **Modulierende Lasten ruhiger geregelt**: der Überschuss für die Modulation wird jetzt geglättet
   (neue Einstellung „Modulation glätten (s)", Standard 120 s, 0 = aus). Kurze Haus-/Batterie-Spitzen
   takten einen Heizstab nicht mehr auf 0 und wieder hoch.
+- **Robust gegen nicht-synchrone Messwerte**: eine modulierende Last wird erst abgesenkt, wenn ein
+  Defizit über mehrere Zyklen bestätigt ist (Entprellen); solange Überschuss/Einspeisung anliegt,
+  bleibt sie an (Export-Schutz). Ein einzelner „verrutschter" Messpunkt wirft sie nicht mehr ab.
 - **Heizstab/modulierende Lasten**: Stopp-Bedingung (z. B. „Stopp bei ≥ 65 °C") kann jetzt mit
   **Hysterese (Δ)** versehen werden — Wiederanlauf erst unter (Schwelle − Δ). Verhindert das
   schnelle Takten am Limit (ruhige, lange Zyklen statt Sägezahn).

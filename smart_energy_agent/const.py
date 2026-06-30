@@ -60,6 +60,11 @@ TARIFF_INTERVAL = 300     # seconds between tariff-shift decisions (5 min)
 CONTROL_INTERVAL = 60     # seconds between control decisions
 CONTROL_ON_MARGIN_W = 50  # surplus must exceed this to consider switching on
 CONTROL_OFF_MARGIN_W = 50 # import (negative surplus) beyond this triggers switch off
+# A modulating load is only throttled back once import is confirmed for this many
+# consecutive cycles (debounce against a single out-of-sync/glitchy sample). While
+# the grid still exports, import_streak stays 0, so a load is never shed -> export
+# guard. 1 = react immediately (off).
+MOD_SHED_DEBOUNCE = 2
 # A deferrable load with a "latest start" deadline is force-started (even without
 # surplus) once the deadline is reached, within this window after it (minutes).
 DEADLINE_FORCE_WINDOW_MIN = 120

@@ -158,7 +158,9 @@ def decide_action(
     return None
 
 
-def decide_modulation(surplus_signed: float, mods: list[dict]) -> list[dict]:
+def decide_modulation(
+    surplus_signed: float, mods: list[dict], allow_shed: bool = True
+) -> list[dict]:
     """Distribute the signed surplus (+export / −import, W) across modulating
     loads by priority and return the new setpoint per load.
 
@@ -166,6 +168,10 @@ def decide_modulation(surplus_signed: float, mods: list[dict]) -> list[dict]:
     Each load is clamped to its [min_w, max_w]; the remaining surplus is passed
     on to the next load. Setpoints are returned in the entity's own unit
     (watts / w_per_unit).
+
+    ``allow_shed=False`` holds every load at (at least) its current power — used
+    while the grid still exports / import isn't confirmed yet, so a single
+    out-of-sync measurement can't slam a running load to 0.
     """
     remaining = surplus_signed
     order = sorted(mods, key=lambda m: -m["priority"]) if remaining >= 0 \
@@ -178,6 +184,8 @@ def decide_modulation(surplus_signed: float, mods: list[dict]) -> list[dict]:
         # import to sustain it (correct for a wallbox minimum charge current).
         # min_w defaults to 0 for simple loads, so they are unaffected.
         target_w = raw if raw > 0 and raw >= m["min_w"] else 0.0
+        if not allow_shed:
+            target_w = max(target_w, m["cur_w"])   # never reduce on unconfirmed import
         remaining -= (target_w - m["cur_w"])
         out.append({"entity": m["entity"], "domain": m["domain"],
                     "unit": round(target_w / wpu, 2), "cur_unit": m["cur_unit"],
@@ -235,7 +243,9 @@ def battery_tariff_mode(
     return None
 
 
-def plan_modulation(mods: list[dict], surplus_signed: float) -> list[Command]:
+def plan_modulation(
+    mods: list[dict], surplus_signed: float, allow_shed: bool = True
+) -> list[Command]:
     """Pure planner: turn modulating loads + the signed surplus into setpoint
     commands (no IO). Batteries with a tariff mode are commanded explicitly
     (charge / forced discharge); idle batteries join the PV-surplus allocation.
@@ -253,7 +263,7 @@ def plan_modulation(mods: list[dict], surplus_signed: float) -> list[Command]:
         else:
             out.append(Command(disc, "set", 0.0, "Entladen aus"))
             normal.append(m)   # idle battery follows the PV surplus
-    for a in decide_modulation(surplus_signed, normal):
+    for a in decide_modulation(surplus_signed, normal, allow_shed):
         out.append(Command(a["entity"], "set", a["unit"], f"regelbar, {round(a['power_w'])} W"))
     return out
 
@@ -278,7 +288,7 @@ class PvSurplusModulationController:
     name = "pv_surplus_modulation"
 
     def process(self, image: ProcessImage, cmds: CommandSet) -> None:
-        for cmd in plan_modulation(image.mods, image.surplus_smoothed):
+        for cmd in plan_modulation(image.mods, image.surplus_smoothed, image.allow_mod_shed):
             cmds.add(cmd)
 
 
@@ -683,6 +693,7 @@ class ControlEngine:
         self._last_state_save = 0.0
         self._surplus_ewma: Optional[float] = None   # smoothed modulation surplus
         self._surplus_ewma_t = 0.0                   # last EWMA update time
+        self._import_streak = 0                      # consecutive cycles of confirmed grid import
 
     def _build(self) -> list[ConsumerDecision]:
         """Switchable PV-surplus auto-consumers, as decision records."""
@@ -805,11 +816,22 @@ class ControlEngine:
         """The Input phase: one consistent snapshot of all controller inputs."""
         balance = self._store.balance()
         raw_surplus = self._surplus_signed(balance)
+        grid_w = float(balance.get("grid_w", 0.0) or 0.0)
+        # Export guard + debounce: a modulating load is only throttled once a
+        # deficit is confirmed for MOD_SHED_DEBOUNCE consecutive cycles. Detection
+        # uses the (battery-folded) surplus signal — so a battery discharging to
+        # cover the load still counts as a deficit, while a single out-of-sync
+        # sample (or any export) leaves the streak low and the load is held.
+        if raw_surplus < -const.CONTROL_OFF_MARGIN_W:
+            self._import_streak += 1
+        else:
+            self._import_streak = 0
         return ProcessImage(
             now=now,
             surplus_signed=raw_surplus,
             surplus_smoothed=self._smooth_surplus(now, raw_surplus),
-            grid_w=float(balance.get("grid_w", 0.0) or 0.0),
+            allow_mod_shed=self._import_streak >= const.MOD_SHED_DEBOUNCE,
+            grid_w=grid_w,
             pv_w=float(balance.get("pv_w", 0.0) or 0.0),
             consumers=self._build(),
             mods=self._mods(),
