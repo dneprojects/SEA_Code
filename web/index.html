@@ -214,6 +214,11 @@
     .seg button.active{background:var(--brand);color:#fff}
     .seg button.active.dim{opacity:.45}                       /* span source while "bis jetzt" active */
     #hist-apply.on{background:var(--brand);color:#fff;border-color:var(--brand)}  /* free range active */
+    /* history range controls: top set stretches to the width of the (von/bis/Auswahl) row */
+    .hist-ctl{display:inline-flex;flex-direction:column;gap:8px;align-items:stretch;margin-top:16px}
+    .hist-row{display:flex;gap:8px;align-items:center}
+    .hist-row #range-seg{flex:1}
+    .hist-row #range-seg button{flex:1}
     /* savings controls: full-width stack (label | control), control spans like the 4 cards */
     .sav-top{display:grid;grid-template-columns:max-content 1fr;gap:10px 14px;align-items:center;margin-top:16px}
     .sav-top .lbl{color:var(--muted);font-size:13px;white-space:nowrap}
@@ -453,24 +458,28 @@
       <!-- Verlauf & Prognose -->
       <section id="view-history" hidden>
         <div class="page-h"><svg class="ico"><use href="#i-hist"/></svg><h1>Verlauf</h1></div>
-        <div class="controls" style="flex-wrap:wrap;gap:8px">
-          <span class="seg" id="range-seg">
-            <button data-range="today" class="active" onclick="setToday()" title="aktueller Tag inkl. Prognose">Heute</button>
-            <button data-range="day" onclick="setRange('day')">Tag</button>
-            <button data-range="week" onclick="setRange('week')">Woche</button>
-            <button data-range="month" onclick="setRange('month')">Monat</button>
-            <button data-range="year" onclick="setRange('year')">Jahr</button>
-            <button data-range="now" onclick="setNow()" title="Zeitraum jetzt enden lassen (letzte 24 h / 7 / 30 / 365 Tage je nach Auswahl)">bis jetzt</button>
-          </span>
-          <span class="seg">
-            <button onclick="panHist(-1)" title="einen Zeitraum zurück">◀</button>
-            <button onclick="panHist(1)" title="einen Zeitraum vor">▶</button>
-          </span>
-        </div>
-        <div class="controls" style="flex-wrap:wrap;gap:8px;margin-top:8px">
-          <span class="sub">von</span> <input type="datetime-local" id="hist-from">
-          <span class="sub">bis</span> <input type="datetime-local" id="hist-to">
-          <button class="btn" id="hist-apply" onclick="applyHistRange()" title="frei eingegebenen Zeitraum übernehmen">Auswahl</button>
+        <div class="hist-ctl">
+          <div class="hist-row">
+            <span class="seg" id="range-seg">
+              <button data-range="today" class="active" onclick="setToday()" title="aktueller Tag inkl. Prognose">Heute</button>
+              <button data-range="day" onclick="setRange('day')">Tag</button>
+              <button data-range="week" onclick="setRange('week')">Woche</button>
+              <button data-range="month" onclick="setRange('month')">Monat</button>
+              <button data-range="year" onclick="setRange('year')">Jahr</button>
+            </span>
+            <span class="seg">
+              <button data-range="now" onclick="setNow()" title="Zeitraum jetzt enden lassen (letzte 24 h / 7 / 30 / 365 Tage je nach Auswahl)">bis jetzt</button>
+            </span>
+            <span class="seg">
+              <button onclick="panHist(-1)" title="einen Zeitraum zurück">◀</button>
+              <button onclick="panHist(1)" title="einen Zeitraum vor">▶</button>
+            </span>
+          </div>
+          <div class="hist-row">
+            <span class="sub">von</span> <input type="datetime-local" id="hist-from">
+            <span class="sub">bis</span> <input type="datetime-local" id="hist-to">
+            <button class="btn" id="hist-apply" onclick="applyHistRange()" title="frei eingegebenen Zeitraum übernehmen">Auswahl</button>
+          </div>
         </div>
         <div class="panel-title">Leistung &amp; Prognose</div>
         <div class="subhead" style="margin:8px 0 4px">Leistung (W)</div>
@@ -497,7 +506,7 @@
             <button data-range="year" onclick="setSavRange('year')">Jahr</button>
           </span>
 
-          <span class="lbl">Vergleich gegen:</span>
+          <span class="lbl" style="align-self:start;padding-top:9px">Vergleich</span>
           <div class="sav-card">
             <div class="sav-card-head">
               <select id="sav-baseline" title="Referenzszenario, gegen das die Ersparnis berechnet wird" onchange="savBaselineChanged()">
@@ -1290,9 +1299,9 @@
       else { from = new Date(d.getFullYear(), 0, 1); to = new Date(d.getFullYear()+1, 0, 1); }
       return [Math.floor(from.getTime()/1000), Math.floor(to.getTime()/1000)];
     }
-    function segBtn(r) { return document.querySelector('#range-seg button[data-range="'+r+'"]'); }
+    function segBtn(r) { return document.querySelector('.hist-ctl button[data-range="'+r+'"]'); }
     function markRangeSeg() {
-      document.querySelectorAll("#range-seg button").forEach(b => b.classList.remove("active","dim"));
+      document.querySelectorAll(".hist-ctl .seg button").forEach(b => b.classList.remove("active","dim"));
       const apply = document.getElementById("hist-apply"); if (apply) apply.classList.remove("on");
       if (histMode === "today") { const b = segBtn("today"); if (b) b.classList.add("active"); }
       else if (histMode === "cal") { const b = segBtn(histUnit); if (b) b.classList.add("active"); }
