@@ -1150,7 +1150,8 @@
         h += frow("Stopp bei SoC ≥", `<input type="number" class="fnum" title="Bei diesem Ladezustand (%) stoppt das Laden; 0 = aus" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)"> <span class="sub">%</span>`);
         h += frow("Reserve-SoC", `<input type="number" class="fnum" title="Entlade-Untergrenze: Peak-Shaving, Tarif und Optimierer entladen nie darunter (gemeinsam mit der globalen Notstrom-Reserve). 0 = aus." value="${cfg.grid_soc_min}" onchange="setLoad('${key}','grid_soc_min',this.value)"> <span class="sub">% – nie darunter entladen</span>`);
       } else if (cfg.limit_entity) {
-        h += frow(stopLbl, `<span class="eid" title="${esc(cfg.limit_entity)}">${cfg.limit_entity}</span> <span class="sub">≥</span> <input type="number" class="fnum" title="Lade-Ziel (z. B. % SoC); 0 = aus" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)">`,
+        h += frow(stopLbl, `<span class="eid" title="${esc(cfg.limit_entity)}">${cfg.limit_entity}</span> <span class="sub">≥</span> <input type="number" class="fnum" title="Stopp-Schwelle (z. B. °C oder % SoC); 0 = aus" value="${cfg.limit_max}" onchange="setLoad('${key}','limit_max',this.value)">`
+          + ` <span class="sub" title="Hysterese/Deadband: Wiederanlauf erst, wenn der Wert unter (Schwelle − Δ) fällt. Verhindert schnelles Takten am Limit. 0 = aus.">− Δ</span> <input type="number" class="fnum" title="Hysterese (Δ): Wiederanlauf erst unter (Schwelle − Δ). 0 = aus." value="${cfg.limit_hyst!=null?cfg.limit_hyst:0}" onchange="setLoad('${key}','limit_hyst',this.value)"> <span class="sub">(Wiederanlauf)</span>`,
           pickBtn(`pickLimit('${key}')`, 'Entität ändern'));
       } else {
         h += frow(stopLbl, '<span class="sub">— keine —</span>',

@@ -764,6 +764,16 @@ def test_modulating_battery_device_and_satisfied_limit():
     assert devs["battery:b1"]["setpoint"] == "number.bcharge"
     # stop limit: vehicle SoC >= 80
     s._live_by_id = {"sensor.soc": {"state": "82"}}
-    assert s._device_satisfied({"limit_entity": "sensor.soc", "limit_max": 80}) is True
-    assert s._device_satisfied({"limit_entity": "sensor.soc", "limit_max": 90}) is False
-    assert s._device_satisfied({}) is False
+    assert s._device_satisfied("k1", {"limit_entity": "sensor.soc", "limit_max": 80}) is True
+    assert s._device_satisfied("k2", {"limit_entity": "sensor.soc", "limit_max": 90}) is False
+    assert s._device_satisfied("k3", {}) is False
+    # hysteresis/deadband: stop at limit, release only below (limit - hyst)
+    cfg = {"limit_entity": "sensor.t", "limit_max": 65, "limit_hyst": 5}
+    s._live_by_id = {"sensor.t": {"state": "66"}}
+    assert s._device_satisfied("h", cfg) is True          # triggers at >= 65
+    s._live_by_id = {"sensor.t": {"state": "62"}}
+    assert s._device_satisfied("h", cfg) is True          # latched (>= 60)
+    s._live_by_id = {"sensor.t": {"state": "59"}}
+    assert s._device_satisfied("h", cfg) is False         # releases (< 60)
+    s._live_by_id = {"sensor.t": {"state": "64"}}
+    assert s._device_satisfied("h", cfg) is False         # stays off until >= 65

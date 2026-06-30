@@ -28,6 +28,13 @@
 - **Einsparungsseite** neu gegliedert: Zeitraum und Baseline-Selektor (in einer Karte mit dem
   ⓘ-Button) nutzen die volle Breite; die Prämissen (Tarif, Speicher, PV bzw. Senke) stehen jeweils
   in einer eigenen Zeile.
+- **Heizstab/modulierende Lasten**: Stopp-Bedingung (z. B. „Stopp bei ≥ 65 °C") kann jetzt mit
+  **Hysterese (Δ)** versehen werden — Wiederanlauf erst unter (Schwelle − Δ). Verhindert das
+  schnelle Takten am Limit (ruhige, lange Zyklen statt Sägezahn).
+- **Verlauf**: der **Begrenzungs-Sensor** einer Last (z. B. die ELWA-Temperatur „Stopp bei") wird
+  jetzt im Detail-Plot mit dargestellt.
+- **PV-Überschuss-Modulation**: regelt nun auf die **gemessene Ist-Leistung** der Last (statt des
+  kommandierten Sollwerts) — sauberes Einschwingen ohne Überschwingen während der Rampe.
 - **Einsparung (dynamische Baseline)**: Netz-Nachladen im Niedrig-Fenster nur noch, wenn es sich
   nach Wirkungsgrad-Verlusten lohnt (kein Verlustkauf bei flachem Tarif → größerer Speicher
   verschlechtert das Ergebnis nicht mehr).

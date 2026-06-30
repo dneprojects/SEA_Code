@@ -748,9 +748,12 @@ class ControlEngine:
                 )
                 if batt_mode in ("charge", "discharge"):
                     eff_max = dev.max_w   # full power; charge-stop "satisfied" doesn't apply
+            # cur_w = measured actual power (not the commanded setpoint) so the
+            # surplus accounting self-corrects during ramp-up without overshoot.
+            cur_w = dev.power_w if not dev.is_battery else dev.cur_unit * dev.wpu
             out.append({"entity": dev.setpoint_entity,
                         "domain": dev.setpoint_entity.split(".", 1)[0],
-                        "cur_unit": dev.cur_unit, "cur_w": dev.cur_unit * dev.wpu,
+                        "cur_unit": dev.cur_unit, "cur_w": cur_w,
                         "wpu": dev.wpu, "min_w": dev.min_w, "max_w": eff_max,
                         "priority": dev.priority, "is_batt": dev.is_battery,
                         "batt_mode": batt_mode, "discharge": dev.discharge_entity})

@@ -73,6 +73,7 @@ class Store:
                 ", ".join(migrated),
             )
         self._entities: dict[str, EnergyEntity] = {}
+        self._sat_state: dict[str, bool] = {}   # device stop-condition latch (hysteresis)
         self._db: Optional[aiosqlite.Connection] = None
         self.last_discovery_ts: float = 0.0
         # entity_id -> {"include": bool, "role": str}; persisted to disk.
@@ -701,7 +702,7 @@ class Store:
                     cfg[f] = int(patch[f] or 0)
                 except (TypeError, ValueError):
                     pass
-        for f in ("min_w", "max_w", "w_per_unit", "limit_max", "grid_soc_min",
+        for f in ("min_w", "max_w", "w_per_unit", "limit_max", "limit_hyst", "grid_soc_min",
                   "grid_soc_max", "min_kwh_day", "capacity_kwh"):  # modulating / stop / grid / energy
             if f in patch:
                 try:
@@ -716,10 +717,13 @@ class Store:
         self._save_settings()
         return True
 
-    def _device_satisfied(self, cfg: dict[str, Any]) -> bool:
+    def _device_satisfied(self, key: str, cfg: dict[str, Any]) -> bool:
         """True if a device reached its stop limit (e.g. vehicle SoC / temperature).
 
         A threshold of 0 (or below) means the stop condition is disabled.
+        With ``limit_hyst`` > 0 the stop *latches*: it triggers at ``limit_max``
+        and only releases once the value falls below ``limit_max − limit_hyst``
+        (deadband against rapid on/off chatter at the threshold).
         """
         le = cfg.get("limit_entity")
         try:
@@ -729,9 +733,17 @@ class Store:
         if not le or limit <= 0:
             return False
         try:
-            return float(self.live_state(le).get("state")) >= limit  # type: ignore[arg-type]
+            val = float(self.live_state(le).get("state"))  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return False
+        try:
+            hyst = max(0.0, float(cfg.get("limit_hyst") or 0.0))
+        except (TypeError, ValueError):
+            hyst = 0.0
+        release = limit - hyst if self._sat_state.get(key) else limit
+        sat = val >= release
+        self._sat_state[key] = sat
+        return sat
 
     def strategy_devices(self) -> list[dict[str, Any]]:
         """Controllable devices merged with their strategy participation config."""
@@ -741,7 +753,7 @@ class Store:
             cfg = {"self_consumption": False, "tariff_shift": False, "priority": 5,
                    "pv_threshold_w": 0, "min_runtime_min": 0, "min_off_min": 0,
                    "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1,
-                   "limit_entity": "", "limit_max": 0, "ready_entity": "", "latest_start": "",
+                   "limit_entity": "", "limit_max": 0, "limit_hyst": 0, "ready_entity": "", "latest_start": "",
                    "grid_soc_min": 0, "grid_soc_max": 100, "interruptible": True}
             cfg.update(d.get("_cfg", {}))          # device-provided cfg (e.g. a vehicle)
             cfg.update(sl.get(d["key"], {}))
@@ -749,12 +761,13 @@ class Store:
             # so the UI only asks for the threshold (active once limit_max > 0).
             if d.get("kind") == "battery" and not cfg.get("limit_entity") and d.get("soc"):
                 cfg["limit_entity"] = d["soc"]
-            out.append({**d, "cfg": cfg, "satisfied": self._device_satisfied(cfg)})
+            out.append({**d, "cfg": cfg, "satisfied": self._device_satisfied(d["key"], cfg)})
         return out
 
     def history_entities(self) -> list[dict[str, Any]]:
         """Configured devices with their plottable entities (for the history view)."""
         cfg = self._config
+        sloads = self.strategy_loads()
 
         def unit(eid: str) -> Optional[str]:
             return (self.live_state(eid).get("attributes", {}) or {}).get("unit_of_measurement")
@@ -799,7 +812,17 @@ class Store:
                         t.append((nm + " Temp", c["temp"], "temp"))
                     if c.get("setpoint"):
                         t.append((nm + " Soll", c["setpoint"], "setpoint"))
-                add(f"{kind}:{inst.get('id')}", inst.get("name") or klabel, t)
+                key = f"{kind}:{inst.get('id')}"
+                # the stop-condition sensor (e.g. ELWA limit temperature) as a
+                # plottable detail, so the limit that throttles the load is visible
+                le = (sloads.get(key) or {}).get("limit_entity")
+                if le and le not in [tr[1] for tr in t]:
+                    u = unit(le)
+                    cls = "temp" if (u and "C" in u.upper()) else "sensor"
+                    lim = (sloads.get(key) or {}).get("limit_max")
+                    lbl = "Limit" + (f" (≥ {lim})" if lim else "")
+                    t.append((lbl, le, cls))
+                add(key, inst.get("name") or klabel, t)
         return out
 
     def group_present(self, group: dict[str, Any]) -> Optional[bool]:
