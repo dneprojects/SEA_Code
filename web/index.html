@@ -212,6 +212,16 @@
       padding:0 15px;cursor:pointer;font:inherit;font-weight:600;font-size:13px}
     .seg button:first-child{border-left:none}
     .seg button.active{background:var(--brand);color:#fff}
+    /* savings control grid: label | control (fixed width) | extra */
+    .sav-form{display:grid;grid-template-columns:max-content minmax(220px,360px) max-content;
+      gap:12px 14px;align-items:center;margin-top:16px}
+    .sav-form .lbl{color:var(--muted);font-size:13px;white-space:nowrap}
+    .sav-form .seg{width:100%}
+    .sav-form .seg button{flex:1;padding:0 6px}
+    .sav-form select{width:100%}
+    .sav-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .sav-ctl .sub{font-size:12px}
+    .sav-ctl input{width:62px}
 
     /* ---- buttons (uniform) ---- */
     .btn{font-family:var(--ui);font-size:13px;font-weight:600;min-height:34px;display:inline-flex;
@@ -465,30 +475,41 @@
       <!-- Einsparung -->
       <section id="view-savings" hidden>
         <div class="page-h"><svg class="ico"><use href="#i-save"/></svg><h1>Einsparung durch Optimierung</h1></div>
-        <div class="controls">
-          <span>Zeitraum:</span>
+        <div class="sav-form">
+          <span class="lbl">Zeitraum:</span>
           <span class="seg" id="sav-seg">
             <button data-range="day" class="active" onclick="setSavRange('day')">Tag</button>
             <button data-range="week" onclick="setSavRange('week')">Woche</button>
             <button data-range="month" onclick="setSavRange('month')">Monat</button>
             <button data-range="year" onclick="setSavRange('year')">Jahr</button>
           </span>
-        </div>
-        <div class="controls">
-          <span>Vergleich gegen:</span>
+          <span></span>
+
+          <span class="lbl">Vergleich gegen:</span>
           <select id="sav-baseline" title="Referenzszenario, gegen das die Ersparnis berechnet wird" onchange="savBaselineChanged()">
             <option value="full_feed">Volleinspeisung (kein Eigenverbrauch)</option>
             <option value="direct">Direkter Eigenverbrauch (ohne Speicher/Steuerung)</option>
             <option value="surplus_sink">PV-Überschuss-Senke (Heizstab/Auto)</option>
-            <option value="ideal">Ideal (perfekte Speicher-/Tarifnutzung)</option>
+            <option value="dynamic">Dynamischer Tarif (Potenzial mit Speicher)</option>
           </select>
           <button class="btn" title="Beschreibung der Vergleichs-Baselines" aria-label="Info"
             style="padding:0;width:22px;height:22px;border-radius:50%;line-height:1" onclick="showSavHelp()">ⓘ</button>
-          <span id="sav-cap-wrap" style="display:none">
-            <span class="sub">Leistungsgrenze (W)</span>
-            <input type="number" id="sav-cap" title="Maximale Leistung der Überschuss-Senke (W)" value="3000" step="500" style="width:90px" onchange="loadSavings()">
-            <button class="btn" onclick="document.getElementById('sav-cap').value=3000;loadSavings()">Heizstab</button>
-            <button class="btn" onclick="document.getElementById('sav-cap').value=11000;loadSavings()">Auto</button>
+
+          <span class="lbl" id="sav-extra-label" style="display:none">Leistungsgrenze (W)</span>
+          <span class="sav-ctl" id="sav-extra" style="display:none">
+            <span id="sav-cap-wrap" style="display:none">
+              <span class="sub">Leistung</span><input type="number" id="sav-cap" title="Maximale Leistung der Überschuss-Senke (W)" value="3000" step="500" onchange="loadSavings()"><span class="sub">W</span>
+              <span class="sub">/ Tag max.</span><input type="number" id="sav-sinkday" title="Tages-Energiegrenze der Senke (kWh, 0 = unbegrenzt)" value="0" step="1" onchange="loadSavings()"><span class="sub">kWh</span>
+              <button class="btn" onclick="document.getElementById('sav-cap').value=3000;loadSavings()">Heizstab</button>
+              <button class="btn" onclick="document.getElementById('sav-cap').value=11000;loadSavings()">Auto</button>
+            </span>
+            <span id="sav-dyn-wrap" style="display:none">
+              <span class="sub">Hoch</span><input type="number" id="sav-phigh" title="Spitzenpreis 17–21 Uhr (ct/kWh)" value="40" step="1" onchange="loadSavings()">
+              <span class="sub">Normal</span><input type="number" id="sav-pnormal" title="Durchschnittspreis (ct/kWh)" value="30" step="1" onchange="loadSavings()">
+              <span class="sub">Niedrig</span><input type="number" id="sav-plow" title="Günstigpreis 0–6 Uhr (ct/kWh)" value="15" step="1" onchange="loadSavings()">
+              <span class="sub">ct/kWh &nbsp;·&nbsp; Speicher</span><input type="number" id="sav-batt" title="Batteriegröße der Simulation (kWh) – Anpassen zeigt das Potenzial" min="0" step="1" onchange="loadSavings()"><span class="sub">kWh</span>
+              <span class="sub">PV</span><input type="number" id="sav-pvkw" title="PV-Spitzenleistung der Simulation (kWp) – skaliert den Ertrag per Dreisatz" min="0" step="0.5" onchange="loadSavings()"><span class="sub">kWp</span>
+            </span>
           </span>
         </div>
         <div class="panel-title">Ergebnis</div>
@@ -1498,15 +1519,33 @@
       loadSavings();
     }
     function savBaselineChanged() {
-      document.getElementById("sav-cap-wrap").style.display =
-        document.getElementById("sav-baseline").value === "surplus_sink" ? "inline" : "none";
+      const b = document.getElementById("sav-baseline").value;
+      const isSink = b === "surplus_sink", isDyn = b === "dynamic";
+      const hasExtra = isSink || isDyn;
+      document.getElementById("sav-cap-wrap").style.display = isSink ? "inline" : "none";
+      document.getElementById("sav-dyn-wrap").style.display = isDyn ? "inline" : "none";
+      document.getElementById("sav-extra").style.display = hasExtra ? "flex" : "none";
+      document.getElementById("sav-extra-label").style.display = hasExtra ? "block" : "none";
+      document.getElementById("sav-extra-label").textContent =
+        isDyn ? "Tarif / Anlage" : "Senke";
       loadSavings();
     }
     async function loadSavings() {
       const baseline = document.getElementById("sav-baseline").value;
       const cap = document.getElementById("sav-cap").value || 3000;
+      const q = "?range="+savRange+"&baseline="+baseline+"&cap="+cap
+        + "&sinkday="+(document.getElementById("sav-sinkday").value||0)
+        + "&phigh="+(document.getElementById("sav-phigh").value||40)
+        + "&pnormal="+(document.getElementById("sav-pnormal").value||30)
+        + "&plow="+(document.getElementById("sav-plow").value||15)
+        + "&batt="+document.getElementById("sav-batt").value
+        + "&pvkw="+document.getElementById("sav-pvkw").value;
       let d = {};
-      try { d = await fetch(api("/api/savings")+"?range="+savRange+"&baseline="+baseline+"&cap="+cap).then(r=>r.json()); } catch(e) {}
+      try { d = await fetch(api("/api/savings")+q).then(r=>r.json()); } catch(e) {}
+      // initialize the what-if sliders from the current installation (once)
+      const battEl = document.getElementById("sav-batt"), pvEl = document.getElementById("sav-pvkw");
+      if (battEl.value==="" && d.batt_kwh!=null) battEl.value = d.batt_kwh;
+      if (pvEl.value==="" && d.pv_kw!=null) pvEl.value = d.pv_kw;
       const eur = (x) => x!=null ? x.toFixed(2).replace(".",",")+" €" : "–";
       const kwh = (x) => x!=null ? x.toFixed(1).replace(".",",")+" kWh" : "–";
       const sav = d.savings_eur;
@@ -1529,8 +1568,14 @@
         ["Einspeisung (Ist)", kwh(d.export_kwh)],
       ];
       if (baseline === "surplus_sink") info.push(["Überschuss-Senke (Baseline)", kwh(d.sink_kwh)]);
-      if (baseline === "ideal" && d.price_min_ct!=null)
-        info.push(["günstigster Preis im Zeitraum", d.price_min_ct.toFixed(2).replace(".",",")+" ct/kWh"]);
+      if (baseline === "dynamic") {
+        const kw = (x) => x!=null ? x.toFixed(1).replace(".",",")+" kW" : "–";
+        info.push(["Speichergröße (Simulation)", kwh(d.batt_kwh) + (d.battery_kwh_current!=null?` (aktuell ${kwh(d.battery_kwh_current)})`:"")]);
+        info.push(["PV-Spitze (Simulation)", kw(d.pv_kw) + "p" + (d.pv_peak_kw!=null?` (gemessen ${kw(d.pv_peak_kw)}p)`:"")]);
+        if (d.pv_sim_kwh!=null) info.push(["PV-Erzeugung (simuliert)", kwh(d.pv_sim_kwh)]);
+        info.push(["Kosten ohne Speicher (dieser Tarif)", eur(d.nostore_eur)]);
+        info.push(["Kosten mit Speicher (Baseline)", eur(d.baseline_eur)]);
+      }
       info.push(["Messpunkte", d.samples!=null?d.samples:"–"]);
       document.getElementById("sav-info").innerHTML = info.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join("");
     }
@@ -1540,9 +1585,9 @@
       direct: ["Direkter Eigenverbrauch (ohne Speicher/Steuerung)",
         "Nur die zeitgleich anfallende PV-Leistung deckt den Verbrauch, der Rest wird eingespeist bzw. bezogen — kein Speicher, keine aktive Steuerung. Die Differenz zeigt den Zusatznutzen von Speicher und Steuerung."],
       surplus_sink: ["PV-Überschuss-Senke (Heizstab/Auto)",
-        "Wie direkter Eigenverbrauch, aber PV-Überschuss wird bis zur eingestellten Leistungsgrenze von einer einfachen Senke (Heizstab/Auto) genutzt statt eingespeist. Die Differenz zeigt den Mehrwert gegenüber dieser einfachen Überschuss-Nutzung."],
-      ideal: ["Ideal (perfekte Speicher-/Tarifnutzung)",
-        "Theoretischer Bestfall: PV wird vollständig selbst genutzt (Speicher groß genug) und der verbleibende Netzbedarf komplett zum günstigsten Preis im Zeitraum bezogen — perfekte Tarif-Arbitrage. Bei einem statischen Tarif entspricht das dem direkten Eigenverbrauch (kein Potenzial). Bei dynamischem Tarif erscheint die Lücke als <b>Mehrkosten</b> und zeigt das Optimierungspotenzial einer größeren Batterie oder bidirektionalem Laden."],
+        "Wie direkter Eigenverbrauch, aber PV-Überschuss wird von einer einfachen Senke (Heizstab/Auto) genutzt statt eingespeist — begrenzt durch die <b>Leistung</b> (W) und optional eine <b>Tages-Energiegrenze</b> (kWh, der eigene Speicher der Senke, z.B. Warmwassertank oder Auto-Akku; 0 = unbegrenzt). Die Differenz zeigt den Mehrwert gegenüber dieser einfachen Überschuss-Nutzung."],
+      dynamic: ["Dynamischer Tarif (Potenzial mit Speicher)",
+        "Realistische Batterie-Simulation auf einem angenommenen dynamischen Tarif: <b>Niedrig</b> 0–6 Uhr, <b>Hoch</b> 17–21 Uhr, sonst <b>Normal</b>. Über die aufgezeichnete Zeitreihe wird eine Batterie der eingestellten <b>Speichergröße</b> durchgerechnet — sie speichert PV-Überschuss, deckt damit den Verbrauch, lädt im Niedrig-Fenster aus dem Netz nach und entlädt in der teuren Abendspitze (Wirkungsgrad 95 %, Lade-/Entladeleistung 0,5C). Die <b>PV</b>-Spitzenleistung skaliert den aufgezeichneten Ertrag per Dreisatz, um einen PV-Ausbau zu testen. Speicher und PV sind mit der aktuellen Anlage vorbelegt — durch Anpassen siehst du das Potenzial einer Erweiterung. Zum Vergleich wird auch die Variante <i>ohne Speicher</i> auf diesem Tarif ausgewiesen. Die Lücke zur Ist-Situation erscheint als <b>Mehrkosten</b> = Optimierungspotenzial (größere Batterie, mehr PV, dynamischer Tarif)."],
     };
     function showSavHelp() {
       const cur = document.getElementById("sav-baseline").value;

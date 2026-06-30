@@ -14,9 +14,16 @@
 - **Einsparungsseite** überarbeitet: Ersparnis wird **grün**, Mehrkosten **rot** dargestellt
   (Betrag ohne Vorzeichen, Beschriftung „Ersparnis vs. Baseline" bzw. „Mehrkosten vs. Baseline").
   Die Erklärung der Vergleichs-Baselines liegt jetzt im **ⓘ-Popup** neben dem Auswahlfeld.
-- Neue Baseline **„Ideal (perfekte Speicher-/Tarifnutzung)"**: PV voll selbst genutzt und der
-  Netzbedarf komplett zum günstigsten Preis im Zeitraum — die Mehrkosten zeigen das
-  Optimierungspotenzial einer größeren Batterie oder bidirektionalem Laden bei dynamischem Tarif.
+- **Einsparungsseite** sauber ausgerichtet: Zeitraum-Auswahl, Baseline-Selektor und die Felder
+  darunter stehen in einem Raster gleicher Breite untereinander.
+- Neue Baseline **„Dynamischer Tarif (Potenzial mit Speicher)"** mit realistischer
+  Batterie-Simulation: drei Preisstufen (Hoch 17–21 Uhr / Niedrig 0–6 Uhr / Normal), eine Batterie
+  der **einstellbaren Größe** wird über die echte Zeitreihe gerechnet (lädt PV-Überschuss, deckt
+  den Verbrauch, lädt nachts günstig nach, entlädt in der Abendspitze). **Speichergröße** und
+  **PV-Spitzenleistung** sind mit der aktuellen Anlage vorbelegt — durch Anpassen sieht man das
+  Potenzial einer größeren Batterie bzw. eines PV-Ausbaus (Ertrag per Dreisatz skaliert).
+- **PV-Überschuss-Senke**: zusätzlich zur Leistungsgrenze jetzt eine **Tages-Energiegrenze** (kWh)
+  einstellbar (eigener Speicher der Senke, z.B. Warmwassertank/Auto-Akku).
 
 ## 0.7.0
 

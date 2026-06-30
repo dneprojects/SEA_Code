@@ -199,13 +199,30 @@ class WebServer:
         rng = request.query.get("range", "day")
         range_s = _SAVINGS_RANGES.get(rng, 86400)
         baseline = request.query.get("baseline", "full_feed")
-        if baseline not in ("full_feed", "direct", "surplus_sink"):
+        if baseline not in ("full_feed", "direct", "surplus_sink", "dynamic"):
             baseline = "full_feed"
-        try:
-            cap = float(request.query.get("cap", "3000"))
-        except ValueError:
-            cap = 3000.0
-        data = await self._store.savings(range_s, baseline=baseline, sink_cap_w=cap)
+
+        def _qf(name: str, default: float) -> float:
+            try:
+                return float(request.query.get(name) or default)
+            except (TypeError, ValueError):
+                return default
+
+        def _qo(name: str) -> Optional[float]:
+            v = request.query.get(name)
+            if not v:
+                return None
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                return None
+
+        data = await self._store.savings(
+            range_s, baseline=baseline, sink_cap_w=_qf("cap", 3000.0),
+            p_high=_qf("phigh", 40.0), p_normal=_qf("pnormal", 30.0),
+            p_low=_qf("plow", 15.0), batt_kwh=_qo("batt"), pv_kw=_qo("pvkw"),
+            sink_kwh_day=_qf("sinkday", 0.0),
+        )
         data["range"] = rng
         return web.json_response(data)
 

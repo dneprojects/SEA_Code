@@ -1774,7 +1774,10 @@ class Store:
         ]
 
     async def savings(
-        self, range_s: int, baseline: str = "full_feed", sink_cap_w: float = 3000.0
+        self, range_s: int, baseline: str = "full_feed", sink_cap_w: float = 3000.0,
+        p_high: float = 40.0, p_normal: float = 30.0, p_low: float = 15.0,
+        batt_kwh: Optional[float] = None, pv_kw: Optional[float] = None,
+        sink_kwh_day: float = 0.0,
     ) -> dict[str, Any]:
         """Estimate savings of the actual operation vs a selectable baseline.
 
@@ -1784,19 +1787,36 @@ class Store:
           * direct      – instantaneous self-consumption, no battery/control
           * surplus_sink – like direct, but PV surplus up to sink_cap_w is used
             instead of exported (e.g. heating rod / EV), valued as avoided
-            purchase: lowers cost by absorbed·(price − feed)
-          * ideal       – theoretical best case: PV fully self-consumed (big
-            enough storage) and the remaining net grid demand bought entirely at
-            the cheapest price observed in the window (perfect tariff
-            arbitrage). For a static tariff this collapses to "direct"; the gap
-            to it appears as Mehrkosten and shows the optimization potential of
-            a bigger battery / bidirectional charging on a dynamic tariff.
-        savings = baseline_cost − actual_cost (negative for the ideal baseline).
+            purchase: lowers cost by absorbed·(price − feed). sink_kwh_day caps
+            the absorbed energy per calendar day (0 = unlimited) — the sink's
+            own storage (hot-water tank / car battery).
+          * dynamic     – realistic battery simulation on a hypothetical dynamic
+            tariff (p_high/p_normal/p_low by time of day: cheap 0–6 h, peak
+            17–21 h, else normal). A battery of batt_kwh is walked over the
+            recorded series: it stores PV surplus, discharges to cover the load,
+            grid-charges in the cheap window and is held for the expensive
+            window (arbitrage). PV is scaled to pv_kw (Dreisatz from the
+            observed peak) to test a PV expansion. nostore_eur = the same scaled
+            PV without a battery at the normal price. The gap to the actual cost
+            appears as Mehrkosten and shows the optimization potential of a
+            bigger battery, more PV or a dynamic tariff. batt_kwh/pv_kw default
+            to the current installation.
+        savings = baseline_cost − actual_cost (negative for the dynamic baseline).
         """
+        # current installation (defaults for the what-if sliders)
+        try:
+            from . import devices as _dev
+            cur_batt = round(sum(d.capacity_kwh for d in _dev.ess_devices(self)), 1)
+        except Exception:  # noqa: BLE001
+            cur_batt = 0.0
         empty = {
             "pv_kwh": 0.0, "house_kwh": 0.0, "import_kwh": 0.0, "export_kwh": 0.0,
             "self_kwh": 0.0, "sink_kwh": 0.0, "baseline_eur": 0.0, "actual_eur": 0.0,
-            "savings_eur": 0.0, "price_min_ct": 0.0, "baseline": baseline, "samples": 0,
+            "savings_eur": 0.0, "nostore_eur": 0.0, "price_min_ct": 0.0,
+            "p_high_ct": p_high, "p_normal_ct": p_normal, "p_low_ct": p_low,
+            "batt_kwh": batt_kwh if batt_kwh is not None else cur_batt,
+            "pv_kw": pv_kw or 0.0, "pv_peak_kw": 0.0, "battery_kwh_current": cur_batt,
+            "pv_sim_kwh": 0.0, "baseline": baseline, "samples": 0,
         }
         if self._db is None:
             return empty
@@ -1817,9 +1837,22 @@ class Store:
         cur_price = (self.current_price_ct() or 0.0) / 100.0
         cap_kw = max(0.0, sink_cap_w) / 1000.0
         max_dt = 2 * const.RECORD_INTERVAL
+
+        # dynamic-baseline simulation setup
+        pv_peak_w = max((r[1] or 0.0) for r in rows)
+        cur_pv_kw = pv_peak_w / 1000.0
+        pv_factor = (pv_kw / cur_pv_kw) if (pv_kw and cur_pv_kw > 0) else 1.0
+        sim_cap = batt_kwh if batt_kwh is not None else cur_batt     # kWh
+        sim_pmax = max(0.0, sim_cap) * 0.5                           # 0.5C (kW)
+        CE = DE = 0.95                                               # charge/discharge eff.
+        lo = p_low / 100.0; nrm = p_normal / 100.0; hi = p_high / 100.0
+
         pv_k = house_k = imp_k = exp_k = sink_k = 0.0
-        base_eur = act_eur = 0.0
-        pmin: float | None = None
+        base_eur = act_eur = nostore_eur = pv_sim_k = 0.0
+        soc = 0.0                                                    # battery SoC (kWh)
+        sink_today = 0.0
+        sink_day: Optional[int] = None
+        pmin: Optional[float] = None
         prev = None
         for r in rows:
             if prev is not None:
@@ -1841,25 +1874,51 @@ class Store:
                 # baseline cost for this interval
                 if baseline == "full_feed":
                     base_eur += house * price - pv * feed
-                elif baseline != "ideal":
+                elif baseline == "dynamic":
+                    pv_s = pv * pv_factor
+                    pv_sim_k += pv_s
+                    hour = time.localtime(prev[0]).tm_hour
+                    cheap = hour < 6
+                    tprice = lo if cheap else (hi if 17 <= hour < 21 else nrm)
+                    pmax_e = sim_pmax * h
+                    surplus = pv_s - house
+                    if surplus >= 0.0:                          # store PV surplus
+                        room = sim_cap - soc
+                        chg = min(surplus, pmax_e, room / CE)
+                        soc += chg * CE
+                        imp_s, exp_s = 0.0, surplus - chg
+                    elif cheap:                                 # cheap: buy + pre-charge
+                        deficit = -surplus
+                        room = sim_cap - soc
+                        gchg = min(pmax_e, room / CE)
+                        soc += gchg * CE
+                        imp_s, exp_s = deficit + gchg, 0.0
+                    else:                                       # discharge to cover load
+                        deficit = -surplus
+                        dis = min(deficit, pmax_e, soc * DE)
+                        soc -= dis / DE
+                        imp_s, exp_s = deficit - dis, 0.0
+                    base_eur += imp_s * tprice - exp_s * feed
+                    # reference: same scaled PV, no battery, at the normal price
+                    self_n = min(pv_s, house)
+                    nostore_eur += (house - self_n) * nrm - (pv_s - self_n) * feed
+                else:
                     self_d = min(pv, house)
                     imp_d = house - self_d
                     exp_d = pv - self_d
                     bc = imp_d * price - exp_d * feed
                     if baseline == "surplus_sink":
                         absorbed = min(exp_d, cap_kw * h)
+                        if sink_kwh_day > 0:                    # daily energy cap (sink storage)
+                            day = int(prev[0] // 86400)
+                            if day != sink_day:
+                                sink_day, sink_today = day, 0.0
+                            absorbed = min(absorbed, max(0.0, sink_kwh_day - sink_today))
+                            sink_today += absorbed
                         bc -= absorbed * (price - feed)
                         sink_k += absorbed
                     base_eur += bc
             prev = r
-
-        # ideal baseline: aggregate (computed after the loop). PV fully
-        # self-consumed; net grid demand bought at the cheapest window price,
-        # net PV surplus credited at the feed-in tariff.
-        if baseline == "ideal":
-            p = pmin if pmin is not None else cur_price
-            net = house_k - pv_k
-            base_eur = net * p if net > 0 else net * feed
 
         return {
             "pv_kwh": round(pv_k, 2),
@@ -1871,7 +1930,14 @@ class Store:
             "baseline_eur": round(base_eur, 2),
             "actual_eur": round(act_eur, 2),
             "savings_eur": round(base_eur - act_eur, 2),
+            "nostore_eur": round(nostore_eur, 2),
             "price_min_ct": round((pmin if pmin is not None else cur_price) * 100.0, 2),
+            "p_high_ct": p_high, "p_normal_ct": p_normal, "p_low_ct": p_low,
+            "batt_kwh": round(sim_cap, 1),
+            "pv_kw": round(pv_kw if pv_kw else cur_pv_kw, 2),
+            "pv_peak_kw": round(cur_pv_kw, 2),
+            "battery_kwh_current": cur_batt,
+            "pv_sim_kwh": round(pv_sim_k, 2),
             "baseline": baseline,
             "samples": len(rows),
         }
