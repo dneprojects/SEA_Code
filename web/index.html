@@ -212,6 +212,8 @@
       padding:0 15px;cursor:pointer;font:inherit;font-weight:600;font-size:13px}
     .seg button:first-child{border-left:none}
     .seg button.active{background:var(--brand);color:#fff}
+    .seg button.active.dim{opacity:.45}                       /* span source while "bis jetzt" active */
+    #hist-apply.on{background:var(--brand);color:#fff;border-color:var(--brand)}  /* free range active */
     /* savings controls: full-width stack (label | control), control spans like the 4 cards */
     .sav-top{display:grid;grid-template-columns:max-content 1fr;gap:10px 14px;align-items:center;margin-top:16px}
     .sav-top .lbl{color:var(--muted);font-size:13px;white-space:nowrap}
@@ -453,10 +455,12 @@
         <div class="page-h"><svg class="ico"><use href="#i-hist"/></svg><h1>Verlauf</h1></div>
         <div class="controls" style="flex-wrap:wrap;gap:8px">
           <span class="seg" id="range-seg">
-            <button data-range="day" class="active" onclick="setRange('day')">Tag</button>
+            <button data-range="today" class="active" onclick="setToday()" title="aktueller Tag inkl. Prognose">Heute</button>
+            <button data-range="day" onclick="setRange('day')">Tag</button>
             <button data-range="week" onclick="setRange('week')">Woche</button>
             <button data-range="month" onclick="setRange('month')">Monat</button>
             <button data-range="year" onclick="setRange('year')">Jahr</button>
+            <button data-range="now" onclick="setNow()" title="Zeitraum jetzt enden lassen (letzte 24 h / 7 / 30 / 365 Tage je nach Auswahl)">bis jetzt</button>
           </span>
           <span class="seg">
             <button onclick="panHist(-1)" title="einen Zeitraum zurück">◀</button>
@@ -466,8 +470,7 @@
         <div class="controls" style="flex-wrap:wrap;gap:8px;margin-top:8px">
           <span class="sub">von</span> <input type="datetime-local" id="hist-from">
           <span class="sub">bis</span> <input type="datetime-local" id="hist-to">
-          <button class="btn" onclick="nowHistRange()" title="Zeitraum jetzt enden lassen (z.B. letzte 24 h / 30 Tage / 365 Tage)">jetzt</button>
-          <button class="btn" onclick="applyHistRange()">Anwenden</button>
+          <button class="btn" id="hist-apply" onclick="applyHistRange()" title="frei eingegebenen Zeitraum übernehmen">Auswahl</button>
         </div>
         <div class="panel-title">Leistung &amp; Prognose</div>
         <div class="subhead" style="margin:8px 0 4px">Leistung (W)</div>
@@ -1271,10 +1274,13 @@
 
     // ---------- Verlauf & Prognose (time-based SVG chart) ----------
     const FC_HORIZON = 24*3600;
+    const ROLL_SPAN = { day:86400, week:604800, month:2592000, year:31536000 };
     let winFrom = 0, winTo = 0, histData = [], fcData = [];
-    let histUnit = "day";   // active calendar preset (day/week/month/year) or null (free range)
+    let histMode = "today";   // today | cal | now | free
+    let histUnit = "day";     // day | week | month | year (span for cal/now)
     function fmtLocalInput(ts) { const d = new Date(ts*1000), p = n => String(n).padStart(2,'0');
       return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+"T"+p(d.getHours())+":"+p(d.getMinutes()); }
+    function dayStart(ref) { const d = new Date(ref); d.setHours(0,0,0,0); return Math.floor(d.getTime()/1000); }
     function calRange(unit, ref) {           // calendar-aligned [from,to] in seconds
       const d = new Date(ref); d.setHours(0,0,0,0);
       let from, to;
@@ -1284,46 +1290,62 @@
       else { from = new Date(d.getFullYear(), 0, 1); to = new Date(d.getFullYear()+1, 0, 1); }
       return [Math.floor(from.getTime()/1000), Math.floor(to.getTime()/1000)];
     }
+    function segBtn(r) { return document.querySelector('#range-seg button[data-range="'+r+'"]'); }
     function markRangeSeg() {
-      document.querySelectorAll("#range-seg button").forEach(b => b.classList.toggle("active", b.dataset.range===histUnit));
+      document.querySelectorAll("#range-seg button").forEach(b => b.classList.remove("active","dim"));
+      const apply = document.getElementById("hist-apply"); if (apply) apply.classList.remove("on");
+      if (histMode === "today") { const b = segBtn("today"); if (b) b.classList.add("active"); }
+      else if (histMode === "cal") { const b = segBtn(histUnit); if (b) b.classList.add("active"); }
+      else if (histMode === "now") {
+        const n = segBtn("now"); if (n) n.classList.add("active");
+        const u = segBtn(histUnit); if (u) u.classList.add("active","dim");   // span source, desaturated
+      } else if (apply) apply.classList.add("on");                            // free range
+    }
+    function setToday() {                      // live view incl. forecast horizon
+      histMode = "today"; histUnit = "day";
+      winFrom = dayStart(new Date()); winTo = Math.floor(Date.now()/1000) + FC_HORIZON;
+      markRangeSeg(); loadHistory();
     }
     function setRange(unit) {
-      histUnit = unit; markRangeSeg();
-      [winFrom, winTo] = calRange(unit, new Date());
-      loadHistory();
+      histUnit = unit;
+      if (histMode === "now") { const now = Math.floor(Date.now()/1000); winFrom = now - ROLL_SPAN[unit]; winTo = now; }
+      else { histMode = "cal"; [winFrom, winTo] = calRange(unit, new Date()); }
+      markRangeSeg(); loadHistory();
+    }
+    function setNow() {                        // toggle: end the window now, span = selected unit
+      if (histMode === "now") { histMode = "cal"; [winFrom, winTo] = calRange(histUnit, new Date()); }
+      else { histMode = "now"; const now = Math.floor(Date.now()/1000); winFrom = now - ROLL_SPAN[histUnit]; winTo = now; }
+      markRangeSeg(); loadHistory();
     }
     function panHist(dir) {
-      if (histUnit) {                        // step one calendar unit, keep alignment
+      if (histMode === "today") { histMode = "cal"; histUnit = "day"; }   // leaving the live view
+      if (histMode === "cal") {                // step one calendar unit, keep alignment
         const mid = new Date(((winFrom+winTo)/2)*1000);
         if (histUnit === "day") mid.setDate(mid.getDate()+dir);
         else if (histUnit === "week") mid.setDate(mid.getDate()+7*dir);
         else if (histUnit === "month") mid.setMonth(mid.getMonth()+dir);
         else mid.setFullYear(mid.getFullYear()+dir);
         [winFrom, winTo] = calRange(histUnit, mid);
-      } else {                               // free range: shift by its own span
-        const step = (winTo-winFrom)*dir; winFrom += step; winTo += step;
+      } else {                                 // now/free: shift by its own span, becomes free
+        const step = (winTo-winFrom)*dir; winFrom += step; winTo += step; histMode = "free";
       }
-      loadHistory();
-    }
-    function nowHistRange() {                 // end the window now, keep its span (24 h / 30 d / 365 d back)
-      const now = Math.floor(Date.now()/1000), span = (winTo-winFrom) || 86400;
-      winTo = now; winFrom = now - span; histUnit = null; markRangeSeg();
-      loadHistory();
+      markRangeSeg(); loadHistory();
     }
     function applyHistRange() {
       const f = document.getElementById("hist-from").value, t = document.getElementById("hist-to").value;
       if (!f || !t) return;
       const ff = Math.floor(new Date(f).getTime()/1000), tt = Math.floor(new Date(t).getTime()/1000);
-      if (tt > ff) { winFrom = ff; winTo = tt; histUnit = null; markRangeSeg(); loadHistory(); }
+      if (tt > ff) { winFrom = ff; winTo = tt; histMode = "free"; markRangeSeg(); loadHistory(); }
     }
     async function loadHistory() {
-      if (!winTo) { [winFrom, winTo] = calRange("day", new Date()); histUnit = "day"; markRangeSeg(); }
+      if (!winTo) { histMode = "today"; histUnit = "day";
+        winFrom = dayStart(new Date()); winTo = Math.floor(Date.now()/1000) + FC_HORIZON; markRangeSeg(); }
       try { histData = (await fetch(api("/api/history")+"?from="+winFrom+"&to="+winTo).then(r=>r.json())).series || []; }
       catch(e) { histData = []; }
       const clampSurplus = v => (v!=null ? Math.max(0, v) : v);   // surplus never negative
       histData.forEach(d => { d.surplus_w = clampSurplus(d.surplus_w); });
       fcData = [];
-      if (winTo > Math.floor(Date.now()/1000)) {
+      if (histMode === "today") {                 // forecast horizon only in the live "Heute" view
         try { const d = await fetch(api("/api/forecast")+"?hours=24").then(r=>r.json());
           const pts = (d.surplus&&d.surplus.points) || (d.consumption&&d.consumption.points) || [];
           fcData = pts.map(p => ({ ts:p.ts, pv_w:p.pv_w,
@@ -1456,8 +1478,8 @@
           const a=Math.min(sx,cx), b=Math.max(sx,cx);
           if (b-a >= 6) { const t0=tAt(a), t1=tAt(b);
             if (t1-t0 >= 60) {
-              winFrom=t0; winTo=t1; histUnit=null;
-              document.querySelectorAll("#range-seg button").forEach(btn=>btn.classList.remove("active"));
+              winFrom=t0; winTo=t1; histMode="free";
+              markRangeSeg();
               loadHistory();
             }
           }
