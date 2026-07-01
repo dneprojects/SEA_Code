@@ -320,15 +320,40 @@ class Device:
         """Upper setpoint in the entity's own unit (max_w / w-per-unit)."""
         return round(self.max_w / self.wpu, 2) if self.max_w > 0 else 0.0
 
+    def _entity_max_unit(self, ent: str) -> Optional[float]:
+        """The actuator's own HA upper limit (a ``number``'s ``max`` attribute),
+        if any. Commanding past it is rejected by HA/the device — which for a
+        watchdog device (e.g. my-PV ELWA: no valid value → 90 s timeout → 0)
+        stalls control entirely. So we never command above it."""
+        attrs = (self._store.live_state(ent) or {}).get("attributes") or {}
+        for k in ("max", "max_value"):
+            v = attrs.get(k)
+            if v is not None:
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    pass
+        return None
+
     def actuator_bounds(self) -> dict[str, tuple[float, float]]:
         """Hard ``[min, max]`` per controllable numeric entity, in its own unit.
 
         Fed to the controller chain's resolver so no controller (including a
-        future optimizer) can drive a device past its limit. Only an upper bound
-        is set when ``max_w`` is configured; otherwise it stays open (∞).
+        future optimizer) can drive a device past its limit. The upper bound is
+        the smaller of the configured ``max_w`` and the actuator's own HA ``max``
+        — so a too-high setpoint is never sent (and never rejected downstream).
         """
-        hi = self.max_w / self.wpu if self.max_w > 0 else math.inf
-        return {ent: (0.0, hi) for ent in (self.setpoint_entity, self.discharge_entity) if ent}
+        hi_cfg = self.max_w / self.wpu if self.max_w > 0 else math.inf
+        out: dict[str, tuple[float, float]] = {}
+        for ent in (self.setpoint_entity, self.discharge_entity):
+            if not ent:
+                continue
+            hi = hi_cfg
+            em = self._entity_max_unit(ent)
+            if em is not None:
+                hi = min(hi, em)
+            out[ent] = (0.0, hi)
+        return out
 
 
 def devices(store: Any) -> list[Device]:

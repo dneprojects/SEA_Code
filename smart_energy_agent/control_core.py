@@ -227,8 +227,13 @@ async def apply_commands(
         domain = cmd.entity.split(".", 1)[0]
         key = cmd.kind if cmd.kind in ("on", "off") else cmd.value
         prev = cache.get(cmd.entity)
-        # send on change, or as a periodic keepalive for an unchanged command
-        if prev is not None and prev[0] == key and (mono - prev[1]) < const.APPLY_KEEPALIVE_S:
+        # Switches: send on change, else a periodic keepalive (don't spam HA).
+        # Setpoints ("set"): re-send EVERY cycle. Externally-controlled actuators
+        # (my-PV AC ELWA 2, inverters, wallboxes …) run a control watchdog and
+        # fall back to 0 / their own control if the target isn't refreshed within
+        # seconds — a 55 s keepalive is far too slow, so never skip a setpoint.
+        if cmd.kind in ("on", "off") and prev is not None and prev[0] == key \
+                and (mono - prev[1]) < const.APPLY_KEEPALIVE_S:
             continue
         try:
             if cmd.kind in ("on", "off"):

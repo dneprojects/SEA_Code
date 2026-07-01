@@ -900,3 +900,20 @@ def test_charge_rated_w_uses_min_of_wallbox_and_vehicle():
     # no vehicle max -> wallbox max
     s._settings["vehicles"] = [{"id": "v1", "charger_key": "ev_charger:c1"}]
     assert eng._charge_rated_w(dev) == 11000.0
+
+
+def test_actuator_bounds_clamps_to_ha_entity_max():
+    # SmartHub must never command above the actuator's own HA max: a my-PV ELWA
+    # rejects a target > its device max, and with no valid value its 90 s control
+    # watchdog times out to 0. Bound = min(configured max_w, entity max).
+    from smart_energy_agent.devices import actuator_bounds
+    s = Store()
+    s._config = {"water_heater": [{"id": "w1", "name": "ELWA",
+                 "powers": [{"entity": "sensor.elwa_p"}],
+                 "control": {"setpoint": "number.elwa"}}]}
+    s._settings["strategy_loads"] = {"water_heater:w1": {
+        "self_consumption": True, "max_w": 3600, "w_per_unit": 1}}
+    s._live_by_id = {"number.elwa": {"state": "2000", "attributes": {"max": 3500}}}
+    assert actuator_bounds(s)["number.elwa"] == (0.0, 3500.0)   # clamped to device max
+    s._live_by_id = {"number.elwa": {"state": "2000", "attributes": {}}}
+    assert actuator_bounds(s)["number.elwa"] == (0.0, 3600.0)   # no attr -> max_w

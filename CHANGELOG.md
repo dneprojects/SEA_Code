@@ -2,6 +2,15 @@
 
 ## 0.8.1
 
+- **Fix: Sollwert nie über das Geräte-Limit senden.** Die Stellgröße wird jetzt auf das **Minimum
+  aus konfigurierter max. Leistung und dem echten HA-Maximum der Entität** begrenzt. Bisher konnte
+  ein zu hoher Wert (z. B. 3600 W an eine ELWA mit 3500 W) gesendet werden — das Gerät weist ihn ab,
+  bekommt keinen gültigen Wert und läuft nach seinem Steuer-Timeout auf 0 (Netzeinspeisung statt
+  Heizen).
+- **Fix: Stellgrößen jeden Regeltakt (10 s) neu senden.** Geräte mit Steuer-Watchdog (my-PV ELWA
+  u. a., z. B. 90-s-Timeout) fielen zwischen den bisherigen 55-s-Keepalives auf 0 zurück; jetzt
+  bleibt der Sollwert sicher innerhalb des Timeouts.
+
 - **Verlauf: CSV-Export** — Button „CSV-Export" exportiert alle Reihen des aktuell gewählten
   Zeitfensters (Bilanz inkl. **ungeklemmtem** Überschuss + alle Geräte-/Zusatzreihen) als
   Datei-Download (`sea_export_JJJJ_MM_TT:HH:MM.csv`).

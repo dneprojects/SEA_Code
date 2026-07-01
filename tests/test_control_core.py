@@ -99,3 +99,23 @@ def test_apply_commands_maps_kinds_and_records_switch():
     assert ("number", "set_value", "number.hz", {"value": 1500.0}) in calls
     assert not any(e == "sensor.x" for _, _, e, _ in calls)   # set on a sensor is dropped
     assert switches == [("switch.boiler", True, "cheap")]
+
+
+def test_apply_commands_resends_setpoints_every_cycle_switch_throttled():
+    # Setpoints ("set") must be re-sent every cycle so a watchdog device (my-PV
+    # ELWA: 90 s timeout) never falls back; switches keep the keepalive throttle.
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((entity, data))
+
+    class Store:
+        def note_switch(self, entity, on, reason): pass
+    st = Store()
+    for t in (0.0, 1.0):   # 1 s apart, well within APPLY_KEEPALIVE_S
+        c = CommandSet()
+        c.add(Command("number.hz", "set", 3500.0, "regelbar"))
+        c.add(Command("switch.b", "on", reason="ein"))
+        asyncio.run(apply_commands(cs, st, c, now=t))
+    assert len([e for e, _ in calls if e == "number.hz"]) == 2   # setpoint every cycle
+    assert len([e for e, _ in calls if e == "switch.b"]) == 1    # switch throttled
