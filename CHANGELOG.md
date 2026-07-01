@@ -2,12 +2,13 @@
 
 ## 0.8.1
 
-- **Regelbare Lasten schwingen nicht mehr (gedämpfte Regelung statt 1:1).** Der Heizstab wurde
-  bisher pro Takt **1:1** auf den ganzen Überschuss gestellt (Deadbeat) — das schwingt bei
-  Sensor-Totzeit (Über-/Netzbezug im Wechsel). Jetzt regelt er nur einen **Bruchteil des Fehlers
-  pro Takt** aus (die physische Lastleistung ist der Integral-Anteil) und läuft glatt auf
-  Überschuss = 0. Neue Einstellung **„Regelverstärkung (Modulation)"** (Grundeinstellungen),
-  Default **0,25**; 1,0 = altes 1:1-Verhalten.
+- **Echter PI-Regler für regelbare Lasten (statt 1:1).** Der Heizstab wurde bisher pro Takt **1:1**
+  auf den ganzen Überschuss gestellt (Deadbeat) — das schwingt bei Sensor-Totzeit und kippt in
+  Netzbezug, was die geräteeigene Abschaltung des my-PV auslöst (Abstürze auf 0). Jetzt regelt ein
+  **PI in Geschwindigkeitsform** (Δsoll = Kp·(e−e_prev) + Ki·e; die Lastleistung ist der Integrator):
+  monotone Annäherung an Überschuss = 0, **ohne Überschwingen in Netzbezug**, eingeschwungen in ~80 s
+  (statt Dauerschwingen). Zwei neue Einstellungen **„Modulation P-Anteil (Kp)"** (Default 0,1) und
+  **„I-Anteil (Ki)"** (Default 0,2); Kp=0/Ki=1 = altes 1:1-Verhalten.
 
 - **Fix: Sollwert nie über das Geräte-Limit senden.** Die Stellgröße wird jetzt auf das **Minimum
   aus konfigurierter max. Leistung und dem echten HA-Maximum der Entität** begrenzt. Bisher konnte

@@ -686,10 +686,14 @@
           <input type="number" id="set-soh" min="0" step="1" style="width:80px"
             title="Periodische Vollladung zur SoC-Kalibrierung: alle N Tage wird bis 100 % geladen. 0 = aus.">
           <span class="sub">0 = aus — Vollladung zur Kalibrierung</span></div>
-        <div class="setrow"><label>Regelverstärkung (Modulation)</label>
-          <input type="number" id="set-modgain" min="0.05" max="1" step="0.05" style="width:80px"
-            title="Anteil des Überschuss-Fehlers, den regelbare Lasten (Heizstab etc.) pro Takt ausregeln. 1,0 = Deadbeat (stellt 1:1 die ganze Differenz — schwingt bei Sensor-Totzeit), kleiner = gedämpft (PI-Verhalten).">
-          <span class="sub">1,0 = 1:1 (schwingt) · 0,25 = gedämpft (empfohlen)</span></div>
+        <div class="setrow"><label>Modulation P-Anteil (Kp)</label>
+          <input type="number" id="set-pikp" min="0" max="1" step="0.05" style="width:80px"
+            title="Proportional-Verstärkung des PI-Reglers für regelbare Lasten (Heizstab etc.): dämpft das Überschwingen unter Sensor-Totzeit, damit der Regelkreis nicht in Netzbezug kippt.">
+          <span class="sub">dämpft Überschwingen · Default 0,1</span></div>
+        <div class="setrow"><label>Modulation I-Anteil (Ki)</label>
+          <input type="number" id="set-piki" min="0.02" max="1" step="0.05" style="width:80px"
+            title="Integral-Verstärkung: Bruchteil des Überschuss-Fehlers, der pro Takt (10 s) ausgeregelt wird. Kp=0, Ki=1 = altes 1:1-Verhalten (schwingt).">
+          <span class="sub">Regeltempo · Default 0,2 · Kp=0/Ki=1 = altes 1:1</span></div>
         <div class="setrow"><label>Sensoren zeitlich angleichen</label>
           <label class="opt" title="Gleicht nicht-synchrone Leistungssensoren an: die schnellen werden über die Kadenz des langsamsten gemittelt (langsamster hält seinen Wert), bevor die Bilanz gebildet wird. Basis für Energiefluss-Anzeige und Regelung.">
             <input type="checkbox" id="set-sigsync"> <span class="sub">schnelle Sensoren auf die langsamen mitteln (Energiefluss + Regelung)</span></label></div>
@@ -1919,7 +1923,8 @@
       document.getElementById("set-feedin").value = (s.feed_in_limit_w || 0);
       document.getElementById("set-emerg").value = (s.emergency_reserve_soc || 0);
       document.getElementById("set-soh").value = (s.soh_cycle_days || 0);
-      document.getElementById("set-modgain").value = (s.mod_control_gain!=null ? s.mod_control_gain : 0.25);
+      document.getElementById("set-pikp").value = (s.mod_pi_kp!=null ? s.mod_pi_kp : 0.1);
+      document.getElementById("set-piki").value = (s.mod_pi_ki!=null ? s.mod_pi_ki : 0.2);
       document.getElementById("set-sigsync").checked = (s.signal_sync !== false);
       document.getElementById("set-pvlimit").value = s.pv_limit_entity || "";
       document.getElementById("set-pvlimitmax").value = (s.pv_limit_max_w || 0);
@@ -1945,7 +1950,8 @@
         feed_in_limit_w: document.getElementById("set-feedin").value || 0,
         emergency_reserve_soc: document.getElementById("set-emerg").value || 0,
         soh_cycle_days: document.getElementById("set-soh").value || 0,
-        mod_control_gain: document.getElementById("set-modgain").value || 0.25,
+        mod_pi_kp: document.getElementById("set-pikp").value || 0.1,
+        mod_pi_ki: document.getElementById("set-piki").value || 0.2,
         signal_sync: document.getElementById("set-sigsync").checked,
         pv_limit_entity: document.getElementById("set-pvlimit").value || "",
         pv_limit_max_w: document.getElementById("set-pvlimitmax").value || 0,

@@ -772,6 +772,7 @@ class ControlEngine:
         self._staged_energy: dict[str, dict] = dict(st.get("staged_energy") or {})  # key -> {day, kwh}
         self._soh_state: dict[str, int] = dict(st.get("soh_state") or {})           # key -> last-full day-ordinal
         self._last_state_save = 0.0
+        self._pi_e_prev: Optional[float] = None   # last surplus error (PI velocity-form P-term)
 
     def _build(self) -> list[ConsumerDecision]:
         """Switchable PV-surplus auto-consumers, as decision records."""
@@ -880,15 +881,19 @@ class ControlEngine:
         balance = self._store.balance()
         raw_surplus = self._surplus_signed(balance)
         grid_w = float(balance.get("grid_w", 0.0) or 0.0)
-        # Modulation loop gain: regulating loads correct only this fraction of the
-        # surplus error per cycle. 1.0 = deadbeat (sets 1:1 the whole difference),
-        # which rings under sensor delay; the physical load power is the integral
-        # term, so a gain < 1 gives smooth PI-style convergence to surplus = 0.
+        # PI controller (velocity form) for regulating loads: the per-cycle change
+        # of the setpoint is Kp·(e − e_prev) + Ki·e, where e = surplus error (want
+        # 0) and the physical load power (cur_w in decide_modulation) is the
+        # integrator. Ki alone (Kp=0) is a gain-reduced integrator that rings under
+        # sensor delay; the Kp term damps that overshoot so the loop settles fast
+        # WITHOUT pushing into grid import (which would trip the load's own cutoff).
         try:
-            gain = self._store.modulation_control_gain()
+            kp, ki = self._store.modulation_pi()
         except Exception:  # noqa: BLE001
-            gain = 1.0
-        surplus_control = gain * raw_surplus
+            kp, ki = 0.0, 1.0
+        e_prev = self._pi_e_prev if self._pi_e_prev is not None else raw_surplus
+        surplus_control = kp * (raw_surplus - e_prev) + ki * raw_surplus
+        self._pi_e_prev = raw_surplus
         # Staleness gate: if a critical balance sensor (grid/battery) is older than
         # STALE_FACTOR × its update interval, the snapshot is unreliable → freeze
         # modulating setpoints instead of acting on out-of-date data.

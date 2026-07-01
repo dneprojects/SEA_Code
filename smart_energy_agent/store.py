@@ -124,10 +124,14 @@ class Store:
             # Battery care: periodic full charge (every N days) to recalibrate SoC.
             # 0 = off.
             "soh_cycle_days": 0.0,
-            # Modulation loop gain: fraction of the surplus error that regulating
-            # loads (ELWA etc.) correct per cycle. 1.0 = deadbeat (1:1 the whole
-            # difference) — rings under sensor delay; lower = damped PI behaviour.
-            "mod_control_gain": 0.25,
+            # PI controller for modulating loads (ELWA etc.), velocity form on the
+            # signed surplus error (want 0). Δsetpoint = Kp·(e−e_prev) + Ki·e per
+            # cycle; the physical load power is the integrator. Ki = integral gain
+            # (fraction corrected/cycle), Kp = proportional (damps overshoot under
+            # sensor delay). Kp=0,Ki=1 = old 1:1 deadbeat. Defaults tuned for ~80 s
+            # settling with no grid-import overshoot at ~2-cycle sensor delay.
+            "mod_pi_kp": 0.1,
+            "mod_pi_ki": 0.2,
             # Time-align asynchronous power sensors: average the fast ones over the
             # slowest sensor's cadence (slowest held) before building the balance,
             # so PV/grid/battery/loads represent the same window. Feeds the flow
@@ -288,13 +292,13 @@ class Store:
                 pass
         if "pv_limit_entity" in patch:
             self._settings["pv_limit_entity"] = str(patch["pv_limit_entity"] or "")
-        if "mod_control_gain" in patch:
-            g = patch["mod_control_gain"]
-            try:
-                self._settings["mod_control_gain"] = min(1.0, max(0.05, float(g))) \
-                    if g not in (None, "") else 0.25
-            except (TypeError, ValueError):
-                pass
+        for pk, lo, hi, dfl in (("mod_pi_kp", 0.0, 1.0, 0.1), ("mod_pi_ki", 0.02, 1.0, 0.2)):
+            if pk in patch:
+                v = patch[pk]
+                try:
+                    self._settings[pk] = min(hi, max(lo, float(v))) if v not in (None, "") else dfl
+                except (TypeError, ValueError):
+                    pass
         for key in ("peak_limit_w", "feed_in_limit_w", "emergency_reserve_soc",
                     "soh_cycle_days", "pv_limit_max_w"):
             if key in patch:
@@ -472,15 +476,19 @@ class Store:
         except (TypeError, ValueError):
             return 0.0
 
-    def modulation_control_gain(self) -> float:
-        """Loop gain for modulating loads: the fraction of the surplus error that
-        is corrected per cycle. 1.0 = deadbeat (sets 1:1 the whole difference, rings
-        under sensor delay); lower damps it (PI-style). Clamped to [0.05, 1.0]."""
-        try:
-            g = float(self._settings.get("mod_control_gain", 0.25) or 0.25)
-        except (TypeError, ValueError):
-            return 0.25
-        return min(1.0, max(0.05, g))
+    def modulation_pi(self) -> tuple[float, float]:
+        """(Kp, Ki) for the modulating-load PI (velocity form). Ki = integral gain
+        (fraction of the surplus corrected per cycle), Kp = proportional (damps
+        overshoot under sensor delay). Kp clamped [0, 1], Ki clamped [0.02, 1.0]
+        (Kp=0, Ki=1 reproduces the old 1:1 deadbeat)."""
+        def _f(key: str, default: float) -> float:
+            try:
+                return float(self._settings.get(key, default))
+            except (TypeError, ValueError):
+                return default
+        kp = min(1.0, max(0.0, _f("mod_pi_kp", 0.1)))
+        ki = min(1.0, max(0.02, _f("mod_pi_ki", 0.2)))
+        return kp, ki
 
 
     def soh_cycle_days(self) -> float:
