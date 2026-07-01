@@ -54,3 +54,20 @@ def test_signal_sync_toggle_off_uses_raw():
     s = Store()
     s._settings["signal_sync"] = False
     assert s.signal_sync() is False
+
+
+def test_categories_include_strategy_control_entities():
+    # the device view must show control-relevant entities from strategy_loads
+    # (stop/limit sensor, connected, SG-Ready), not only power/energy.
+    s = Store()
+    s._config = {"water_heater": [{"id": "w1", "name": "ELWA",
+                                   "powers": [{"entity": "sensor.elwa_p"}],
+                                   "control": {"mode": "setpoint", "setpoint": "number.elwa"}}]}
+    s._settings["strategy_loads"] = {
+        "water_heater:w1": {"self_consumption": True, "limit_entity": "sensor.elwa_temp",
+                            "limit_max": 65}}
+    s._live_by_id = {"sensor.elwa_temp": {"state": "49.4",
+                                          "attributes": {"unit_of_measurement": "°C"}}}
+    grp = next(g for g in s.categories_with_entities() if g["key"] == "water_heater:w1")
+    ids = {e["entity_id"] for e in grp["entities"]}
+    assert "sensor.elwa_temp" in ids            # the stop/limit temperature is listed

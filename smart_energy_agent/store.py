@@ -1813,6 +1813,23 @@ class Store:
         """Config grouped by logical genus for the device view: each assigned
         entity with its label and live value (regardless of HA device)."""
         groups: list[dict[str, Any]] = []
+        sloads = self.strategy_loads()
+
+        def add_strategy_entities(key: str, items: list[dict[str, Any]]) -> None:
+            """Append the control-relevant entities that live in strategy_loads
+            (stop/limit sensor, connected, SG-Ready) — so the device view shows
+            all quantities the control actually uses, not just power/energy."""
+            cfg = sloads.get(key) or {}
+            have = {i.get("entity_id") for i in items}
+            for label, eid in (("Stopp/Limit", cfg.get("limit_entity")),
+                               ("angesteckt", cfg.get("ready_entity")),
+                               ("SG-Ready 1", cfg.get("sg_relay1")),
+                               ("SG-Ready 2", cfg.get("sg_relay2"))):
+                if eid and eid not in have:
+                    row = self._entity_row(str(label), str(eid))
+                    if row is not None:
+                        items.append(row)
+
         g = self._config.get("grid") or {}
         gitems = self._entity_items(setup_catalog.GRID["fields"], g,  # type: ignore[arg-type]
                                     invert=bool(g.get("invert")))
@@ -1826,8 +1843,10 @@ class Store:
                     kind["fields"], inst, control=bool(kind.get("control")),
                     invert=bool(inst.get("invert")),
                 )
+                key = kind["key"] + ":" + str(inst.get("id"))
+                add_strategy_entities(key, items)
                 groups.append({
-                    "key": kind["key"] + ":" + str(inst.get("id")),
+                    "key": key,
                     "label": inst.get("name", kind["label"]) + " (" + kind["label"] + ")",
                     "count": len(items), "entities": items,
                 })

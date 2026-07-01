@@ -2,6 +2,10 @@
 
 ## 0.8.1
 
+- **Geräte-Seite** zeigt jetzt auch die **regelungsrelevanten Entitäten aus der Strategie**
+  (Stopp-/Limit-Sensor wie die ELWA-Temperatur, „angesteckt", SG-Ready-Relais) — nicht nur
+  Leistung/Energie.
+
 - **Fix Einschaltschwelle geschalteter Lasten/Wallbox**: die Schwelle nutzte fälschlich die
   *aktuelle* Leistung (im Aus-Zustand 0 W) → die Wallbox sprang schon bei minimalem Überschuss an.
   Jetzt zählt die **Ladeleistung**: neues Feld **„max. Ladeleistung"** bei **Wallbox und Fahrzeug**,
