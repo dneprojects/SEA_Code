@@ -124,10 +124,6 @@ class Store:
             # Battery care: periodic full charge (every N days) to recalibrate SoC.
             # 0 = off.
             "soh_cycle_days": 0.0,
-            # EWMA time constant (s) for the modulating-load surplus signal, so
-            # short house/battery spikes don't slam a continuous load to 0 and
-            # back. 0 = off (instantaneous). Default 120 s.
-            "modulation_smoothing_s": 120.0,
             # Time-align asynchronous power sensors: average the fast ones over the
             # slowest sensor's cadence (slowest held) before building the balance,
             # so PV/grid/battery/loads represent the same window. Feeds the flow
@@ -289,7 +285,7 @@ class Store:
         if "pv_limit_entity" in patch:
             self._settings["pv_limit_entity"] = str(patch["pv_limit_entity"] or "")
         for key in ("peak_limit_w", "feed_in_limit_w", "emergency_reserve_soc",
-                    "soh_cycle_days", "pv_limit_max_w", "modulation_smoothing_s"):
+                    "soh_cycle_days", "pv_limit_max_w"):
             if key in patch:
                 pv = patch[key]
                 try:
@@ -465,11 +461,6 @@ class Store:
         except (TypeError, ValueError):
             return 0.0
 
-    def modulation_smoothing_s(self) -> float:
-        try:
-            return max(0.0, float(self._settings.get("modulation_smoothing_s", 120.0) or 0.0))
-        except (TypeError, ValueError):
-            return 0.0
 
     def soh_cycle_days(self) -> float:
         try:

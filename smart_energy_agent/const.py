@@ -64,11 +64,6 @@ CONTROL_INTERVAL = 10     # seconds between control decisions (fast modulation r
 APPLY_KEEPALIVE_S = 55
 CONTROL_ON_MARGIN_W = 50  # surplus must exceed this to consider switching on
 CONTROL_OFF_MARGIN_W = 50 # import (negative surplus) beyond this triggers switch off
-# A modulating load is only throttled back once import is confirmed for this many
-# consecutive cycles (debounce against a single out-of-sync/glitchy sample). While
-# the grid still exports, import_streak stays 0, so a load is never shed -> export
-# guard. 1 = react immediately (off).
-MOD_SHED_DEBOUNCE = 2
 # Signal synchronisation: per-sensor update samples kept for rate/age + averaging.
 SAMPLES_MAXLEN = 40
 # A balance sensor counts as "stale" when its value is older than this factor

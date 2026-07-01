@@ -2,10 +2,13 @@
 
 ## 0.8.1
 
-- **Fix: Heizstab bleibt nach kurzer Haus-Spitze nicht mehr zu lange aus.** Das harte Absenken
-  bei kurzem Netzbezug hatte den geglätteten Überschuss-Zustand verbogen → die Last kroch danach
-  nur langsam zurück (schaltete scheinbar grundlos aus). Jetzt wird nur kurz abgeregelt, und sobald
-  der Überschuss zurück ist, rampt die Last sofort wieder hoch.
+- **Fix: Heizstab/regelbare Lasten arbeiten jetzt kontinuierlich und ohne Rampe.** Der Überschuss
+  wurde für modulierende Lasten geglättet — dadurch schaltete der Heizstab bei kurzen Haus-Spitzen
+  ganz ab und kroch danach nur langsam wieder hoch (teils gar nicht mehr an), obwohl Überschuss da
+  war. Jetzt folgt jede regelbare Last dem tatsächlichen Überschuss **direkt** (ein Regeltakt): sie
+  regelt bei Bedarf **stufenlos herunter** statt abzuschalten, ist nur dann 0, wenn wirklich kein
+  Überschuss da ist, und geht **sofort** wieder auf Volllast — kein langsames Hochrampen mehr. Die
+  Einstellung „Modulation glätten (s)" entfällt.
 
 - **Geräte-Seite** zeigt jetzt auch die **regelungsrelevanten Entitäten aus der Strategie**
   (Stopp-/Limit-Sensor wie die ELWA-Temperatur, „angesteckt", SG-Ready-Relais) — nicht nur
@@ -31,9 +34,9 @@
   **Kennzahl-Kacheln** (Hausverbrauch, PV, Netz, Batterie, Autarkie, Eigenverbrauch). Die
   **Energiebilanz** (heute) ist ans Dashboard-Ende gewandert (von der Verlaufsseite entfernt).
 - **Modulation stabiler**: der Regeltakt ist auf **10 s** verkürzt (unveränderte Befehle nur als
-  Keepalive ~55 s an HA). Der Überschuss wird symmetrisch geglättet; ein **bestätigtes Defizit**
-  regelt die Lasten sofort auf den Ist-Wert herunter — behebt, dass Heizstab/Wallbox/Batterie
-  bei hohem Hausverbrauch fälschlich weiterliefen und **aus dem Netz** gezogen wurde.
+  Keepalive ~55 s an HA). Regelbare Lasten (Heizstab, Batterie …) folgen dem Überschuss direkt und
+  regeln bei hohem Hausverbrauch sofort herunter — behebt, dass Heizstab/Wallbox/Batterie
+  fälschlich weiterliefen und **aus dem Netz** gezogen wurde.
 - **Regeln**: der Zähler zeigt jetzt **grün „N aktiv"** und **blau „M verfügbar"** (jeweils nur,
   wenn vorhanden).
 - **Scroll-Seitenwechsel**: etwas mehr Widerstand (höhere Schwelle).

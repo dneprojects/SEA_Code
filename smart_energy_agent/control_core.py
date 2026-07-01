@@ -170,8 +170,6 @@ class ProcessImage:
 
     now: float
     surplus_signed: float = 0.0
-    surplus_smoothed: float = 0.0   # EWMA-smoothed surplus for modulating loads
-    allow_mod_shed: bool = True     # False = don't reduce modulating loads (import unconfirmed)
     mods_hold: bool = False         # True = freeze modulating setpoints (stale/unreliable data)
     grid_w: float = 0.0          # raw grid power: + = import, − = export
     pv_w: float = 0.0            # PV production (W)

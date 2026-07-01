@@ -294,8 +294,14 @@ class PvSurplusModulationController:
     name = "pv_surplus_modulation"
 
     def process(self, image: ProcessImage, cmds: CommandSet) -> None:
-        for cmd in plan_modulation(image.mods, image.surplus_smoothed,
-                                   image.allow_mod_shed, image.mods_hold):
+        # A modulating load is its own actuator, so it needs no smoothing/ramp:
+        # a deadbeat proportional step on the *raw* signed surplus sets each load
+        # straight to the surplus that is actually available (grid -> 0 in one
+        # cycle). It therefore tracks the surplus continuously up AND down and is
+        # only ever 0 when there is genuinely no surplus — never while export
+        # remains. Data-quality freeze (stale sensors) still applies via hold.
+        for cmd in plan_modulation(image.mods, image.surplus_signed,
+                                   allow_shed=True, hold=image.mods_hold):
             cmds.add(cmd)
 
 
@@ -766,9 +772,6 @@ class ControlEngine:
         self._staged_energy: dict[str, dict] = dict(st.get("staged_energy") or {})  # key -> {day, kwh}
         self._soh_state: dict[str, int] = dict(st.get("soh_state") or {})           # key -> last-full day-ordinal
         self._last_state_save = 0.0
-        self._surplus_ewma: Optional[float] = None   # smoothed modulation surplus
-        self._surplus_ewma_t = 0.0                   # last EWMA update time
-        self._import_streak = 0                      # consecutive cycles of confirmed grid import
 
     def _build(self) -> list[ConsumerDecision]:
         """Switchable PV-surplus auto-consumers, as decision records."""
@@ -872,47 +875,11 @@ class ControlEngine:
             self._store.surplus_battery_min_soc(),
         )
 
-    def _smooth_surplus(self, now: float, raw: float) -> float:
-        """Symmetric EWMA of the surplus for modulating loads, so short house or
-        battery spikes don't slam a load to 0 and back. A *confirmed* deficit
-        bypasses the smoothing (see build_image) so loads shed quickly instead of
-        importing. Time constant ``modulation_smoothing_s`` (0 = off)."""
-        try:
-            tau = float(self._store.modulation_smoothing_s())
-        except Exception:  # noqa: BLE001
-            tau = 0.0
-        if tau <= 0 or self._surplus_ewma is None:
-            self._surplus_ewma, self._surplus_ewma_t = raw, now
-            return raw
-        dt = max(0.0, now - self._surplus_ewma_t)
-        alpha = dt / (tau + dt) if dt > 0 else 0.0
-        self._surplus_ewma += alpha * (raw - self._surplus_ewma)
-        self._surplus_ewma_t = now
-        return self._surplus_ewma
-
     def build_image(self, now: float) -> ProcessImage:
         """The Input phase: one consistent snapshot of all controller inputs."""
         balance = self._store.balance()
         raw_surplus = self._surplus_signed(balance)
         grid_w = float(balance.get("grid_w", 0.0) or 0.0)
-        # Export guard + debounce: a modulating load is only throttled once a
-        # deficit is confirmed for MOD_SHED_DEBOUNCE consecutive cycles. Detection
-        # uses the (battery-folded) surplus signal — so a battery discharging to
-        # cover the load still counts as a deficit, while a single out-of-sync
-        # sample (or any export) leaves the streak low and the load is held.
-        if raw_surplus < -const.CONTROL_OFF_MARGIN_W:
-            self._import_streak += 1
-        else:
-            self._import_streak = 0
-        confirmed_deficit = self._import_streak >= const.MOD_SHED_DEBOUNCE
-        smoothed = self._smooth_surplus(now, raw_surplus)
-        if confirmed_deficit and raw_surplus < smoothed:
-            # a real, confirmed import -> regulate modulating loads on the actual
-            # deficit so they shed now (don't ride the lagging smoothing up).
-            # NOTE: only the *output* is overridden, not the EWMA state — so once
-            # the surplus returns (e.g. a short house spike ends) the load ramps
-            # straight back up instead of crawling out of a snapped-down value.
-            smoothed = raw_surplus
         # Staleness gate: if a critical balance sensor (grid/battery) is older than
         # STALE_FACTOR × its update interval, the snapshot is unreliable → freeze
         # modulating setpoints instead of acting on out-of-date data.
@@ -925,8 +892,6 @@ class ControlEngine:
         return ProcessImage(
             now=now,
             surplus_signed=raw_surplus,
-            surplus_smoothed=smoothed,
-            allow_mod_shed=confirmed_deficit,
             mods_hold=stale,
             grid_w=grid_w,
             pv_w=float(balance.get("pv_w", 0.0) or 0.0),

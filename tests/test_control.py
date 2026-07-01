@@ -133,10 +133,9 @@ def test_engine_heater_backs_off_when_battery_discharges():
 
     s = _heater_store(grid_w=0, batt_w=-900, heater_setpoint_w=600)
     eng = ControlEngine(s, cs)
-    # debounce: a sustained deficit sheds after MOD_SHED_DEBOUNCE cycles (a single
-    # out-of-sync sample must not). Second cycle confirms it.
+    # deadbeat: the discharging battery makes the surplus signal negative, so the
+    # heater is driven straight to 0 in a single cycle (no smoothing/debounce).
     asyncio.run(eng.run_once(0.0))
-    asyncio.run(eng.run_once(60.0))
     assert ("number.hz", {"value": 0.0}) in calls
 
 
@@ -783,21 +782,22 @@ def test_modulating_battery_device_and_satisfied_limit():
     assert s._device_satisfied("h", cfg) is False         # stays off until >= 65
 
 
-def test_modulation_surplus_smoothing_rides_through_spikes():
-    # EWMA smoothing: a single deep-import spike must not yank the smoothed
-    # surplus to the spike value (which would shed a modulating load to 0).
+def test_build_image_uses_raw_surplus_no_smoothing():
+    # Modulating loads regulate on the raw signed surplus (deadbeat, one-cycle
+    # tracking) — build_image must expose the instantaneous value every cycle with
+    # no EWMA lag/ramp, so a load recovers immediately when the surplus returns.
     s = Store()
-    s._settings["modulation_smoothing_s"] = 60.0   # tau = 60 s
+    s._settings["control_enabled"] = True
+    s._config = {"grid": {"power": "sensor.g"},
+                 "battery": [{"id": "b1", "name": "Bat", "power": "sensor.b"}]}
     eng = ControlEngine(s, None)  # type: ignore[arg-type]
-    assert eng._smooth_surplus(0.0, 3000.0) == 3000.0      # first call seeds
-    # 60 s later a −2000 W spike: alpha = 60/(60+60) = 0.5
-    assert eng._smooth_surplus(60.0, -2000.0) == 500.0     # stays positive, no full shed
-    # disabled -> passthrough
-    s2 = Store()
-    s2._settings["modulation_smoothing_s"] = 0.0
-    eng2 = ControlEngine(s2, None)  # type: ignore[arg-type]
-    assert eng2._smooth_surplus(0.0, 3000.0) == 3000.0
-    assert eng2._smooth_surplus(60.0, -2000.0) == -2000.0
+
+    def bal(g):
+        s._live_by_id = {"sensor.g": {"state": str(g)}, "sensor.b": {"state": "0"}}
+    bal(-3000); assert eng.build_image(0.0).surplus_signed == 3000.0    # export 3 kW
+    bal(5000); assert eng.build_image(10.0).surplus_signed == -5000.0   # spike, no lag
+    bal(-3000); assert eng.build_image(20.0).surplus_signed == 3000.0   # returns at once
+    assert not hasattr(eng, "_smooth_surplus")                          # smoothing removed
 
 
 def test_decide_modulation_allow_shed_holds_load_on_unconfirmed_import():
@@ -819,27 +819,6 @@ def test_decide_modulation_hold_freezes_setpoint():
     # stale/unreliable data -> hold at the current setpoint regardless of surplus
     assert decide_modulation(5000.0, mods, hold=True)[0]["power_w"] == 2200.0
     assert decide_modulation(-9000.0, mods, hold=True)[0]["power_w"] == 2200.0
-
-
-def test_build_image_snaps_smoothed_down_on_confirmed_deficit():
-    # A sustained import must not "ride" the (lagging) smoothing up — once the
-    # deficit is confirmed the modulation regulates on the actual (negative) value
-    # so loads shed instead of importing.
-    s = Store()
-    s._settings["control_enabled"] = True
-    s._settings["modulation_smoothing_s"] = 120.0
-    s._config = {"grid": {"power": "sensor.g"},
-                 "battery": [{"id": "b1", "name": "Bat", "power": "sensor.b"}]}
-    eng = ControlEngine(s, None)  # type: ignore[arg-type]
-
-    def bal(g):
-        s._live_by_id = {"sensor.g": {"state": str(g)}, "sensor.b": {"state": "0"}}
-    bal(-3000); img1 = eng.build_image(0.0)          # export -> smoothed positive
-    assert img1.surplus_smoothed > 0
-    bal(5000); eng.build_image(10.0)                 # import, streak 1 -> still smoothed
-    bal(5000); img3 = eng.build_image(20.0)          # streak 2 -> confirmed deficit
-    assert img3.allow_mod_shed is True
-    assert img3.surplus_smoothed == img3.surplus_signed < 0   # snapped to the real deficit
 
 
 from smart_energy_agent.control import plan_charge_support
@@ -921,23 +900,3 @@ def test_charge_rated_w_uses_min_of_wallbox_and_vehicle():
     # no vehicle max -> wallbox max
     s._settings["vehicles"] = [{"id": "v1", "charger_key": "ev_charger:c1"}]
     assert eng._charge_rated_w(dev) == 11000.0
-
-
-def test_build_image_recovers_fast_after_short_deficit():
-    # after a short confirmed deficit, when surplus returns the modulation must
-    # ramp straight back up (not crawl out of a snapped-down value).
-    s = Store()
-    s._settings["control_enabled"] = True
-    s._settings["modulation_smoothing_s"] = 120.0
-    s._config = {"grid": {"power": "sensor.g"},
-                 "battery": [{"id": "b1", "name": "Bat", "power": "sensor.b"}]}
-    eng = ControlEngine(s, None)  # type: ignore[arg-type]
-
-    def bal(g):
-        s._live_by_id = {"sensor.g": {"state": str(g)}, "sensor.b": {"state": "0"}}
-    bal(-4000); eng.build_image(0.0)
-    bal(5000); eng.build_image(10.0)
-    bal(5000); img3 = eng.build_image(20.0)
-    assert img3.surplus_smoothed < 0
-    bal(-4000); img4 = eng.build_image(30.0)
-    assert img4.surplus_smoothed > 0
