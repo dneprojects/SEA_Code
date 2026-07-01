@@ -25,11 +25,15 @@ def test_signal_rate_interval_and_age():
 def test_signal_stale_gate():
     s = Store()
     now = time.monotonic()
-    # interval 1 s but current value ~5 s old -> stale (> 3× interval)
-    s._samples["sensor.g"] = _dq([(now - 7, 1.0), (now - 6, 1.0), (now - 5, 1.0)])
+    # genuinely dead feed: ~30 s cadence but silent well past the absolute floor
+    s._samples["sensor.g"] = _dq([(now - 260, 1.0), (now - 230, 1.0), (now - 200, 1.0)])
     assert s.signal_stale(["sensor.g"]) is True
     # fresh again
     s._samples["sensor.g"] = _dq([(now - 2, 1.0), (now - 1, 1.0), (now, 1.0)])
+    assert s.signal_stale(["sensor.g"]) is False
+    # merely idle: a valid sensor with a longer-than-usual gap (still under the
+    # floor) must NOT be flagged stale -> modulating loads stay live
+    s._samples["sensor.g"] = _dq([(now - 130, 1.0), (now - 100, 1.0), (now - 80, 1.0)])
     assert s.signal_stale(["sensor.g"]) is False
 
 

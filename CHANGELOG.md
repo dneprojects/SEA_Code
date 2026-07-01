@@ -7,9 +7,10 @@
   ein zu hoher Wert (z. B. 3600 W an eine ELWA mit 3500 W) gesendet werden — das Gerät weist ihn ab,
   bekommt keinen gültigen Wert und läuft nach seinem Steuer-Timeout auf 0 (Netzeinspeisung statt
   Heizen).
-- **Fix: Stellgrößen jeden Regeltakt (10 s) neu senden.** Geräte mit Steuer-Watchdog (my-PV ELWA
-  u. a., z. B. 90-s-Timeout) fielen zwischen den bisherigen 55-s-Keepalives auf 0 zurück; jetzt
-  bleibt der Sollwert sicher innerhalb des Timeouts.
+- **Fix: „Daten unsicher, halten" friert regelbare Lasten nicht mehr grundlos ein.** Die
+  Staleness-Erkennung hat jetzt einen absoluten Boden (180 s): ein gültiger, aber **ruhender**
+  Sensor (z. B. die Batterie bei SoC 100 %, die kaum noch Updates schickt) wird nicht mehr für
+  eine tote Quelle gehalten. Nur echte, lange Ausfälle halten die Modulation an.
 
 - **Verlauf: CSV-Export** — Button „CSV-Export" exportiert alle Reihen des aktuell gewählten
   Zeitfensters (Bilanz inkl. **ungeklemmtem** Überschuss + alle Geräte-/Zusatzreihen) als

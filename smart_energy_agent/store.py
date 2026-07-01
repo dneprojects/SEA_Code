@@ -1627,10 +1627,15 @@ class Store:
         return ids
 
     def signal_stale(self, entity_ids: list[str], factor: float = const.STALE_FACTOR) -> bool:
-        """True if any given sensor's value is older than factor × its interval."""
+        """True if any given sensor looks genuinely stale: its value is older than
+        BOTH ``factor`` × its typical interval AND the absolute floor
+        ``STALE_MIN_S``. The floor stops a valid-but-idle sensor (a battery at
+        100 % SoC that simply stops changing, so HA sends no updates) from being
+        mistaken for a dead feed and needlessly freezing the modulating loads."""
         for eid in entity_ids:
             interval, age = self.signal_rate(eid)
-            if interval and age is not None and age > factor * interval:
+            if interval and age is not None \
+                    and age > max(factor * interval, const.STALE_MIN_S):
                 return True
         return False
 

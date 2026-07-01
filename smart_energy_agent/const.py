@@ -69,6 +69,11 @@ SAMPLES_MAXLEN = 40
 # A balance sensor counts as "stale" when its value is older than this factor
 # times its measured update interval (staleness gate holds modulating loads).
 STALE_FACTOR = 3.0
+# ...but never below this absolute floor (s). HA only pushes on value change, so a
+# valid-but-idle sensor (e.g. a battery at 100 % SoC that stops sending updates
+# because its power isn't changing) must not be mistaken for a dead feed and
+# needlessly freeze the modulating loads. Only a genuinely long silence is stale.
+STALE_MIN_S = 180.0
 # A deferrable load with a "latest start" deadline is force-started (even without
 # surplus) once the deadline is reached, within this window after it (minutes).
 DEADLINE_FORCE_WINDOW_MIN = 120
