@@ -1006,14 +1006,24 @@
         return;
       }
       const soll = c => c.kind==="on" ? "ein" : c.kind==="off" ? "aus" : (c.value!=null ? c.value+" W" : "");
-      el.innerHTML = `<table class="info-tbl"><tbody>${items.map(c => {
-        const ist = c.power_w!=null ? fmtW(c.power_w) : "";
+      // merge several actuator commands of the same device (e.g. a battery's
+      // charge + discharge setpoint) into a single row
+      const rows = []; const byDev = {};
+      items.forEach(c => {
+        const key = c.device || c.entity;
+        let r = byDev[key];
+        if (!r) { r = byDev[key] = {device:c.device||c.entity, source:c.source, power_w:c.power_w, metas:[]}; rows.push(r); }
+        if (r.power_w == null && c.power_w != null) r.power_w = c.power_w;
         const sv = soll(c);
-        const meta = [sv ? "Soll "+sv : "", esc(c.reason||"")].filter(Boolean).join(" · ");
-        return `<tr><td><b>${esc(c.device||c.entity||"")}</b></td>`
-          + `<td>${esc(stratLabel(c.source))}</td>`
+        const m = [sv ? "Soll "+sv : "", esc(c.reason||"")].filter(Boolean).join(" ");
+        if (m && r.metas.indexOf(m) < 0) r.metas.push(m);
+      });
+      el.innerHTML = `<table class="info-tbl"><tbody>${rows.map(r => {
+        const ist = r.power_w!=null ? fmtW(r.power_w) : "";
+        return `<tr><td><b>${esc(r.device||"")}</b></td>`
+          + `<td>${esc(stratLabel(r.source))}</td>`
           + `<td class="num"><b>${ist}</b></td>`
-          + `<td class="sub">${meta}</td></tr>`;
+          + `<td class="sub">${r.metas.join(" · ")}</td></tr>`;
       }).join("")}</tbody></table>`;
     }
 

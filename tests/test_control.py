@@ -819,3 +819,19 @@ def test_decide_modulation_hold_freezes_setpoint():
     # stale/unreliable data -> hold at the current setpoint regardless of surplus
     assert decide_modulation(5000.0, mods, hold=True)[0]["power_w"] == 2200.0
     assert decide_modulation(-9000.0, mods, hold=True)[0]["power_w"] == 2200.0
+
+
+def test_modulation_surplus_smoothing_is_asymmetric_fast_up():
+    # Rising surplus (e.g. a wallbox stops) is picked up quickly; a symmetric EWMA
+    # at tau=60 over dt=60 would only reach 2000 (alpha .5), asymmetric reaches more.
+    s = Store()
+    s._settings["modulation_smoothing_s"] = 60.0
+    eng = ControlEngine(s, None)  # type: ignore[arg-type]
+    assert eng._smooth_surplus(0.0, 0.0) == 0.0
+    up = eng._smooth_surplus(60.0, 4000.0)
+    assert up > 3000.0                     # fast rise (tau_eff = 15 -> alpha .8 -> 3200)
+    # falling is still slow (rides through dips)
+    s2 = Store(); s2._settings["modulation_smoothing_s"] = 60.0
+    eng2 = ControlEngine(s2, None)  # type: ignore[arg-type]
+    eng2._smooth_surplus(0.0, 3000.0)
+    assert eng2._smooth_surplus(60.0, -2000.0) == 500.0

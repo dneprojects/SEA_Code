@@ -5,6 +5,11 @@
 - **Dashboard neu (Hero)**: der Live-**Energiefluss** steht groß oben, darunter kompakte
   **Kennzahl-Kacheln** (Hausverbrauch, PV, Netz, Batterie, Autarkie, Eigenverbrauch). Die
   **Energiebilanz** (heute) ist ans Dashboard-Ende gewandert (von der Verlaufsseite entfernt).
+- **Modulation reagiert schneller nach oben**: neu freiwerdender Überschuss (z. B. wenn die
+  Wallbox stoppt) wird zügig aufgenommen, während kurze Einbrüche weiter geglättet werden
+  (asymmetrische Glättung: schnell hoch, langsam runter).
+- **Aktive Steuerung**: mehrere Stellgrößen desselben Geräts (z. B. Laden/Entladen der Batterie)
+  werden zu **einer Zeile** zusammengefasst (keine Doppelanzeige mehr).
 - **Aktive Steuerung** überarbeitet: alles in **einer Karte**, **Gerätenamen** statt
   Entitäts-IDs, Strategie-Bezeichnungen **1:1** wie bei den Geräte-Strategien, und die
   angezeigte Leistung ist die **Live-Ist-Leistung** (synchron mit dem Energiefluss; Sollwert als Nebeninfo).

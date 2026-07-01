@@ -803,9 +803,10 @@ class ControlEngine:
         )
 
     def _smooth_surplus(self, now: float, raw: float) -> float:
-        """EWMA-smoothed surplus for modulating loads, so short house/battery
-        spikes don't slam a continuous load (e.g. heating rod) to 0 and back.
-        Time constant ``modulation_smoothing_s`` (0 = off → raw passthrough)."""
+        """Asymmetric EWMA of the surplus for modulating loads: reacts *fast* when
+        surplus rises (grab freed surplus quickly, e.g. after a wallbox stops) but
+        *slow* when it falls (short house/battery spikes don't slam a heating rod
+        to 0 and back). Time constant ``modulation_smoothing_s`` (0 = off)."""
         try:
             tau = float(self._store.modulation_smoothing_s())
         except Exception:  # noqa: BLE001
@@ -814,7 +815,8 @@ class ControlEngine:
             self._surplus_ewma, self._surplus_ewma_t = raw, now
             return raw
         dt = max(0.0, now - self._surplus_ewma_t)
-        alpha = dt / (tau + dt) if dt > 0 else 0.0
+        tau_eff = tau * 0.25 if raw > self._surplus_ewma else tau   # rise ~4× faster than fall
+        alpha = dt / (tau_eff + dt) if dt > 0 else 0.0
         self._surplus_ewma += alpha * (raw - self._surplus_ewma)
         self._surplus_ewma_t = now
         return self._surplus_ewma
