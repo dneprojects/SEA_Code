@@ -2,6 +2,14 @@
 
 ## 0.8.1
 
+- **Dashboard neu (Hero)**: der Live-**Energiefluss** steht groß oben, darunter kompakte
+  **Kennzahl-Kacheln** (Hausverbrauch, PV, Netz, Batterie, Autarkie, Eigenverbrauch). Die
+  **Energiebilanz** (heute) ist ans Dashboard-Ende gewandert (von der Verlaufsseite entfernt).
+- **Aktive Steuerung** überarbeitet: alles in **einer Karte**, **Gerätenamen** statt
+  Entitäts-IDs, Strategie-Bezeichnungen **1:1** wie bei den Geräte-Strategien, und die
+  angezeigte Leistung ist die **Live-Ist-Leistung** (synchron mit dem Energiefluss; Sollwert als Nebeninfo).
+- **Geräte**-Seite listet jetzt auch die **Fahrzeuge** (mit ihren Entitäten).
+- **Verlauf**: größerer Hauptchart, ruhigere Legende.
 - **Grundeinstellungen** sind jetzt in **ein-/ausklappbare Karten** gegliedert (Allgemein,
   PV-Überschuss & Speicher, Tarife, Status) — wie die Strategien; beim Öffnen zugeklappt.
 - **Komponenten**: jede Kategorie (Netz, Verbraucher, Fahrzeuge, …) ist eine **klappbare Karte**,

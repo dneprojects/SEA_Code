@@ -1733,6 +1733,40 @@ class Store:
             current=current,
         )
 
+    def _entity_row(
+        self, label: str, eid: str, is_power: bool = False, inv: bool = False
+    ) -> Optional[dict[str, Any]]:
+        """One entity row for the device view (state, live power, update rate)."""
+        if not eid:
+            return None
+        state_by_id = self._ha_snapshot.get("state_by_id") or {}
+        st = self._live_by_id.get(eid) or state_by_id.get(eid) or {}
+        attrs = st.get("attributes", {}) or {}
+        power_w = None
+        if is_power:
+            power_w = _state_power_w(st)
+            if power_w is not None and inv:
+                power_w = -power_w
+        interval, age = self.signal_rate(eid)
+        return {
+            "slot_label": label, "entity_id": eid,
+            "name": attrs.get("friendly_name", eid), "state": st.get("state"),
+            "unit": attrs.get("unit_of_measurement"),
+            "power_w": round(power_w, 1) if power_w is not None else None,
+            "update_s": round(interval, 1) if interval is not None else None,
+            "age_s": round(age, 1) if age is not None else None,
+        }
+
+    def entity_device_map(self) -> dict[str, str]:
+        """Map every controllable entity id → its device display name (for traces)."""
+        out: dict[str, str] = {}
+        for grp in self.categories_with_entities():
+            name = grp["label"].rsplit(" (", 1)[0]      # strip the "(Kategorie)" suffix
+            for e in grp.get("entities", []):
+                if e.get("entity_id"):
+                    out[e["entity_id"]] = name
+        return out
+
     def _entity_items(
         self, fields: list[dict[str, Any]], inst: dict[str, Any],
         *, control: bool = False, invert: bool = False,
@@ -1740,24 +1774,9 @@ class Store:
         state_by_id = self._ha_snapshot.get("state_by_id") or {}
 
         def item(label: str, eid: str, is_power: bool = False, inv: bool = False) -> None:
-            if not eid:
-                return
-            st = self._live_by_id.get(eid) or state_by_id.get(eid) or {}
-            attrs = st.get("attributes", {}) or {}
-            power_w = None
-            if is_power:
-                power_w = _state_power_w(st)
-                if power_w is not None and inv:
-                    power_w = -power_w
-            interval, age = self.signal_rate(eid)
-            items.append({
-                "slot_label": label, "entity_id": eid,
-                "name": attrs.get("friendly_name", eid), "state": st.get("state"),
-                "unit": attrs.get("unit_of_measurement"),
-                "power_w": round(power_w, 1) if power_w is not None else None,
-                "update_s": round(interval, 1) if interval is not None else None,
-                "age_s": round(age, 1) if age is not None else None,
-            })
+            row = self._entity_row(label, eid, is_power, inv)
+            if row is not None:
+                items.append(row)
 
         items: list[dict[str, Any]] = []
         for f in fields:
@@ -1805,6 +1824,20 @@ class Store:
                     "label": inst.get("name", kind["label"]) + " (" + kind["label"] + ")",
                     "count": len(items), "entities": items,
                 })
+        # vehicles are configured separately (not a config kind) — list them too
+        for veh in self.vehicles():
+            vrows = [self._entity_row(lbl, str(veh.get(key) or ""), is_power)
+                     for lbl, key, is_power in (
+                         ("SoC", "soc_entity", False),
+                         ("anwesend/angesteckt", "present_entity", False),
+                         ("Lade-Sollwert", "charge_entity", False),
+                         ("Entlade-Sollwert", "discharge_entity", False))]
+            vitems = [r for r in vrows if r is not None]
+            groups.append({
+                "key": "vehicle:" + str(veh.get("id")),
+                "label": (veh.get("name") or "Fahrzeug") + " (Fahrzeug)",
+                "count": len(vitems), "entities": vitems,
+            })
         return groups
 
     # --- SQLite history ------------------------------------------------------

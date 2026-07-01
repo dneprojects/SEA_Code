@@ -282,7 +282,23 @@ class WebServer:
         })
 
     async def _api_control_trace(self, _request: web.Request) -> web.Response:
-        return web.json_response(self._store.control_trace())
+        tr = self._store.control_trace()
+        items = tr.get("items") or []
+        if items:
+            emap = self._store.entity_device_map()
+            bal = self._store.balance()
+            pow_by_name: dict[str, Any] = {}
+            for ld in bal.get("loads", []):
+                if ld.get("name"):
+                    pow_by_name[ld["name"]] = ld.get("power_w")
+            for inst in self._store.config().get("battery") or []:
+                if isinstance(inst, dict) and inst.get("name"):
+                    pow_by_name[inst["name"]] = bal.get("battery_w")
+            for it in items:
+                dev = emap.get(it.get("entity"))
+                it["device"] = dev or it.get("entity")
+                it["power_w"] = pow_by_name.get(dev) if dev else None
+        return web.json_response(tr)
 
     async def _api_vehicles_get(self, _request: web.Request) -> web.Response:
         chargers = [{"key": d["key"], "name": d["name"]}
