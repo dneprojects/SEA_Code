@@ -2602,7 +2602,9 @@
     const VIEW_ORDER = ["dashboard","history","consumers","savings","devices","basic","setup","thermostats"];
     let navBusy = false, overscroll = 0;
     function navBy(dir) {
-      const i = VIEW_ORDER.indexOf(window.view || "dashboard");
+      const active = document.querySelector(".sidebar a.active");
+      const curName = active ? active.dataset.view : "dashboard";
+      const i = VIEW_ORDER.indexOf(curName);
       const cur = i < 0 ? 0 : i, nx = cur + dir;
       overscroll = 0;
       if (nx < 0 || nx >= VIEW_ORDER.length) return;   // already at first/last
