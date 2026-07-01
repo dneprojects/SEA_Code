@@ -537,6 +537,10 @@ def plan_charge_support(
     and the battery is discharged to cover the actual grid import (up to the total
     budget). The budget is capped by the battery's discharge power and drops to 0
     at/below the reserve SoC, so the battery is never drained past its reserve.
+
+    If a load also has *grid allowed* (``from_grid``) the on/off is left to the
+    EVCS gate (charge whenever connected); the battery is still used **first** (up
+    to the budget) and the grid only fills the remainder — battery has priority.
     """
     b = inp["battery"]
     soc, reserve = b.get("soc"), (b.get("reserve") or 0.0)
@@ -548,7 +552,14 @@ def plan_charge_support(
         budget = min(ld["support_w"], max(0.0, batt_avail - total_budget))
         eff = surplus_w + budget
         on = ld["is_on"]
-        if ld.get("satisfied"):
+        if ld.get("from_grid"):
+            # 'grid allowed': the EVCS gate decides on/off (charge whenever
+            # connected); here we only add battery discharge so the battery
+            # covers the load *first* and the grid only fills the remainder.
+            if on and not ld.get("blocked"):
+                total_budget += budget
+            continue
+        if ld.get("blocked"):                   # not connected / target reached
             want = False
         elif not on:
             want = (eff >= max(ld["nominal_w"], const.CONTROL_ON_MARGIN_W)
@@ -946,7 +957,8 @@ class ControlEngine:
                 "support_w": dev.battery_support_w, "is_on": dev.is_on,
                 "min_runtime_s": dev.min_runtime_s, "min_off_s": dev.min_off_s,
                 "last_on": rt.get("last_on", 0.0), "last_off": rt.get("last_off", 0.0),
-                "satisfied": dev.satisfied,
+                "satisfied": dev.satisfied, "from_grid": dev.charge_from_grid,
+                "blocked": (bool(dev.ready_entity) and not dev.ready) or dev.satisfied,
             })
         return {"battery": batt, "loads": loads} if loads else None
 

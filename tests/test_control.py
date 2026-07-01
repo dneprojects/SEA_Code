@@ -884,3 +884,20 @@ def test_charge_support_sheds_and_no_discharge_at_reserve():
     cmds = plan_charge_support(-3000.0, 3000.0, 1000.0, inp)
     assert any(c.entity == "switch.wb" and c.kind == "off" for c in cmds)   # shed
     assert not any(c.entity == "number.bd" for c in cmds)                   # no discharge
+
+
+def test_charge_support_with_grid_allowed_discharges_but_does_not_gate():
+    # 'grid allowed' + battery support: the wallbox is on (EVCS forces it); the
+    # battery covers the load first (up to budget), grid fills the rest -> no off.
+    inp = _cs_inp([_cs_load(is_on=True, from_grid=True)])
+    cmds = plan_charge_support(-6000.0, 6000.0, 1000.0, inp)   # importing 6 kW, budget 3.3
+    assert not any(c.entity == "switch.wb" for c in cmds)      # on/off not touched here
+    dis = [c for c in cmds if c.entity == "number.bd"]
+    assert dis and dis[-1].value == 3300.0                     # battery contributes its budget first
+
+
+def test_charge_support_grid_allowed_no_discharge_at_reserve():
+    inp = _cs_inp([_cs_load(is_on=True, from_grid=True)], soc=20.0, reserve=20.0)
+    cmds = plan_charge_support(-6000.0, 6000.0, 1000.0, inp)
+    assert not any(c.entity == "number.bd" for c in cmds)      # reserve protected -> grid only
+    assert not any(c.entity == "switch.wb" for c in cmds)      # stays on (EVCS)

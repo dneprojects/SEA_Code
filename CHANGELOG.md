@@ -6,7 +6,9 @@
   wie viel Leistung sie aus der **Batterie** decken darf, um den **Netzbezug zu minimieren**. Eine
   geschaltete Wallbox geht so schon an, wenn **PV + Batterie-Budget** die Ladeleistung decken —
   die Batterie wird nie unter die **Reserve-SoC** entladen. Die Option erscheint nur, wenn die
-  Batterie einen **Entlade-Sollwert** hat.
+  Batterie einen **Entlade-Sollwert** hat. Ist zusätzlich **„Laden aus Netz"** aktiv, lädt die
+  Wallbox trotzdem durch — die **Batterie hat aber Vorrang** (deckt bis zum Budget), das Netz füllt
+  nur den Rest.
 
 - **Dashboard neu (Hero)**: der Live-**Energiefluss** steht groß oben, darunter kompakte
   **Kennzahl-Kacheln** (Hausverbrauch, PV, Netz, Batterie, Autarkie, Eigenverbrauch). Die
