@@ -606,7 +606,7 @@
         <div class="panel-title">Geräte-Strategien</div>
         <p class="sub" style="margin:8px 0 6px">Verfügbare Strategien werden automatisch aus den konfigurierten Entitäten ermittelt. Box aufklappen für die Einstellungen.</p>
         <div id="strategies"></div>
-        <details class="foldcard"><summary>Regeln (erweitert) <span class="count" id="rules-count">0</span></summary>
+        <details class="foldcard"><summary>Regeln (erweitert) <span id="rules-count" style="display:inline-flex;gap:6px"></span></summary>
           <div class="foldbody">
             <p class="sub" style="margin:0 0 8px">Eigene Regeln als JSON-logic (<code>when → then</code>). Variablen: <code>grid_w, surplus, hour, price_ct</code> oder eine Entitäts-ID. Beispiel <code>when</code>: <code>{"&gt;":[{"var":"surplus"},1500]}</code>, <code>then</code>: <code>[{"switch":{"entity":"switch.boiler","on":true}}]</code>.</p>
             <div id="rules-list"></div>
@@ -2335,7 +2335,14 @@
     function onRuleToggle(id, open){ if (open) rulesOpen.add(id); else rulesOpen.delete(id); }
     function renderRules() {
       const el = document.getElementById("rules-list"); if (!el) return;
-      const cnt = document.getElementById("rules-count"); if (cnt) cnt.textContent = rulesData.length;
+      const cnt = document.getElementById("rules-count");
+      if (cnt) {
+        const active = rulesData.filter(r => r.enabled !== false).length;
+        const avail = rulesData.length - active;   // defined but not active
+        cnt.innerHTML =
+          (active ? `<span class="badge" style="background:#3f9b2f">${active} aktiv</span>` : "")
+          + (avail ? `<span class="badge" style="background:#2f5f8f">${avail} verfügbar</span>` : "");
+      }
       if (!rulesData.length) { el.innerHTML = "<p class='sub'>Noch keine Regeln. Mit „+ Regel“ anlegen.</p>"; return; }
       el.innerHTML = rulesData.map((r,i) => {
         const id = r.id || ("rule"+i), on = r.enabled !== false, open = rulesOpen.has(id);
@@ -2615,8 +2622,8 @@
 
     // ---- overscroll page navigation (scroll past the end -> next page) ----
     const VIEW_ORDER = ["dashboard","history","consumers","savings","devices","basic","setup","thermostats"];
-    const OVER_THRESH = 520;    // wheel distance past the edge before flipping
-    const TOUCH_THRESH = 150;   // finger travel past the edge before flipping
+    const OVER_THRESH = 780;    // wheel distance past the edge before flipping
+    const TOUCH_THRESH = 220;   // finger travel past the edge before flipping
     const MAX_PEEK = 96;        // how far the page rubber-bands during the pull
     const navContent = document.querySelector(".content");
     let navBusy = false, overscroll = 0, peek = 0, snapTimer = null;

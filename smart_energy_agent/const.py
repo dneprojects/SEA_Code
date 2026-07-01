@@ -57,7 +57,11 @@ SETBACK_INTERVAL = 120     # seconds between setback decisions
 TARIFF_INTERVAL = 300     # seconds between tariff-shift decisions (5 min)
 
 # PV-surplus control engine
-CONTROL_INTERVAL = 60     # seconds between control decisions
+CONTROL_INTERVAL = 10     # seconds between control decisions (fast modulation ramp-up)
+# apply_commands re-sends an unchanged command only every this many seconds
+# (keepalive); in between, unchanged setpoints/switches are skipped so the faster
+# control cadence doesn't spam Home Assistant.
+APPLY_KEEPALIVE_S = 55
 CONTROL_ON_MARGIN_W = 50  # surplus must exceed this to consider switching on
 CONTROL_OFF_MARGIN_W = 50 # import (negative surplus) beyond this triggers switch off
 # A modulating load is only throttled back once import is confirmed for this many

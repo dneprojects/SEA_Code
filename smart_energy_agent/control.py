@@ -815,8 +815,12 @@ class ControlEngine:
             self._surplus_ewma, self._surplus_ewma_t = raw, now
             return raw
         dt = max(0.0, now - self._surplus_ewma_t)
-        tau_eff = tau * 0.25 if raw > self._surplus_ewma else tau   # rise ~4× faster than fall
-        alpha = dt / (tau_eff + dt) if dt > 0 else 0.0
+        # rise = instant (grab freed surplus at once, e.g. after a wallbox stops);
+        # fall = smoothed with the full time constant (ride through short dips)
+        if raw > self._surplus_ewma:
+            self._surplus_ewma, self._surplus_ewma_t = raw, now
+            return raw
+        alpha = dt / (tau + dt) if dt > 0 else 0.0
         self._surplus_ewma += alpha * (raw - self._surplus_ewma)
         self._surplus_ewma_t = now
         return self._surplus_ewma
@@ -1037,7 +1041,7 @@ class ControlEngine:
         cmds.bounds = actuator_bounds(self._store)    # device hard limits
         self.last_trace = cmds.trace()                # who decided what (debug)
         self._store.set_control_trace({"ts": now, "items": self.last_trace})
-        await apply_commands(self._call_service, self._store, cmds)   # Output
+        await apply_commands(self._call_service, self._store, cmds, now)   # Output
         # Return the switch action (if any) for compatibility / logging.
         for cmd in cmds.commands():
             if cmd.kind in ("on", "off"):
@@ -1162,7 +1166,7 @@ class ControlEngine:
         self._store.set_control_trace({"ts": now, "items": self.last_trace,
                                        "surplus_on": surplus_on, "tariff_on": tariff_on,
                                        "optimizer_on": optimizer_on})
-        await apply_commands(self._call_service, self._store, cmds)   # Output
+        await apply_commands(self._call_service, self._store, cmds, now)   # Output
 
 
 def decide_tariff_actions(

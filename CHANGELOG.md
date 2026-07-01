@@ -6,8 +6,12 @@
   **Kennzahl-Kacheln** (Hausverbrauch, PV, Netz, Batterie, Autarkie, Eigenverbrauch). Die
   **Energiebilanz** (heute) ist ans Dashboard-Ende gewandert (von der Verlaufsseite entfernt).
 - **Modulation reagiert schneller nach oben**: neu freiwerdender Überschuss (z. B. wenn die
-  Wallbox stoppt) wird zügig aufgenommen, während kurze Einbrüche weiter geglättet werden
-  (asymmetrische Glättung: schnell hoch, langsam runter).
+  Wallbox stoppt) wird **sofort** aufgenommen (Heizstab rampt in ≤ 10 s hoch), während kurze
+  Einbrüche weiter geglättet werden. Der Regeltakt ist auf **10 s** verkürzt; unveränderte
+  Befehle werden nur noch als Keepalive (~55 s) an HA gesendet (keine Flut an Schaltbefehlen).
+- **Regeln**: der Zähler zeigt jetzt **grün „N aktiv"** und **blau „M verfügbar"** (jeweils nur,
+  wenn vorhanden).
+- **Scroll-Seitenwechsel**: etwas mehr Widerstand (höhere Schwelle).
 - **Aktive Steuerung**: mehrere Stellgrößen desselben Geräts (z. B. Laden/Entladen der Batterie)
   werden zu **einer Zeile** zusammengefasst (keine Doppelanzeige mehr).
 - **Aktive Steuerung** überarbeitet: alles in **einer Karte**, **Gerätenamen** statt

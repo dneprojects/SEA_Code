@@ -17,8 +17,11 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional, Protocol
+
+from . import const
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -205,15 +208,30 @@ class Cycle:
 
 
 async def apply_commands(
-    call_service: Callable[..., Awaitable[Any]], store: Any, cmds: CommandSet
+    call_service: Callable[..., Awaitable[Any]], store: Any, cmds: CommandSet,
+    now: Optional[float] = None,
 ) -> None:
     """Write all planned commands to Home Assistant (the **O** in IPO).
 
     The single place for service calls, switch bookkeeping and the keepalive
-    policy (setpoints are re-sent every cycle even when unchanged).
+    policy. Unchanged commands are skipped and only re-sent every
+    ``APPLY_KEEPALIVE_S`` (keepalive), so a fast control cadence doesn't spam HA.
     """
+    cache = getattr(store, "_apply_cache", None)
+    if cache is None:
+        cache = {}
+        try:
+            store._apply_cache = cache
+        except Exception:  # noqa: BLE001 - store may be a stub in tests
+            pass
+    mono = now if now is not None else time.time()
     for cmd in cmds.commands():
         domain = cmd.entity.split(".", 1)[0]
+        key = cmd.kind if cmd.kind in ("on", "off") else cmd.value
+        prev = cache.get(cmd.entity)
+        # send on change, or as a periodic keepalive for an unchanged command
+        if prev is not None and prev[0] == key and (mono - prev[1]) < const.APPLY_KEEPALIVE_S:
+            continue
         try:
             if cmd.kind in ("on", "off"):
                 await call_service(
@@ -223,5 +241,8 @@ async def apply_commands(
             elif cmd.kind == "set" and domain in ("number", "input_number"):
                 await call_service(domain, "set_value", cmd.entity, {"value": cmd.value})
                 _LOGGER.info("Control[%s]: %s -> %s (%s)", cmd.source, cmd.entity, cmd.value, cmd.reason)
+            else:
+                continue
+            cache[cmd.entity] = (key, mono)
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("Apply failed for %s: %s", cmd.entity, err)
