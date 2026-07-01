@@ -2624,8 +2624,8 @@
 
     // ---- overscroll page navigation (scroll past the end -> next page) ----
     const VIEW_ORDER = ["dashboard","history","consumers","savings","devices","basic","setup","thermostats"];
-    const OVER_THRESH = 600;    // wheel distance past the edge before flipping
-    const TOUCH_THRESH = 220;   // finger travel past the edge before flipping
+    const OVER_THRESH = 450;    // wheel distance past the edge before flipping
+    const TOUCH_THRESH = 200;   // finger travel past the edge before flipping
     const MAX_PEEK = 96;        // how far the page rubber-bands during the pull
     const navContent = document.querySelector(".content");
     let navBusy = false, overscroll = 0, peek = 0, snapTimer = null;
@@ -2636,6 +2636,11 @@
       navContent.style.transform = px ? "translateY(" + px + "px)" : "";
     }
     function snapBack() { overscroll = 0; if (peek) setPeek(0, true); }
+    function curViewIndex() {
+      const a = document.querySelector(".sidebar a.active");
+      const i = VIEW_ORDER.indexOf(a ? a.dataset.view : "dashboard");
+      return i < 0 ? 0 : i;
+    }
     function navBy(dir) {
       clearTimeout(snapTimer); overscroll = 0; setPeek(0, false);
       const active = document.querySelector(".sidebar a.active");
@@ -2664,12 +2669,12 @@
       if (navBusy || navBlocked(e.target)) return;
       const bottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
       const top = window.scrollY <= 0;
-      if (e.deltaY > 0 && bottom) {
+      if (e.deltaY > 0 && bottom && curViewIndex() < VIEW_ORDER.length - 1) {
         overscroll = Math.max(0, overscroll) + e.deltaY;
         if (overscroll > OVER_THRESH) { navBy(1); return; }
         setPeek(-Math.min(overscroll / OVER_THRESH, 1) * MAX_PEEK, false);
         clearTimeout(snapTimer); snapTimer = setTimeout(snapBack, 170);
-      } else if (e.deltaY < 0 && top) {
+      } else if (e.deltaY < 0 && top && curViewIndex() > 0) {
         overscroll = Math.min(0, overscroll) + e.deltaY;
         if (overscroll < -OVER_THRESH) { navBy(-1); return; }
         setPeek(Math.min(-overscroll / OVER_THRESH, 1) * MAX_PEEK, false);
@@ -2685,8 +2690,8 @@
       const y = e.touches[0].clientY, dy = y - touchLastY; touchLastY = y;
       const bottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
       const top = window.scrollY <= 0;
-      if (bottom && dy < 0) { touchOver += -dy; if (touchOver > TOUCH_THRESH) { navBy(1); return; } setPeek(-Math.min(touchOver / TOUCH_THRESH, 1) * MAX_PEEK, false); }
-      else if (top && dy > 0) { touchOver += dy; if (touchOver > TOUCH_THRESH) { navBy(-1); return; } setPeek(Math.min(touchOver / TOUCH_THRESH, 1) * MAX_PEEK, false); }
+      if (bottom && dy < 0 && curViewIndex() < VIEW_ORDER.length - 1) { touchOver += -dy; if (touchOver > TOUCH_THRESH) { navBy(1); return; } setPeek(-Math.min(touchOver / TOUCH_THRESH, 1) * MAX_PEEK, false); }
+      else if (top && dy > 0 && curViewIndex() > 0) { touchOver += dy; if (touchOver > TOUCH_THRESH) { navBy(-1); return; } setPeek(Math.min(touchOver / TOUCH_THRESH, 1) * MAX_PEEK, false); }
       else { touchOver = 0; if (peek) setPeek(0, true); }
     }, { passive: true });
     window.addEventListener("touchend", () => { touchLastY = null; touchOver = 0; if (peek) setPeek(0, true); }, { passive: true });
