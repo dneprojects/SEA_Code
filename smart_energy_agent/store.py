@@ -824,6 +824,9 @@ class Store:
                     t.append(("Ladesollwert", inst["charge_power"], "setpoint"))
                 if inst.get("discharge_power"):
                     t.append(("Entladesollwert", inst["discharge_power"], "setpoint"))
+                ctrl = inst.get("control") or {}
+                if ctrl.get("setpoint"):   # the commanded modulation setpoint (e.g. ELWA)
+                    t.append(("Sollwert", ctrl["setpoint"], "setpoint"))
                 for c in (inst.get("circuits") or []):
                     nm = c.get("name") or "Kreis"
                     if c.get("temp"):

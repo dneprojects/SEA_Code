@@ -2,6 +2,12 @@
 
 ## 0.8.1
 
+- **Verlauf: CSV-Export** — Button „CSV-Export" exportiert alle Reihen des aktuell gewählten
+  Zeitfensters (Bilanz inkl. **ungeklemmtem** Überschuss + alle Geräte-/Zusatzreihen) als
+  Datei-Download (`sea_export_JJJJ_MM_TT:HH:MM.csv`).
+- **Verlauf**: der kommandierte **Sollwert** regelbarer Lasten (z. B. ELWA `number.hz`) ist jetzt
+  eine eigene plott-/exportierbare Reihe.
+
 - **Fix: Heizstab/regelbare Lasten arbeiten jetzt kontinuierlich und ohne Rampe.** Der Überschuss
   wurde für modulierende Lasten geglättet — dadurch schaltete der Heizstab bei kurzen Haus-Spitzen
   ganz ab und kroch danach nur langsam wieder hoch (teils gar nicht mehr an), obwohl Überschuss da

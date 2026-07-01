@@ -71,3 +71,16 @@ def test_categories_include_strategy_control_entities():
     grp = next(g for g in s.categories_with_entities() if g["key"] == "water_heater:w1")
     ids = {e["entity_id"] for e in grp["entities"]}
     assert "sensor.elwa_temp" in ids            # the stop/limit temperature is listed
+
+
+def test_history_entities_include_control_setpoint():
+    # the commanded modulation setpoint (e.g. ELWA number.hz) must be plottable/
+    # exportable, so the CSV export shows what the controller actually commanded.
+    s = Store()
+    s._config = {"water_heater": [{"id": "w1", "name": "ELWA",
+                                   "powers": [{"entity": "sensor.elwa_p"}],
+                                   "control": {"setpoint": "number.hz"}}]}
+    grp = next(g for g in s.history_entities() if g["key"] == "water_heater:w1")
+    ids = {e["entity_id"] for e in grp["entities"]}
+    assert "number.hz" in ids                    # commanded setpoint is listed
+    assert "sensor.elwa_p" in ids                # measured power still listed
