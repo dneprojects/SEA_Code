@@ -901,3 +901,23 @@ def test_charge_support_grid_allowed_no_discharge_at_reserve():
     cmds = plan_charge_support(-6000.0, 6000.0, 1000.0, inp)
     assert not any(c.entity == "number.bd" for c in cmds)      # reserve protected -> grid only
     assert not any(c.entity == "switch.wb" for c in cmds)      # stays on (EVCS)
+
+
+from smart_energy_agent.devices import devices as _devs
+
+
+def test_charge_rated_w_uses_min_of_wallbox_and_vehicle():
+    s = Store()
+    s._config = {"ev_charger": [{"id": "c1", "name": "WB",
+                                 "control": {"switch": "switch.wb"}}]}
+    s._settings["strategy_loads"] = {
+        "ev_charger:c1": {"self_consumption": True, "max_w": 11000,
+                          "battery_support_w": 3300, "w_per_unit": 1}}
+    s._settings["vehicles"] = [{"id": "v1", "name": "Auto",
+                                "charger_key": "ev_charger:c1", "max_w": 7400}]
+    eng = ControlEngine(s, None)  # type: ignore[arg-type]
+    dev = next(d for d in _devs(s) if d.key == "ev_charger:c1")
+    assert eng._charge_rated_w(dev) == 7400.0        # min(wallbox 11 kW, vehicle 7.4 kW)
+    # no vehicle max -> wallbox max
+    s._settings["vehicles"] = [{"id": "v1", "charger_key": "ev_charger:c1"}]
+    assert eng._charge_rated_w(dev) == 11000.0

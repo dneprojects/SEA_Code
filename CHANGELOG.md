@@ -2,6 +2,14 @@
 
 ## 0.8.1
 
+- **Fix Einschaltschwelle geschalteter Lasten/Wallbox**: die Schwelle nutzte fälschlich die
+  *aktuelle* Leistung (im Aus-Zustand 0 W) → die Wallbox sprang schon bei minimalem Überschuss an.
+  Jetzt zählt die **Ladeleistung**: neues Feld **„max. Ladeleistung"** bei **Wallbox und Fahrzeug**,
+  maßgeblich ist das **Minimum aus beiden**. So geht die Wallbox erst an, wenn PV (+ Batterie-
+  Unterstützung) die Ladeleistung wirklich deckt.
+- **„Laden aus Netz"**-Text angepasst: die **Batterie-Unterstützung zählt mit** (bei „aus" lädt sie
+  aus PV + Batterie; bei „an" hat die Batterie Vorrang, das Netz füllt den Rest).
+
 - **Batterie-Unterstützung beim Laden** (Wallbox u. a. Schaltlasten): pro Last einstellbar, bis zu
   wie viel Leistung sie aus der **Batterie** decken darf, um den **Netzbezug zu minimieren**. Eine
   geschaltete Wallbox geht so schon an, wenn **PV + Batterie-Budget** die Ladeleistung decken —

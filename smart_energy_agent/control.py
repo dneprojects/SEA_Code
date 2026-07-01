@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from . import const
 from .control_core import (
@@ -785,7 +785,7 @@ class ControlEngine:
                 entity_id=dev.switch_entity,
                 domain=dev.switch_entity.split(".", 1)[0],
                 priority=dev.priority,
-                nominal_power_w=dev.power_w,
+                nominal_power_w=self._charge_rated_w(dev),
                 pv_threshold_w=dev.pv_threshold_w,
                 is_on=dev.is_on,
                 last_on=rt.get("last_on", 0.0),
@@ -940,6 +940,23 @@ class ControlEngine:
                  "reserve": dev.grid_soc_min}
                 for dev in select(self._store, CAP_DISCHARGE)]
 
+    def _charge_rated_w(self, dev: Any) -> float:
+        """Rated power for a switch load's on-threshold = min(device max charge
+        power, linked-vehicle max charge power). Falls back to the live power (only
+        meaningful while on). Using the *rated* power (not the current 0 W while
+        off) is what makes 'PV + battery ≥ charge power' correct."""
+        rated = dev.max_w
+        if dev.is_evcs:
+            veh = self._store.vehicle_for_charger(dev.key)
+            if veh:
+                try:
+                    vm = float(veh.get("max_w") or 0.0)
+                except (TypeError, ValueError):
+                    vm = 0.0
+                if vm > 0:
+                    rated = min(rated, vm) if rated > 0 else vm
+        return rated if rated > 0 else dev.power_w
+
     def _charge_support_inputs(self) -> Optional[dict]:
         """Battery-supported switch loads + the battery that backs them (needs a
         discharge setpoint). Returns None if no such load/battery is configured."""
@@ -953,7 +970,7 @@ class ControlEngine:
                 continue
             rt = dev.runtime
             loads.append({
-                "switch": dev.switch_entity, "nominal_w": dev.power_w,
+                "switch": dev.switch_entity, "nominal_w": self._charge_rated_w(dev),
                 "support_w": dev.battery_support_w, "is_on": dev.is_on,
                 "min_runtime_s": dev.min_runtime_s, "min_off_s": dev.min_off_s,
                 "last_on": rt.get("last_on", 0.0), "last_off": rt.get("last_off", 0.0),

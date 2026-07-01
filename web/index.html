@@ -1234,7 +1234,11 @@
         `<input type="number" class="fnum" title="${tip}" value="${cfg[fld]}" onchange="setLoad('${key}','${fld}',this.value)">${unit?` <span class="sub">${unit}</span>`:''}`);
       let h = fhead("PV-Überschuss-Steuerung");
       if (sw) {
-        h += numRow("PV-Schwelle","pv_threshold_w","Mindest-Überschuss zum Einschalten (W)","W")
+        h += numRow(d.kind==='ev_charger'?"max. Ladeleistung":"Leistung (an)","max_w",
+              d.kind==='ev_charger'
+                ? "Maximale Ladeleistung der Wallbox (W). Für die Einschaltschwelle gilt das Minimum aus Wallbox und Fahrzeug — erst an, wenn PV (+ Batterie-Unterstützung) das deckt."
+                : "Leistung, die die Last im eingeschalteten Zustand zieht (W) — Einschaltschwelle: erst an, wenn PV (+ Batterie) das deckt.","W")
+          + numRow("PV-Schwelle","pv_threshold_w","Mindest-Überschuss zum Einschalten (W)","W")
           + numRow("min. Laufzeit","min_runtime_min","Mindestlaufzeit vor dem Abschalten (min)","min")
           + numRow("min. Auszeit","min_off_min","Mindest-Auszeit vor Wiedereinschalten (min)","min")
           + numRow("max. Starts/Tag","max_starts_per_day","0 = unbegrenzt","")
@@ -1252,7 +1256,7 @@
               pickBtn(`pickReady('${key}')`, 'Entität ändern'))
           : frow("Auto angesteckt", '<span class="sub">— optional —</span>',
               pickBtn(`pickReady('${key}')`, 'Entität wählen, die anzeigt ob ein Auto angesteckt ist'));
-        h += frow("Laden aus Netz", `<label class="opt" title="An: lädt, sobald angesteckt – die Differenz zum PV-Überschuss kommt aus dem Netz. Aus: lädt nur aus PV-Überschuss und pausiert, wenn der Überschuss nicht für die Ladeleistung reicht."><input type="checkbox" ${cfg.charge_from_grid?'checked':''} onchange="setLoad('${key}','charge_from_grid',this.checked)"> <span class="sub">sonst nur Überschuss</span></label>`);
+        h += frow("Laden aus Netz", `<label class="opt" title="An: lädt, sobald angesteckt – die Differenz zu PV-Überschuss + Batterie-Unterstützung kommt aus dem Netz (Batterie hat Vorrang). Aus: lädt nur aus PV-Überschuss + Batterie-Unterstützung und pausiert, wenn PV + Batterie nicht für die Ladeleistung reichen."><input type="checkbox" ${cfg.charge_from_grid?'checked':''} onchange="setLoad('${key}','charge_from_grid',this.checked)"> <span class="sub">sonst nur PV + Batterie</span></label>`);
       }
       // Stop condition: battery is always its own SoC; the wallbox stops at the
       // vehicle SoC (its dedicated SoC entity); other devices pick any entity.
@@ -2543,6 +2547,7 @@
             <select onchange="setVeh(${i},'charger_key',this.value)">${chargerOpts(v.charger_key)}</select></div>`;
         h += vehEntRow("SoC-Entität", i, "soc_entity", "value", "Ladezustand des Fahrzeugs (%)");
         h += numRow("Ziel-SoC (%)", i, "target_soc", "0 = kein Ziel", "Bis zu diesem SoC laden");
+        h += numRow("max. Ladeleistung (W)", i, "max_w", "W", "Maximale Ladeleistung des Fahrzeugs. Für die Einschaltschwelle der Wallbox gilt das Minimum aus Wallbox und Fahrzeug.");
         h += numRow("Kapazität (kWh)", i, "capacity_kwh", "für den Optimierer (später)", "Akkukapazität", "0.1");
         h += `<div class="setrow"><label title="Deadline – notfalls aus dem Netz">Laden bis (HH:MM)</label><input type="time" value="${v.deadline||''}" onchange="setVeh(${i},'deadline',this.value)"></div>`;
         h += vehEntRow("anwesend/angesteckt", i, "present_entity", "connected", "optional: zeigt an, dass DIESES Fahrzeug angesteckt ist (bei mehreren Fahrzeugen)");
