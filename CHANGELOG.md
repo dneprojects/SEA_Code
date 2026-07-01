@@ -5,10 +5,10 @@
 - **Dashboard neu (Hero)**: der Live-**Energiefluss** steht groß oben, darunter kompakte
   **Kennzahl-Kacheln** (Hausverbrauch, PV, Netz, Batterie, Autarkie, Eigenverbrauch). Die
   **Energiebilanz** (heute) ist ans Dashboard-Ende gewandert (von der Verlaufsseite entfernt).
-- **Modulation reagiert schneller nach oben**: neu freiwerdender Überschuss (z. B. wenn die
-  Wallbox stoppt) wird **sofort** aufgenommen (Heizstab rampt in ≤ 10 s hoch), während kurze
-  Einbrüche weiter geglättet werden. Der Regeltakt ist auf **10 s** verkürzt; unveränderte
-  Befehle werden nur noch als Keepalive (~55 s) an HA gesendet (keine Flut an Schaltbefehlen).
+- **Modulation stabiler**: der Regeltakt ist auf **10 s** verkürzt (unveränderte Befehle nur als
+  Keepalive ~55 s an HA). Der Überschuss wird symmetrisch geglättet; ein **bestätigtes Defizit**
+  regelt die Lasten sofort auf den Ist-Wert herunter — behebt, dass Heizstab/Wallbox/Batterie
+  bei hohem Hausverbrauch fälschlich weiterliefen und **aus dem Netz** gezogen wurde.
 - **Regeln**: der Zähler zeigt jetzt **grün „N aktiv"** und **blau „M verfügbar"** (jeweils nur,
   wenn vorhanden).
 - **Scroll-Seitenwechsel**: etwas mehr Widerstand (höhere Schwelle).

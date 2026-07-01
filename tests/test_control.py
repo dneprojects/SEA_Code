@@ -821,17 +821,22 @@ def test_decide_modulation_hold_freezes_setpoint():
     assert decide_modulation(-9000.0, mods, hold=True)[0]["power_w"] == 2200.0
 
 
-def test_modulation_surplus_smoothing_is_asymmetric_fast_up():
-    # Rising surplus (e.g. a wallbox stops) is picked up quickly; a symmetric EWMA
-    # at tau=60 over dt=60 would only reach 2000 (alpha .5), asymmetric reaches more.
+def test_build_image_snaps_smoothed_down_on_confirmed_deficit():
+    # A sustained import must not "ride" the (lagging) smoothing up — once the
+    # deficit is confirmed the modulation regulates on the actual (negative) value
+    # so loads shed instead of importing.
     s = Store()
-    s._settings["modulation_smoothing_s"] = 60.0
+    s._settings["control_enabled"] = True
+    s._settings["modulation_smoothing_s"] = 120.0
+    s._config = {"grid": {"power": "sensor.g"},
+                 "battery": [{"id": "b1", "name": "Bat", "power": "sensor.b"}]}
     eng = ControlEngine(s, None)  # type: ignore[arg-type]
-    assert eng._smooth_surplus(0.0, 0.0) == 0.0
-    up = eng._smooth_surplus(60.0, 4000.0)
-    assert up > 3000.0                     # fast rise (tau_eff = 15 -> alpha .8 -> 3200)
-    # falling is still slow (rides through dips)
-    s2 = Store(); s2._settings["modulation_smoothing_s"] = 60.0
-    eng2 = ControlEngine(s2, None)  # type: ignore[arg-type]
-    eng2._smooth_surplus(0.0, 3000.0)
-    assert eng2._smooth_surplus(60.0, -2000.0) == 500.0
+
+    def bal(g):
+        s._live_by_id = {"sensor.g": {"state": str(g)}, "sensor.b": {"state": "0"}}
+    bal(-3000); img1 = eng.build_image(0.0)          # export -> smoothed positive
+    assert img1.surplus_smoothed > 0
+    bal(5000); eng.build_image(10.0)                 # import, streak 1 -> still smoothed
+    bal(5000); img3 = eng.build_image(20.0)          # streak 2 -> confirmed deficit
+    assert img3.allow_mod_shed is True
+    assert img3.surplus_smoothed == img3.surplus_signed < 0   # snapped to the real deficit

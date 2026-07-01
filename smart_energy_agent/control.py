@@ -803,10 +803,10 @@ class ControlEngine:
         )
 
     def _smooth_surplus(self, now: float, raw: float) -> float:
-        """Asymmetric EWMA of the surplus for modulating loads: reacts *fast* when
-        surplus rises (grab freed surplus quickly, e.g. after a wallbox stops) but
-        *slow* when it falls (short house/battery spikes don't slam a heating rod
-        to 0 and back). Time constant ``modulation_smoothing_s`` (0 = off)."""
+        """Symmetric EWMA of the surplus for modulating loads, so short house or
+        battery spikes don't slam a load to 0 and back. A *confirmed* deficit
+        bypasses the smoothing (see build_image) so loads shed quickly instead of
+        importing. Time constant ``modulation_smoothing_s`` (0 = off)."""
         try:
             tau = float(self._store.modulation_smoothing_s())
         except Exception:  # noqa: BLE001
@@ -815,11 +815,6 @@ class ControlEngine:
             self._surplus_ewma, self._surplus_ewma_t = raw, now
             return raw
         dt = max(0.0, now - self._surplus_ewma_t)
-        # rise = instant (grab freed surplus at once, e.g. after a wallbox stops);
-        # fall = smoothed with the full time constant (ride through short dips)
-        if raw > self._surplus_ewma:
-            self._surplus_ewma, self._surplus_ewma_t = raw, now
-            return raw
         alpha = dt / (tau + dt) if dt > 0 else 0.0
         self._surplus_ewma += alpha * (raw - self._surplus_ewma)
         self._surplus_ewma_t = now
@@ -839,6 +834,13 @@ class ControlEngine:
             self._import_streak += 1
         else:
             self._import_streak = 0
+        confirmed_deficit = self._import_streak >= const.MOD_SHED_DEBOUNCE
+        smoothed = self._smooth_surplus(now, raw_surplus)
+        if confirmed_deficit and raw_surplus < smoothed:
+            # a real, sustained import -> don't ride the (lagging) smoothing up;
+            # regulate modulating loads on the actual deficit so they shed now
+            smoothed = raw_surplus
+            self._surplus_ewma = raw_surplus
         # Staleness gate: if a critical balance sensor (grid/battery) is older than
         # STALE_FACTOR × its update interval, the snapshot is unreliable → freeze
         # modulating setpoints instead of acting on out-of-date data.
@@ -851,8 +853,8 @@ class ControlEngine:
         return ProcessImage(
             now=now,
             surplus_signed=raw_surplus,
-            surplus_smoothed=self._smooth_surplus(now, raw_surplus),
-            allow_mod_shed=self._import_streak >= const.MOD_SHED_DEBOUNCE,
+            surplus_smoothed=smoothed,
+            allow_mod_shed=confirmed_deficit,
             mods_hold=stale,
             grid_w=grid_w,
             pv_w=float(balance.get("pv_w", 0.0) or 0.0),
