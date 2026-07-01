@@ -203,8 +203,10 @@
     #rules-list .foldcard>summary,#thermo .foldcard>summary{color:var(--ink)}   /* named-item cards: black title */
     /* overscroll page navigation: gentle slide-in with a slight snap overshoot */
     @keyframes viewIn{from{opacity:0;transform:translateY(18px)}60%{opacity:1;transform:translateY(-4px)}to{transform:translateY(0)}}
+    @keyframes viewInDown{from{opacity:0;transform:translateY(-18px)}60%{opacity:1;transform:translateY(4px)}to{transform:translateY(0)}}
     .view-anim{animation:viewIn .5s cubic-bezier(.2,.7,.2,1)}
-    @media (prefers-reduced-motion: reduce){ .view-anim{animation:none} }
+    .view-anim-down{animation:viewInDown .5s cubic-bezier(.2,.7,.2,1)}
+    @media (prefers-reduced-motion: reduce){ .view-anim,.view-anim-down{animation:none} }
     /* subcategory heading (black, bold, between category and body) — e.g. Leistung, Energie */
     .subhead{font-family:var(--ui);font-size:13px;font-weight:700;color:var(--ink);margin:14px 0 6px}
     .page-h{display:flex;align-items:center;gap:10px;margin:0 0 6px}
@@ -2643,8 +2645,13 @@
       if (nx < 0 || nx >= VIEW_ORDER.length) return;   // already at first/last
       navBusy = true;
       showView(VIEW_ORDER[nx]);                        // sets the menu + scrolls to top
+      if (dir < 0) {                                   // back: land at the bottom of the previous page
+        const toBottom = () => window.scrollTo(0, document.documentElement.scrollHeight);
+        toBottom(); setTimeout(toBottom, 60); setTimeout(toBottom, 260);   // re-settle after async content
+      }
       const sec = document.getElementById("view-" + VIEW_ORDER[nx]);
-      if (sec) { sec.classList.remove("view-anim"); void sec.offsetWidth; sec.classList.add("view-anim"); }
+      if (sec) { const cls = dir < 0 ? "view-anim-down" : "view-anim";
+        sec.classList.remove("view-anim", "view-anim-down"); void sec.offsetWidth; sec.classList.add(cls); }
       setTimeout(() => { navBusy = false; }, 620);
     }
     function navBlocked(t) {
