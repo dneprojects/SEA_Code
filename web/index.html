@@ -714,7 +714,7 @@
           <span id="t-msg" class="sub"></span></div>
         <table class="info-tbl"><tbody id="t-info"></tbody></table>
         </div></details>
-        <details class="foldcard"><summary>Status</summary><div class="foldbody">
+        <details class="foldcard" open><summary>Status</summary><div class="foldbody">
         <table class="info-tbl"><tbody id="info-body"></tbody></table>
         </div></details>
       </section>
@@ -2319,29 +2319,36 @@
       loadConsumers();  // refresh status badge (verfügbar <-> aktiv)
     }
     let rulesData = [];
+    const rulesOpen = new Set();   // rule ids currently expanded
     function escT(s){ return String(s==null?"":s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function onRuleToggle(id, open){ if (open) rulesOpen.add(id); else rulesOpen.delete(id); }
     function renderRules() {
       const el = document.getElementById("rules-list"); if (!el) return;
       const cnt = document.getElementById("rules-count"); if (cnt) cnt.textContent = rulesData.length;
       if (!rulesData.length) { el.innerHTML = "<p class='sub'>Noch keine Regeln. Mit „+ Regel“ anlegen.</p>"; return; }
       el.innerHTML = rulesData.map((r,i) => {
-        const on = r.enabled !== false;
+        const id = r.id || ("rule"+i), on = r.enabled !== false, open = rulesOpen.has(id);
+        const title = (r.name||"").trim() || r.id || "(unbenannte Regel)";
         const body = r._json != null ? r._json
           : JSON.stringify({when: r.when!=null?r.when:true, then: r.then||[]}, null, 2);
-        return `<div class="subcard">
-          <div class="setrow" style="margin:0;gap:10px">
-            <input type="text" placeholder="Name" value="${esc(r.name||r.id||'')}" onchange="setRuleField(${i},'name',this.value)" style="width:200px">
-            <label class="opt" style="margin-left:auto" title="Regel aktiv"><input type="checkbox" ${on?'checked':''} onchange="setRuleField(${i},'enabled',this.checked)"> <span class="sub">aktiv</span></label>
-            <button class="btn" title="Regel entfernen" onclick="removeRule(${i})">Entfernen</button>
+        return `<details class="foldcard"${open?' open':''} ontoggle="onRuleToggle('${esc(id)}',this.open)">
+          <summary><span id="rule-title-${i}">${esc(title)}</span>
+            <label class="opt" style="margin-left:auto" title="Regel aktiv" onclick="event.stopPropagation()"><input type="checkbox" ${on?'checked':''} onclick="event.stopPropagation()" onchange="setRuleField(${i},'enabled',this.checked)"> <span class="sub">aktiv</span></label>
+            <button class="btn" title="Regel entfernen" onclick="event.stopPropagation();removeRule(${i})">Entfernen</button>
+          </summary>
+          <div class="foldbody">
+            <div class="setrow" style="margin:0"><label>Name</label>
+              <input type="text" placeholder="Name" value="${esc(r.name||'')}" oninput="setRuleField(${i},'name',this.value);var t=document.getElementById('rule-title-${i}');if(t)t.textContent=this.value.trim()||'(unbenannte Regel)'" style="width:220px"></div>
+            <textarea spellcheck="false" oninput="setRuleField(${i},'_json',this.value)" style="width:100%;min-height:96px;font-family:ui-monospace,Consolas,monospace;font-size:12px;box-sizing:border-box;margin-top:8px">${escT(body)}</textarea>
           </div>
-          <textarea spellcheck="false" oninput="setRuleField(${i},'_json',this.value)" style="width:100%;min-height:96px;font-family:ui-monospace,Consolas,monospace;font-size:12px;box-sizing:border-box;margin-top:8px">${escT(body)}</textarea>
-        </div>`;
+        </details>`;
       }).join("");
     }
     function setRuleField(i, field, val) { if (rulesData[i]) rulesData[i][field] = val; }
     function addRule() {
-      rulesData.push({id:"rule"+(rulesData.length+1), name:"", enabled:true,
-        when:{">":[{var:"surplus"},1500]}, then:[]});
+      const id = "rule"+Date.now().toString(36);
+      rulesData.push({id, name:"", enabled:true, when:{">":[{var:"surplus"},1500]}, then:[]});
+      rulesOpen.add(id);
       renderRules();
     }
     function removeRule(i) { rulesData.splice(i,1); renderRules(); }
@@ -2620,6 +2627,29 @@
       else if (e.deltaY < 0 && top) { overscroll = Math.min(0, overscroll) + e.deltaY; if (overscroll < -OVER_THRESH) navBy(-1); }
       else overscroll = 0;
     }, { passive: true });
+
+    // touch equivalent: keep dragging past the edge -> next/previous page
+    const TOUCH_THRESH = 90;   // extra finger travel past the edge (px)
+    let touchLastY = null, touchOver = 0;
+    function touchBlocked(t){
+      const pk = document.getElementById("picker"), sh = document.getElementById("strathelp");
+      if (pk && pk.style.display === "flex") return true;
+      if (sh && sh.style.display === "flex") return true;
+      return !!(t && t.closest && t.closest("textarea,select,.sidebar"));
+    }
+    window.addEventListener("touchstart", (e) => {
+      touchLastY = e.touches[0].clientY; touchOver = 0;
+    }, { passive: true });
+    window.addEventListener("touchmove", (e) => {
+      if (navBusy || touchLastY == null || touchBlocked(e.target)) return;
+      const y = e.touches[0].clientY, dy = y - touchLastY; touchLastY = y;
+      const bottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      const top = window.scrollY <= 0;
+      if (bottom && dy < 0) { touchOver += -dy; if (touchOver > TOUCH_THRESH) navBy(1); }
+      else if (top && dy > 0) { touchOver += dy; if (touchOver > TOUCH_THRESH) navBy(-1); }
+      else touchOver = 0;
+    }, { passive: true });
+    window.addEventListener("touchend", () => { touchLastY = null; touchOver = 0; }, { passive: true });
 
     (async () => { refresh(); setInterval(refresh, 5000); })();
   </script>
