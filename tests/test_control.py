@@ -107,6 +107,7 @@ def _heater_store(grid_w, batt_w, heater_setpoint_w, *, loads_first=False, pv_w=
                           "control": {"setpoint": "number.hz"}}],
     }
     s._settings["control_enabled"] = True
+    s._settings["mod_control_gain"] = 1.0   # deadbeat: test the allocation, not the damping
     s._settings["surplus_loads_first"] = loads_first
     s._settings["surplus_battery_min_soc"] = min_soc
     s._settings["strategy_loads"] = {
@@ -917,3 +918,19 @@ def test_actuator_bounds_clamps_to_ha_entity_max():
     assert actuator_bounds(s)["number.elwa"] == (0.0, 3500.0)   # clamped to device max
     s._live_by_id = {"number.elwa": {"state": "2000", "attributes": {}}}
     assert actuator_bounds(s)["number.elwa"] == (0.0, 3600.0)   # no attr -> max_w
+
+
+def test_modulation_gain_damps_the_step():
+    # A gain < 1 corrects only a fraction of the surplus per cycle (PI-style
+    # damping) instead of the 1:1 deadbeat, so the loop doesn't ring under delay.
+    calls = []
+
+    async def cs(domain, service, entity, data=None):
+        calls.append((entity, data))
+    s = _heater_store(grid_w=-800, batt_w=0, heater_setpoint_w=0, pv_w=2000)
+    s._settings["mod_control_gain"] = 0.25
+    asyncio.run(ControlEngine(s, cs).run_once(0.0))
+    assert ("number.hz", {"value": 200.0}) in calls        # 0.25 × 800 W, not 800
+    img = ControlEngine(s, cs).build_image(0.0)
+    assert img.surplus_signed == 800.0                     # raw surplus unchanged
+    assert img.surplus_control == 200.0                    # scaled step for modulation

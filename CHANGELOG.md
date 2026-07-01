@@ -2,6 +2,13 @@
 
 ## 0.8.1
 
+- **Regelbare Lasten schwingen nicht mehr (gedämpfte Regelung statt 1:1).** Der Heizstab wurde
+  bisher pro Takt **1:1** auf den ganzen Überschuss gestellt (Deadbeat) — das schwingt bei
+  Sensor-Totzeit (Über-/Netzbezug im Wechsel). Jetzt regelt er nur einen **Bruchteil des Fehlers
+  pro Takt** aus (die physische Lastleistung ist der Integral-Anteil) und läuft glatt auf
+  Überschuss = 0. Neue Einstellung **„Regelverstärkung (Modulation)"** (Grundeinstellungen),
+  Default **0,25**; 1,0 = altes 1:1-Verhalten.
+
 - **Fix: Sollwert nie über das Geräte-Limit senden.** Die Stellgröße wird jetzt auf das **Minimum
   aus konfigurierter max. Leistung und dem echten HA-Maximum der Entität** begrenzt. Bisher konnte
   ein zu hoher Wert (z. B. 3600 W an eine ELWA mit 3500 W) gesendet werden — das Gerät weist ihn ab,

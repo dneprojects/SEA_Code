@@ -170,6 +170,7 @@ class ProcessImage:
 
     now: float
     surplus_signed: float = 0.0
+    surplus_control: float = 0.0    # surplus × loop gain — the step for modulating loads (damping)
     mods_hold: bool = False         # True = freeze modulating setpoints (stale/unreliable data)
     grid_w: float = 0.0          # raw grid power: + = import, − = export
     pv_w: float = 0.0            # PV production (W)

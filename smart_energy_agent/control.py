@@ -294,13 +294,13 @@ class PvSurplusModulationController:
     name = "pv_surplus_modulation"
 
     def process(self, image: ProcessImage, cmds: CommandSet) -> None:
-        # A modulating load is its own actuator, so it needs no smoothing/ramp:
-        # a deadbeat proportional step on the *raw* signed surplus sets each load
-        # straight to the surplus that is actually available (grid -> 0 in one
-        # cycle). It therefore tracks the surplus continuously up AND down and is
-        # only ever 0 when there is genuinely no surplus — never while export
-        # remains. Data-quality freeze (stale sensors) still applies via hold.
-        for cmd in plan_modulation(image.mods, image.surplus_signed,
+        # A modulating load is its own actuator (its physical power is the integral
+        # term), so we feed it a *gain-scaled* surplus step: it corrects a fraction
+        # of the surplus error per cycle and converges smoothly to surplus = 0
+        # instead of ringing like the old 1:1 deadbeat under sensor delay. It still
+        # tracks up AND down and only reaches 0 when there is genuinely no surplus.
+        # Data-quality freeze (stale sensors) still applies via hold.
+        for cmd in plan_modulation(image.mods, image.surplus_control,
                                    allow_shed=True, hold=image.mods_hold):
             cmds.add(cmd)
 
@@ -880,6 +880,15 @@ class ControlEngine:
         balance = self._store.balance()
         raw_surplus = self._surplus_signed(balance)
         grid_w = float(balance.get("grid_w", 0.0) or 0.0)
+        # Modulation loop gain: regulating loads correct only this fraction of the
+        # surplus error per cycle. 1.0 = deadbeat (sets 1:1 the whole difference),
+        # which rings under sensor delay; the physical load power is the integral
+        # term, so a gain < 1 gives smooth PI-style convergence to surplus = 0.
+        try:
+            gain = self._store.modulation_control_gain()
+        except Exception:  # noqa: BLE001
+            gain = 1.0
+        surplus_control = gain * raw_surplus
         # Staleness gate: if a critical balance sensor (grid/battery) is older than
         # STALE_FACTOR × its update interval, the snapshot is unreliable → freeze
         # modulating setpoints instead of acting on out-of-date data.
@@ -892,6 +901,7 @@ class ControlEngine:
         return ProcessImage(
             now=now,
             surplus_signed=raw_surplus,
+            surplus_control=surplus_control,
             mods_hold=stale,
             grid_w=grid_w,
             pv_w=float(balance.get("pv_w", 0.0) or 0.0),
