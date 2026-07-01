@@ -344,7 +344,10 @@ class WebServer:
         return web.json_response({"strategies": self._store.strategies_overview()})
 
     async def _api_strategy_loads_get(self, _request: web.Request) -> web.Response:
-        return web.json_response({"devices": self._store.strategy_devices()})
+        return web.json_response({
+            "devices": self._store.strategy_devices(),
+            "has_battery_discharge": self._store.has_battery_discharge(),
+        })
 
     async def _api_strategy_loads_post(self, request: web.Request) -> web.Response:
         try:

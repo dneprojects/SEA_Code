@@ -2,6 +2,12 @@
 
 ## 0.8.1
 
+- **Batterie-Unterstützung beim Laden** (Wallbox u. a. Schaltlasten): pro Last einstellbar, bis zu
+  wie viel Leistung sie aus der **Batterie** decken darf, um den **Netzbezug zu minimieren**. Eine
+  geschaltete Wallbox geht so schon an, wenn **PV + Batterie-Budget** die Ladeleistung decken —
+  die Batterie wird nie unter die **Reserve-SoC** entladen. Die Option erscheint nur, wenn die
+  Batterie einen **Entlade-Sollwert** hat.
+
 - **Dashboard neu (Hero)**: der Live-**Energiefluss** steht groß oben, darunter kompakte
   **Kennzahl-Kacheln** (Hausverbrauch, PV, Netz, Batterie, Autarkie, Eigenverbrauch). Die
   **Energiebilanz** (heute) ist ans Dashboard-Ende gewandert (von der Verlaufsseite entfernt).

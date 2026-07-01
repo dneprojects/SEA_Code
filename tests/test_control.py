@@ -840,3 +840,47 @@ def test_build_image_snaps_smoothed_down_on_confirmed_deficit():
     bal(5000); img3 = eng.build_image(20.0)          # streak 2 -> confirmed deficit
     assert img3.allow_mod_shed is True
     assert img3.surplus_smoothed == img3.surplus_signed < 0   # snapped to the real deficit
+
+
+from smart_energy_agent.control import plan_charge_support
+
+
+def _cs_inp(surplus_loads, *, discharge="number.bd", max_w=5000.0, soc=80.0, reserve=20.0):
+    return {"battery": {"discharge": discharge, "wpu": 1.0, "max_w": max_w,
+                        "soc": soc, "reserve": reserve},
+            "loads": surplus_loads}
+
+
+def _cs_load(nominal_w=11000.0, support_w=3300.0, is_on=False, **kw):
+    base = {"switch": "switch.wb", "nominal_w": nominal_w, "support_w": support_w,
+            "is_on": is_on, "min_runtime_s": 0, "min_off_s": 0, "last_on": 0.0,
+            "last_off": 0.0, "satisfied": False}
+    base.update(kw)
+    return base
+
+
+def test_charge_support_turns_on_when_pv_plus_battery_covers():
+    inp = _cs_inp([_cs_load()])
+    cmds = plan_charge_support(8000.0, 0.0, 1000.0, inp)   # 8 kW PV + 3.3 kW batt >= 11 kW
+    assert any(c.entity == "switch.wb" and c.kind == "on" for c in cmds)
+
+
+def test_charge_support_stays_off_when_insufficient():
+    inp = _cs_inp([_cs_load()])
+    cmds = plan_charge_support(5000.0, 0.0, 1000.0, inp)   # 5 + 3.3 < 11
+    assert not any(c.entity == "switch.wb" and c.kind == "on" for c in cmds)
+
+
+def test_charge_support_discharges_to_cover_import():
+    inp = _cs_inp([_cs_load(is_on=True)])
+    cmds = plan_charge_support(-3000.0, 3000.0, 1000.0, inp)  # importing 3 kW, budget 3.3
+    dis = [c for c in cmds if c.entity == "number.bd"]
+    assert dis and dis[-1].value == 3000.0                 # discharge covers the import
+    assert not any(c.entity == "switch.wb" and c.kind == "off" for c in cmds)  # kept on
+
+
+def test_charge_support_sheds_and_no_discharge_at_reserve():
+    inp = _cs_inp([_cs_load(is_on=True)], soc=20.0, reserve=20.0)   # at reserve
+    cmds = plan_charge_support(-3000.0, 3000.0, 1000.0, inp)
+    assert any(c.entity == "switch.wb" and c.kind == "off" for c in cmds)   # shed
+    assert not any(c.entity == "number.bd" for c in cmds)                   # no discharge

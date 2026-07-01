@@ -709,6 +709,12 @@ class Store:
     def strategy_loads(self) -> dict[str, Any]:
         return dict(self._settings.get("strategy_loads", {}))
 
+    def has_battery_discharge(self) -> bool:
+        """True if any configured battery exposes a discharge-power setpoint — the
+        precondition for offering battery support to a load (UI + control)."""
+        return any(isinstance(b, dict) and b.get("discharge_power")
+                   for b in (self._config.get("battery") or []))
+
     def set_strategy_load(self, key: str, patch: dict[str, Any]) -> bool:
         if not key:
             return False
@@ -723,7 +729,7 @@ class Store:
                 except (TypeError, ValueError):
                     pass
         for f in ("min_w", "max_w", "w_per_unit", "limit_max", "limit_hyst", "grid_soc_min",
-                  "grid_soc_max", "min_kwh_day", "capacity_kwh"):  # modulating / stop / grid / energy
+                  "grid_soc_max", "min_kwh_day", "capacity_kwh", "battery_support_w"):  # modulating / stop / grid / energy
             if f in patch:
                 try:
                     cfg[f] = float(patch[f] or 0)
@@ -773,6 +779,7 @@ class Store:
             cfg = {"self_consumption": False, "tariff_shift": False, "priority": 5,
                    "pv_threshold_w": 0, "min_runtime_min": 0, "min_off_min": 0,
                    "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1,
+                   "battery_support_w": 0,
                    "limit_entity": "", "limit_max": 0, "limit_hyst": 0, "ready_entity": "", "latest_start": "",
                    "grid_soc_min": 0, "grid_soc_max": 100, "interruptible": True}
             cfg.update(d.get("_cfg", {}))          # device-provided cfg (e.g. a vehicle)

@@ -209,6 +209,11 @@ class Device:
         return self._num("min_w", 0.0)
 
     @property
+    def battery_support_w(self) -> float:
+        """Battery discharge (W) this switch load may draw to minimise grid import."""
+        return self._num("battery_support_w", 0.0)
+
+    @property
     def wpu(self) -> float:
         return self._num("w_per_unit", 1.0) or 1.0   # 0 would divide -> use 1
 

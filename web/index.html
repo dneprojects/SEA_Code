@@ -1040,8 +1040,10 @@
     let pickerCtx = null;           // {path, ug, kind} of the entity picker popup
     let pickerTimer = null;
     let stratByKey = {};   // device key -> strategy device (cfg) for the setup page
+    let hasBattDischarge = false;   // a battery with a discharge setpoint exists
     async function fetchStratDevices() {
-      try { stratDevices = (await fetch(api("/api/strategy-loads")).then(r=>r.json())).devices || []; } catch(e) {}
+      try { const r = await fetch(api("/api/strategy-loads")).then(x=>x.json());
+        stratDevices = r.devices || []; hasBattDischarge = !!r.has_battery_discharge; } catch(e) {}
     }
     async function loadSetup() {
       try { setupData = await fetch(api("/api/setup/catalog")).then(r=>r.json()); }
@@ -1221,6 +1223,7 @@
           + numRow("max. Starts/Tag","max_starts_per_day","0 = unbegrenzt","")
           + frow("spätester Start", `<input type="time" class="fnum" title="Spätester Start – wird zur Deadline notfalls aus dem Netz erzwungen" value="${cfg.latest_start||''}" onchange="setLoad('${key}','latest_start',this.value)">`)
           + frow("unterbrechbar", `<label class="opt" title="An: laufende Last darf bei Wegfall von Überschuss/günstigem Tarif wieder abgeschaltet werden (z. B. Heizstab). Aus: läuft bis zum Ziel durch (z. B. Waschmaschine)."><input type="checkbox" ${cfg.interruptible!==false?'checked':''} onchange="setLoad('${key}','interruptible',this.checked)"> <span class="sub">sonst bis zum Ziel</span></label>`);
+        if (hasBattDischarge) h += numRow("Batterie-Unterstützung","battery_support_w","Diese geschaltete Last darf bis zu dieser Leistung aus der Batterie decken, um den Netzbezug zu minimieren (z. B. 3300 W). Die Batterie wird nie unter die Reserve-SoC entladen. 0 = aus.","W (0 = aus)");
       } else {
         h += numRow("max. Leistung","max_w","Maximale Leistungsaufnahme des Geräts (W)","W")
           + numRow("W/Einheit","w_per_unit","Watt pro Einheit der Sollwert-Entität: Wallbox ~690 W/A; Leistungssollwert in W = 1","")
@@ -1992,7 +1995,8 @@
         fillStrategy(s);
       } catch(e) {}
       try { stratList = (await fetch(api("/api/strategies")).then(r=>r.json())).strategies || []; } catch(e) {}
-      try { stratDevices = (await fetch(api("/api/strategy-loads")).then(r=>r.json())).devices || []; } catch(e) {}
+      try { const r = await fetch(api("/api/strategy-loads")).then(x=>x.json());
+        stratDevices = r.devices || []; hasBattDischarge = !!r.has_battery_discharge; } catch(e) {}
       renderStrategies();
     }
     // Unified PV-surplus device list: ALL controllable devices (incl. wallbox &

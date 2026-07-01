@@ -528,6 +528,63 @@ class EvcsController:
                     cmds.add(Command(e["setpoint"], "set", 0.0, label))
 
 
+def plan_charge_support(
+    surplus_w: float, grid_w: float, now: float, inp: dict
+) -> list[Command]:
+    """Switch loads that may draw from the battery to minimise grid import.
+
+    A supported switch load turns on when ``surplus + battery budget`` covers it,
+    and the battery is discharged to cover the actual grid import (up to the total
+    budget). The budget is capped by the battery's discharge power and drops to 0
+    at/below the reserve SoC, so the battery is never drained past its reserve.
+    """
+    b = inp["battery"]
+    soc, reserve = b.get("soc"), (b.get("reserve") or 0.0)
+    at_reserve = soc is not None and reserve > 0 and float(soc) <= reserve
+    batt_avail = 0.0 if at_reserve else max(0.0, b.get("max_w", 0.0))
+    out: list[Command] = []
+    total_budget = 0.0
+    for ld in sorted(inp["loads"], key=lambda x: -x["nominal_w"]):
+        budget = min(ld["support_w"], max(0.0, batt_avail - total_budget))
+        eff = surplus_w + budget
+        on = ld["is_on"]
+        if ld.get("satisfied"):
+            want = False
+        elif not on:
+            want = (eff >= max(ld["nominal_w"], const.CONTROL_ON_MARGIN_W)
+                    and (now - ld["last_off"]) >= ld["min_off_s"])
+        else:                                   # keep running while the battery can still help
+            want = ((eff >= -const.CONTROL_OFF_MARGIN_W and not at_reserve)
+                    or (now - ld["last_on"]) < ld["min_runtime_s"])   # respect min runtime
+        if want != on:
+            out.append(Command(
+                ld["switch"], "on" if want else "off",
+                reason="Laden mit Batterie-Unterstützung" if want
+                else "Ladeunterstützung: kein Überschuss / Reserve erreicht"))
+        if want:
+            total_budget += budget
+    if total_budget > 0 and b.get("discharge"):
+        discharge = min(total_budget, max(0.0, grid_w))     # cover the current import
+        out.append(Command(b["discharge"], "set",
+                           round(discharge / (b.get("wpu") or 1.0), 2),
+                           reason="Entladen für Ladeunterstützung"))
+    return out
+
+
+class ChargeSupportController:
+    """Battery-supported switch loads (e.g. a wallbox): draw up to a budget from
+    the battery so a load can run on PV + battery without grid import. Runs before
+    the generic switch/modulation so its switch + discharge commands win."""
+
+    name = "charge_support"
+
+    def process(self, image: ProcessImage, cmds: CommandSet) -> None:
+        inp = image.extra.get("charge_support")
+        if inp:
+            for cmd in plan_charge_support(image.surplus_signed, image.grid_w, image.now, inp):
+                cmds.add(cmd)
+
+
 def plan_stages(surplus_signed: float, stages: list[str], stage_power_w: float,
                 on_count: int, force: bool = False) -> list[tuple[str, str]]:
     """Pure planner for a staged load (e.g. a 3-relay heating rod).
@@ -710,6 +767,8 @@ class ControlEngine:
         for dev in devices(self._store):
             if dev.mode != "switch" or not dev.switch_entity or not dev.self_consumption:
                 continue
+            if dev.battery_support_w > 0:
+                continue                         # handled by ChargeSupportController
             rt = dev.runtime
             out.append(ConsumerDecision(
                 entity_id=dev.switch_entity,
@@ -785,8 +844,8 @@ class ControlEngine:
     CHAIN: list[Controller] = [PvSurplusSwitchController(), PvSurplusModulationController()]
     FULL_CHAIN: list[Controller] = [
         BatteryCareController(), EssReserveController(), FeedInLimitController(),
-        PeakShavingController(), OptimizingController(), EvcsController(),
-        StagedLoadController(), HeatPumpController(), *CHAIN,
+        PeakShavingController(), OptimizingController(), ChargeSupportController(),
+        EvcsController(), StagedLoadController(), HeatPumpController(), *CHAIN,
         TariffShiftController(), RuleController()]
 
     def _surplus_signed(self, balance: dict) -> float:
@@ -869,6 +928,27 @@ class ControlEngine:
                  "max_w": dev.max_w, "wpu": dev.wpu, "soc": dev.soc,
                  "reserve": dev.grid_soc_min}
                 for dev in select(self._store, CAP_DISCHARGE)]
+
+    def _charge_support_inputs(self) -> Optional[dict]:
+        """Battery-supported switch loads + the battery that backs them (needs a
+        discharge setpoint). Returns None if no such load/battery is configured."""
+        batt = next((b for b in self._peak_batteries() if b.get("discharge")), None)
+        if batt is None:
+            return None
+        loads = []
+        for dev in devices(self._store):
+            if (dev.mode != "switch" or not dev.switch_entity
+                    or not dev.self_consumption or dev.battery_support_w <= 0):
+                continue
+            rt = dev.runtime
+            loads.append({
+                "switch": dev.switch_entity, "nominal_w": dev.power_w,
+                "support_w": dev.battery_support_w, "is_on": dev.is_on,
+                "min_runtime_s": dev.min_runtime_s, "min_off_s": dev.min_off_s,
+                "last_on": rt.get("last_on", 0.0), "last_off": rt.get("last_off", 0.0),
+                "satisfied": dev.satisfied,
+            })
+        return {"battery": batt, "loads": loads} if loads else None
 
     def _storage_inputs(self, expensive: bool = False) -> tuple[list[dict], list[dict]]:
         """Reserve/emergency/care inputs for all storage. Tracks each battery's
@@ -1111,6 +1191,9 @@ class ControlEngine:
             image.extra["peak"] = {"limit_w": peak_limit, "batteries": self._peak_batteries()}
         # EVCS (wallbox) gate inputs for participating chargers.
         if surplus_on:
+            cs = self._charge_support_inputs()
+            if cs:
+                image.extra["charge_support"] = cs
             evcs = self._evcs_inputs()
             if evcs:
                 image.extra["evcs"] = evcs
