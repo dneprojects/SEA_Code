@@ -631,6 +631,9 @@
           <input type="number" id="set-modsmooth" min="0" step="10" style="width:80px"
             title="Zeitkonstante für modulierende Lasten (Heizstab etc.): glättet den Überschuss, damit kurze Haus-/Batterie-Spitzen die Last nicht auf 0 takten. 0 = aus (Momentanwert).">
           <span class="sub">0 = aus — dämpft das Takten regelbarer Lasten</span></div>
+        <div class="setrow"><label>Sensoren zeitlich angleichen</label>
+          <label class="opt" title="Gleicht nicht-synchrone Leistungssensoren an: die schnellen werden über die Kadenz des langsamsten gemittelt (langsamster hält seinen Wert), bevor die Bilanz gebildet wird. Basis für Energiefluss-Anzeige und Regelung.">
+            <input type="checkbox" id="set-sigsync"> <span class="sub">schnelle Sensoren auf die langsamen mitteln (Energiefluss + Regelung)</span></label></div>
         <div class="setrow"><button class="btn" title="Grundeinstellungen speichern" onclick="saveSettings()">Speichern</button>
           <span id="set-msg" class="sub"></span></div>
 
@@ -1271,6 +1274,14 @@
       try { data = await fetch(api("/api/categories")).then(r=>r.json()); } catch(e) {}
       renderCategories(data.groups || []);
     }
+    function fmtRate(e) {
+      if (e.update_s == null) return "";
+      const iv = e.update_s < 1 ? "<1 s" : "~" + Math.round(e.update_s) + " s";
+      // flag values older than ~3× their interval (out of sync / stalled)
+      const stale = e.age_s != null && e.age_s > 3 * Math.max(e.update_s, 1);
+      const warn = stale ? ` <span style="color:var(--brand)">· ${Math.round(e.age_s)} s alt</span>` : "";
+      return ` <span class="sub">(alle ${iv})${warn}</span>`;
+    }
     function renderCategories(groups) {
       const el = document.getElementById("devices");
       if (!groups.some(g => g.count > 0)) {
@@ -1281,7 +1292,7 @@
         <div class="panel-title">${g.label} <span class="count">${g.count}</span></div>
         ${g.count ? g.entities.map(e => `
           <div style="display:flex;justify-content:space-between;gap:10px;padding:4px 8px;border-bottom:1px solid var(--alt);background:#fff">
-            <span><b>${e.slot_label}</b>: ${e.name} <span class="eid">${e.entity_id}</span></span>
+            <span><b>${e.slot_label}</b>: ${e.name} <span class="eid">${e.entity_id}</span>${fmtRate(e)}</span>
             <span class="num">${e.power_w!=null ? fmtW(e.power_w) : fmtState(e.state, e.unit)}</span></div>`).join("")
           : "<p class='sub' style='padding:4px 8px'>Keine Entitäten zugeordnet.</p>"}`).join("");
     }
@@ -1726,6 +1737,7 @@
       document.getElementById("set-emerg").value = (s.emergency_reserve_soc || 0);
       document.getElementById("set-soh").value = (s.soh_cycle_days || 0);
       document.getElementById("set-modsmooth").value = (s.modulation_smoothing_s!=null ? s.modulation_smoothing_s : 120);
+      document.getElementById("set-sigsync").checked = (s.signal_sync !== false);
       document.getElementById("set-pvlimit").value = s.pv_limit_entity || "";
       document.getElementById("set-pvlimitmax").value = (s.pv_limit_max_w || 0);
       peakSlots = Array.isArray(s.peak_slots) ? s.peak_slots : [];
@@ -1751,6 +1763,7 @@
         emergency_reserve_soc: document.getElementById("set-emerg").value || 0,
         soh_cycle_days: document.getElementById("set-soh").value || 0,
         modulation_smoothing_s: document.getElementById("set-modsmooth").value || 0,
+        signal_sync: document.getElementById("set-sigsync").checked,
         pv_limit_entity: document.getElementById("set-pvlimit").value || "",
         pv_limit_max_w: document.getElementById("set-pvlimitmax").value || 0,
         peak_slots: peakSlots,

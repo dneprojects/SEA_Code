@@ -159,7 +159,7 @@ def decide_action(
 
 
 def decide_modulation(
-    surplus_signed: float, mods: list[dict], allow_shed: bool = True
+    surplus_signed: float, mods: list[dict], allow_shed: bool = True, hold: bool = False
 ) -> list[dict]:
     """Distribute the signed surplus (+export / −import, W) across modulating
     loads by priority and return the new setpoint per load.
@@ -179,6 +179,11 @@ def decide_modulation(
     out = []
     for m in order:
         wpu = m["wpu"] or 1.0
+        if hold:                       # freeze at current setpoint (unreliable data)
+            out.append({"entity": m["entity"], "domain": m["domain"],
+                        "unit": round(m["cur_unit"], 2), "cur_unit": m["cur_unit"],
+                        "power_w": round(m["cur_w"], 1)})
+            continue
         raw = min(m["max_w"], m["cur_w"] + remaining)
         # Below its minimum power the load switches OFF rather than forcing grid
         # import to sustain it (correct for a wallbox minimum charge current).
@@ -244,7 +249,7 @@ def battery_tariff_mode(
 
 
 def plan_modulation(
-    mods: list[dict], surplus_signed: float, allow_shed: bool = True
+    mods: list[dict], surplus_signed: float, allow_shed: bool = True, hold: bool = False
 ) -> list[Command]:
     """Pure planner: turn modulating loads + the signed surplus into setpoint
     commands (no IO). Batteries with a tariff mode are commanded explicitly
@@ -263,8 +268,9 @@ def plan_modulation(
         else:
             out.append(Command(disc, "set", 0.0, "Entladen aus"))
             normal.append(m)   # idle battery follows the PV surplus
-    for a in decide_modulation(surplus_signed, normal, allow_shed):
-        out.append(Command(a["entity"], "set", a["unit"], f"regelbar, {round(a['power_w'])} W"))
+    for a in decide_modulation(surplus_signed, normal, allow_shed, hold):
+        reason = "regelbar (Daten unsicher, halten)" if hold else f"regelbar, {round(a['power_w'])} W"
+        out.append(Command(a["entity"], "set", a["unit"], reason))
     return out
 
 
@@ -288,7 +294,8 @@ class PvSurplusModulationController:
     name = "pv_surplus_modulation"
 
     def process(self, image: ProcessImage, cmds: CommandSet) -> None:
-        for cmd in plan_modulation(image.mods, image.surplus_smoothed, image.allow_mod_shed):
+        for cmd in plan_modulation(image.mods, image.surplus_smoothed,
+                                   image.allow_mod_shed, image.mods_hold):
             cmds.add(cmd)
 
 
@@ -826,11 +833,21 @@ class ControlEngine:
             self._import_streak += 1
         else:
             self._import_streak = 0
+        # Staleness gate: if a critical balance sensor (grid/battery) is older than
+        # STALE_FACTOR × its update interval, the snapshot is unreliable → freeze
+        # modulating setpoints instead of acting on out-of-date data.
+        stale = False
+        if hasattr(self._store, "signal_stale"):
+            try:
+                stale = self._store.signal_stale(self._store.balance_key_ids())
+            except Exception:  # noqa: BLE001
+                stale = False
         return ProcessImage(
             now=now,
             surplus_signed=raw_surplus,
             surplus_smoothed=self._smooth_surplus(now, raw_surplus),
             allow_mod_shed=self._import_streak >= const.MOD_SHED_DEBOUNCE,
+            mods_hold=stale,
             grid_w=grid_w,
             pv_w=float(balance.get("pv_w", 0.0) or 0.0),
             consumers=self._build(),

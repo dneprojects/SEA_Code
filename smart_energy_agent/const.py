@@ -65,6 +65,11 @@ CONTROL_OFF_MARGIN_W = 50 # import (negative surplus) beyond this triggers switc
 # the grid still exports, import_streak stays 0, so a load is never shed -> export
 # guard. 1 = react immediately (off).
 MOD_SHED_DEBOUNCE = 2
+# Signal synchronisation: per-sensor update samples kept for rate/age + averaging.
+SAMPLES_MAXLEN = 40
+# A balance sensor counts as "stale" when its value is older than this factor
+# times its measured update interval (staleness gate holds modulating loads).
+STALE_FACTOR = 3.0
 # A deferrable load with a "latest start" deadline is force-started (even without
 # surplus) once the deadline is reached, within this window after it (minutes).
 DEADLINE_FORCE_WINDOW_MIN = 120

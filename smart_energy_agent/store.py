@@ -12,8 +12,9 @@ import json
 import logging
 import os
 import time
+from collections import deque
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Deque, Optional, Tuple
 
 import aiosqlite
 
@@ -74,6 +75,9 @@ class Store:
             )
         self._entities: dict[str, EnergyEntity] = {}
         self._sat_state: dict[str, bool] = {}   # device stop-condition latch (hysteresis)
+        # per-entity recent (monotonic_ts, value|None) samples for update-rate,
+        # staleness and time-alignment of asynchronous power sensors.
+        self._samples: dict[str, Deque[Tuple[float, Optional[float]]]] = {}
         self._db: Optional[aiosqlite.Connection] = None
         self.last_discovery_ts: float = 0.0
         # entity_id -> {"include": bool, "role": str}; persisted to disk.
@@ -124,6 +128,11 @@ class Store:
             # short house/battery spikes don't slam a continuous load to 0 and
             # back. 0 = off (instantaneous). Default 120 s.
             "modulation_smoothing_s": 120.0,
+            # Time-align asynchronous power sensors: average the fast ones over the
+            # slowest sensor's cadence (slowest held) before building the balance,
+            # so PV/grid/battery/loads represent the same window. Feeds the flow
+            # display and control. True = on.
+            "signal_sync": True,
             # Persisted controller runtime state (daily staged energy, last full
             # charge per battery) so it survives restarts.
             "controller_state": {},
@@ -260,7 +269,8 @@ class Store:
 
     def set_settings(self, patch: dict[str, Any]) -> dict[str, Any]:
         for key in ("grid_invert", "battery_invert", "control_enabled",
-                    "tariff_enabled", "optimizer_enabled", "surplus_loads_first"):
+                    "tariff_enabled", "optimizer_enabled", "surplus_loads_first",
+                    "signal_sync"):
             if key in patch and patch[key] is not None:
                 self._settings[key] = bool(patch[key])
         if "retention_days" in patch:
@@ -1245,9 +1255,10 @@ class Store:
         otherwise falls back to the legacy role-based aggregation.
         """
         if self.has_config_balance():
+            live = self._aligned_live() if self.signal_sync() else self._live_by_id
             return balance_from_config(
                 self._config,
-                self._live_by_id,
+                live,
                 grid_invert=self._settings.get("grid_invert", False),
             )
         return compute_balance(
@@ -1544,6 +1555,120 @@ class Store:
         """Cache the live state of a watched entity (config / thermostat / presence)."""
         if new_state and entity_id in self.watched_entity_ids():
             self._live_by_id[entity_id] = new_state
+            self._note_sample(entity_id, new_state)
+
+    # --- signal timing: update-rate, staleness, time-alignment --------------
+    def _note_sample(self, entity_id: str, new_state: dict[str, Any]) -> None:
+        """Record a (monotonic_ts, value) sample for a live state update."""
+        try:
+            val: Optional[float] = float(new_state.get("state"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            val = None
+        dq = self._samples.get(entity_id)
+        if dq is None:
+            dq = self._samples[entity_id] = deque(maxlen=const.SAMPLES_MAXLEN)
+        dq.append((time.monotonic(), val))
+
+    def signal_rate(self, entity_id: str) -> Tuple[Optional[float], Optional[float]]:
+        """(median update interval [s], age of current value [s]) or (None, None)."""
+        dq = self._samples.get(entity_id)
+        if not dq:
+            return (None, None)
+        age = time.monotonic() - dq[-1][0]
+        if len(dq) < 2:
+            return (None, age)
+        deltas = sorted(dq[i][0] - dq[i - 1][0] for i in range(1, len(dq)))
+        return (deltas[len(deltas) // 2], age)   # median interval
+
+    def signal_rates(self) -> dict[str, dict[str, Optional[float]]]:
+        """Per-entity {interval, age} for every tracked entity (UI display)."""
+        out: dict[str, dict[str, Optional[float]]] = {}
+        for eid in self._samples:
+            interval, age = self.signal_rate(eid)
+            out[eid] = {"interval": interval, "age": age}
+        return out
+
+    def signal_sync(self) -> bool:
+        return bool(self._settings.get("signal_sync", True))
+
+    def _balance_power_ids(self) -> list[str]:
+        """Entity ids of the power sensors that make up the energy balance."""
+        c = self._config
+        ids: list[str] = []
+        g = c.get("grid") or {}
+        for k in ("power", "import_power", "export_power"):
+            if g.get(k):
+                ids.append(g[k])
+        b = c.get("battery") or []
+        for inst in (b if isinstance(b, list) else []):
+            if isinstance(inst, dict) and inst.get("power"):
+                ids.append(inst["power"])
+        for kind in ("pv", "heat_pump", "water_heater", "ev_charger", "consumers"):
+            for inst in c.get(kind) or []:
+                if not isinstance(inst, dict):
+                    continue
+                for p in inst.get("powers") or []:
+                    if isinstance(p, dict) and p.get("entity"):
+                        ids.append(p["entity"])
+        return ids
+
+    def balance_key_ids(self) -> list[str]:
+        """The critical balance sensors for the surplus (grid + battery power)."""
+        c = self._config
+        ids: list[str] = []
+        g = c.get("grid") or {}
+        for k in ("power", "import_power", "export_power"):
+            if g.get(k):
+                ids.append(g[k])
+        for inst in (c.get("battery") or []):
+            if isinstance(inst, dict) and inst.get("power"):
+                ids.append(inst["power"])
+        return ids
+
+    def signal_stale(self, entity_ids: list[str], factor: float = const.STALE_FACTOR) -> bool:
+        """True if any given sensor's value is older than factor × its interval."""
+        for eid in entity_ids:
+            interval, age = self.signal_rate(eid)
+            if interval and age is not None and age > factor * interval:
+                return True
+        return False
+
+    def _align_window(self) -> float:
+        """Alignment window = the slowest balance sensor's update interval."""
+        win = 0.0
+        for eid in self._balance_power_ids():
+            interval, _ = self.signal_rate(eid)
+            if interval:
+                win = max(win, interval)
+        return win
+
+    def _aligned_value(self, entity_id: str, window: float) -> Optional[float]:
+        """Time-averaged value over the window; slow sensors (no in-window sample
+        beyond the last) effectively hold their last value."""
+        dq = self._samples.get(entity_id)
+        if not dq:
+            return None
+        if window > 0:
+            cutoff = time.monotonic() - window
+            vals = [v for (ts, v) in dq if v is not None and ts >= cutoff]
+            if vals:
+                return sum(vals) / len(vals)
+        for ts, v in reversed(dq):     # hold last known numeric value
+            if v is not None:
+                return v
+        return None
+
+    def _aligned_live(self) -> dict[str, Any]:
+        """Copy of the live states with balance power sensors time-aligned."""
+        window = self._align_window()
+        out: dict[str, Any] = dict(self._live_by_id)
+        for eid in set(self._balance_power_ids()):
+            av = self._aligned_value(eid, window)
+            if av is not None and eid in out:
+                st = dict(out[eid])
+                st["state"] = av
+                out[eid] = st
+        return out
 
     def set_ha_snapshot(
         self,
@@ -1624,11 +1749,14 @@ class Store:
                 power_w = _state_power_w(st)
                 if power_w is not None and inv:
                     power_w = -power_w
+            interval, age = self.signal_rate(eid)
             items.append({
                 "slot_label": label, "entity_id": eid,
                 "name": attrs.get("friendly_name", eid), "state": st.get("state"),
                 "unit": attrs.get("unit_of_measurement"),
                 "power_w": round(power_w, 1) if power_w is not None else None,
+                "update_s": round(interval, 1) if interval is not None else None,
+                "age_s": round(age, 1) if age is not None else None,
             })
 
         items: list[dict[str, Any]] = []

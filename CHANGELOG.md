@@ -34,6 +34,14 @@
 - **Robust gegen nicht-synchrone Messwerte**: eine modulierende Last wird erst abgesenkt, wenn ein
   Defizit über mehrere Zyklen bestätigt ist (Entprellen); solange Überschuss/Einspeisung anliegt,
   bleibt sie an (Export-Schutz). Ein einzelner „verrutschter" Messpunkt wirft sie nicht mehr ab.
+- **Sensor-Update-Rate**: auf der Seite „Geräte" steht jetzt hinter jeder Entität, wie oft sie
+  aktualisiert (z. B. „(alle ~2 s)"), und veraltete Werte werden markiert.
+- **Zeitliche Angleichung (neu, Grundeinstellungen „Sensoren zeitlich angleichen")**: nicht-synchrone
+  Leistungssensoren werden vor der Bilanz zeitlich ausgerichtet — die schnellen über die Kadenz des
+  langsamsten gemittelt, der langsamste hält seinen Wert. Basis für **Energiefluss-Anzeige und
+  Regelung** → ruhigeres, konsistenteres Bild.
+- **Staleness-Gate**: ist ein Bilanz-Sensor (Netz/Batterie) deutlich veraltet, werden modulierende
+  Lasten eingefroren, statt auf veraltete Daten zu reagieren.
 - **Heizstab/modulierende Lasten**: Stopp-Bedingung (z. B. „Stopp bei ≥ 65 °C") kann jetzt mit
   **Hysterese (Δ)** versehen werden — Wiederanlauf erst unter (Schwelle − Δ). Verhindert das
   schnelle Takten am Limit (ruhige, lange Zyklen statt Sägezahn).

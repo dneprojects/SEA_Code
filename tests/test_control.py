@@ -810,3 +810,12 @@ def test_decide_modulation_allow_shed_holds_load_on_unconfirmed_import():
     assert decide_modulation(-5000.0, mods, allow_shed=False)[0]["power_w"] == 3000.0
     # surplus available: load rises regardless of the flag (guard only blocks cuts)
     assert decide_modulation(600.0, mods, allow_shed=False)[0]["power_w"] == 3600.0
+
+
+def test_decide_modulation_hold_freezes_setpoint():
+    mods = [{"entity": "number.hz", "domain": "number", "cur_unit": 2200.0,
+             "cur_w": 2200.0, "wpu": 1.0, "min_w": 0.0, "max_w": 3600.0,
+             "priority": 5, "is_batt": False, "batt_mode": None, "discharge": ""}]
+    # stale/unreliable data -> hold at the current setpoint regardless of surplus
+    assert decide_modulation(5000.0, mods, hold=True)[0]["power_w"] == 2200.0
+    assert decide_modulation(-9000.0, mods, hold=True)[0]["power_w"] == 2200.0
