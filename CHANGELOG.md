@@ -12,6 +12,9 @@
 - **Verlauf**: größerer Hauptchart, ruhigere Legende.
 - **Regeln (Strategien)**: eigene Klappkarte; jede Regel als Unterkarte mit **Name**,
   **Aktiv-Schalter**, **Entfernen** und JSON-Feld — statt eines einzigen JSON-Blocks.
+- **Scroll-Navigation**: am Seitenende weiter nach unten scrollen öffnet die **nächste Seite**
+  (nach oben am Anfang die vorherige), mit sanfter Einblend-/Snap-Animation; das Menü wird
+  mitgesetzt. Schwelle gegen versehentliches Umschalten.
 - **Grundeinstellungen** sind jetzt in **ein-/ausklappbare Karten** gegliedert (Allgemein,
   PV-Überschuss & Speicher, Tarife, Status) — wie die Strategien; beim Öffnen zugeklappt.
 - **Komponenten**: jede Kategorie (Netz, Verbraucher, Fahrzeuge, …) ist eine **klappbare Karte**,
