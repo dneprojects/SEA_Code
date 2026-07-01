@@ -1,7 +1,12 @@
 # Changelog
 
-## 0.8.0
+## 0.8.1
 
+- **Grundeinstellungen** sind jetzt in **ein-/ausklappbare Karten** gegliedert (Allgemein,
+  PV-Überschuss & Speicher, Tarife, Status) — wie die Strategien.
+- **Komponenten**: jede Kategorie (Netz, Verbraucher, …) ist eine **klappbare Karte**, die ihre
+  Geräte **und** den „Hinzufügen"-Button enthält.
+- Die **Seitenleiste bleibt beim Scrollen stehen** (fixiert unter dem Kopfbereich).
 - Die **Strategie-Auswahl** wirkt jetzt als **Voreinstellung**: sie setzt die Master-Schalter
   (PV-Überschuss immer an; Tarif + Optimierer an bei Hybrid/Kosten, aus bei Eigenverbrauch/
   Autarkie) — danach frei feinjustierbar.

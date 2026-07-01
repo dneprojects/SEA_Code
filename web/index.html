@@ -168,7 +168,10 @@
     /* ---- layout / nav ---- */
     .layout{display:flex;align-items:flex-start}
     .sidebar{width:212px;flex:none;background:var(--card);border-right:1px solid var(--line);
-      padding:14px 12px;min-height:560px}
+      padding:14px 12px;min-height:560px;
+      /* stay put while the content scrolls (pinned below the sticky header) */
+      position:sticky;top:var(--headerH,0px);align-self:flex-start;
+      max-height:calc(100vh - var(--headerH,0px));overflow-y:auto}
     .sidebar a{display:flex;align-items:center;gap:8px;padding:8px 9px;border-radius:var(--r-sm);
       color:var(--ink);font-family:var(--ui);font-weight:600;font-size:12.5px;background:none;margin-bottom:2px;white-space:nowrap}
     .sidebar a:hover{background:var(--line2);text-decoration:none}
@@ -186,6 +189,16 @@
       color:var(--brand);margin:26px 0 12px;display:flex;align-items:center;gap:8px;
       border:0;padding:0}
     .panel-title::after{content:"";flex:1;height:1px;background:var(--line)}
+    /* generic collapsible section card (Grundeinstellungen + Komponenten) */
+    .foldcard{border:1px solid var(--line);border-radius:var(--r);background:var(--card);
+      box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+    .foldcard>summary{display:flex;align-items:center;gap:10px;cursor:pointer;list-style:none;
+      padding:12px 16px;font-family:var(--ui);font-size:15px;font-weight:700;color:var(--brand)}
+    .foldcard>summary::-webkit-details-marker{display:none}
+    .foldcard>summary::before{content:"\25B6";flex:none;font-size:10px;color:var(--muted);transition:transform .15s}
+    .foldcard[open]>summary::before{transform:rotate(90deg)}
+    .foldcard>.foldbody{padding:12px 16px 14px;border-top:1px solid var(--line2)}
+    .foldcard>.foldbody>.setrow:first-child,.foldcard>.foldbody>.subhead:first-child{margin-top:0}
     /* subcategory heading (black, bold, between category and body) — e.g. Leistung, Energie */
     .subhead{font-family:var(--ui);font-size:13px;font-weight:700;color:var(--ink);margin:14px 0 6px}
     .page-h{display:flex;align-items:center;gap:10px;margin:0 0 6px}
@@ -582,13 +595,14 @@
       <!-- Grundeinstellungen (inkl. Tarife) -->
       <section id="view-basic" hidden>
         <div class="page-h"><svg class="ico"><use href="#i-set"/></svg><h1>Grundeinstellungen</h1></div>
-        <div class="panel-title">Allgemein</div>
+        <details class="foldcard" open><summary>Allgemein</summary><div class="foldbody">
         <div class="setrow"><label>Aufbewahrung Historie (Tage)</label>
           <input type="number" id="set-ret" min="1" max="3650" title="Wie lange Verlaufsdaten gespeichert werden (Tage); leer = Standard"> <span class="sub">leer = Standard</span></div>
         <div class="setrow"><label>PV-Prognose-Entität</label>
           <input type="text" id="set-pvfc" title="Optionale Solcast-/sonstige PV-Prognose-Entität (Forecast.Solar wird automatisch erkannt)" placeholder="sensor.solcast_pv_forecast_forecast_today" style="width:260px">
           <span class="sub">nur für Solcast/sonstige — Forecast.Solar wird automatisch erkannt</span></div>
-        <div class="panel-title">PV-Überschuss &amp; Speicher</div>
+        </div></details>
+        <details class="foldcard" open><summary>PV-Überschuss &amp; Speicher</summary><div class="foldbody">
         <div class="setrow"><label>PV-Überschuss-Vorrang</label>
           <select id="set-loadsfirst" title="Bei echtem PV-Überschuss: Batterie zuerst laden oder steuerbare Verbraucher (Heizstab etc.) direkt versorgen. In beiden Fällen wird ein entladender Speicher nie als Überschuss gewertet – Verbraucher laufen also nie aus der Batterie.">
             <option value="0">Batterie zuerst (Speicher füllen)</option>
@@ -636,8 +650,8 @@
             <input type="checkbox" id="set-sigsync"> <span class="sub">schnelle Sensoren auf die langsamen mitteln (Energiefluss + Regelung)</span></label></div>
         <div class="setrow"><button class="btn" title="Grundeinstellungen speichern" onclick="saveSettings()">Speichern</button>
           <span id="set-msg" class="sub"></span></div>
-
-        <div class="panel-title">Tarife — Bezugspreis &amp; Einspeisevergütung</div>
+        </div></details>
+        <details class="foldcard" open><summary>Tarife — Bezugspreis &amp; Einspeisevergütung</summary><div class="foldbody">
         <p class="sub" id="t-prefill-hint" style="margin:0 0 6px"></p>
         <div class="setrow"><label>Tarifmodell</label>
           <select id="t-mode" title="Statischer Preis, HT/NT oder dynamischer Preis aus einer HA-Entität" onchange="onTariffModeChange()">
@@ -675,9 +689,10 @@
         <div class="setrow"><button class="btn" title="Tarif speichern" onclick="saveTariff()">Speichern</button>
           <span id="t-msg" class="sub"></span></div>
         <table class="info-tbl"><tbody id="t-info"></tbody></table>
-
-        <div class="panel-title">Status</div>
+        </div></details>
+        <details class="foldcard" open><summary>Status</summary><div class="foldbody">
         <table class="info-tbl"><tbody id="info-body"></tbody></table>
+        </div></details>
       </section>
 
       <!-- Thermostate (Absenkung bei Abwesenheit) -->
@@ -994,6 +1009,8 @@
     }
     const openInstances = new Set(["grid"]);
     function onToggleDev(id, open) { if (open) openInstances.add(id); else openInstances.delete(id); }
+    const closedKinds = new Set();   // category cards default open; remember collapses
+    function onToggleKind(key, open) { if (open) closedKinds.delete(key); else closedKinds.add(key); }
     // Jump to one device's settings: collapse all others, open just this one.
     // `ref` is either a strategy key ("kind:id") or a plain instance id.
     function openDeviceSettings(ref) {
@@ -1034,19 +1051,21 @@
       let html = gridDetails(d.grid || {fields:[]});
       (d.kinds||[]).forEach(kind => {
         const list = setupData.config[kind.key] || [];
-        html += `<div class="panel-title">${kind.label}</div>`
-          + list.map((inst,idx) => deviceDetails(kind, inst, idx)).join("")
-          + `<button class="btn" title="${kind.add_label||(kind.label+' hinzufügen')}" onclick="addInstance('${kind.key}')">+ ${kind.add_label||(kind.label+' hinzufügen')}</button>`;
+        const addLbl = kind.add_label || (kind.label+' hinzufügen');
+        const body = list.map((inst,idx) => deviceDetails(kind, inst, idx)).join("")
+          + `<button class="btn" title="${addLbl}" onclick="addInstance('${kind.key}')">+ ${addLbl}</button>`;
+        const open = !closedKinds.has(kind.key);
+        html += `<details class="foldcard"${open?' open':''} ontoggle="onToggleKind('${kind.key}',this.open)">
+            <summary>${kind.label} <span class="count">${list.length}</span></summary>
+            <div class="foldbody">${body}</div></details>`;
       });
       el.innerHTML = html;
     }
     function gridDetails(g) {
-      const open = openInstances.has("grid");
-      return `<div class="panel-title">${g.label||"Netz"}</div>
-        <details class="swdev"${open?' open':''} ontoggle="onToggleDev('grid',this.open)">
-          <summary><b class="swname">${g.label||"Netz"}</b></summary>
-          <div class="swbody">${(g.fields||[]).map(f => fieldHtml("grid/"+f.key, f, "grid")).join("")}</div>
-        </details>`;
+      const open = !closedKinds.has("grid");
+      const body = `<div class="swbody">${(g.fields||[]).map(f => fieldHtml("grid/"+f.key, f, "grid")).join("")}</div>`;
+      return `<details class="foldcard"${open?' open':''} ontoggle="onToggleKind('grid',this.open)">
+          <summary>${g.label||"Netz"}</summary><div class="foldbody">${body}</div></details>`;
     }
     function deviceInfo(kind, inst) {
       let n = 0;
@@ -2456,6 +2475,17 @@
       openPickerCb("climate", "", sbData.groups[gi].thermostats[ti].climate||"",
         eid => { sbData.groups[gi].thermostats[ti].climate = eid; saveSb(true); });
     }
+
+    // Pin the sidebar below the sticky header: expose the header height as --headerH.
+    function syncHeaderH() {
+      const h = document.querySelector("header");
+      if (h) document.documentElement.style.setProperty("--headerH", h.offsetHeight + "px");
+    }
+    window.addEventListener("resize", syncHeaderH);
+    window.addEventListener("load", syncHeaderH);
+    const _bnr = document.querySelector(".banner");
+    if (_bnr) _bnr.addEventListener("load", syncHeaderH);
+    syncHeaderH();
 
     (async () => { refresh(); setInterval(refresh, 5000); })();
   </script>
