@@ -449,16 +449,19 @@
       <section id="view-setup" hidden>
         <div class="page-h"><svg class="ico"><use href="#i-src"/></svg><h1>Komponenten</h1></div>
         <p class="sub" style="margin:0 0 8px">Ordne den Größen, die der Agent braucht, die passenden HA-Entitäten zu — unabhängig davon, von welchem HA-Gerät sie stammen. Vorschläge kommen aus Home Assistant; bereits im Energy-Dashboard konfigurierte Entitäten stehen oben. <span style="color:#9c3a2f">*</span> = benötigt.</p>
-        <div class="controls">
+        <div class="controls" style="margin-bottom:14px">
           <button class="btn" onclick="importPrefs()">Aus Energy-Dashboard übernehmen</button>
           <span class="sub" id="setup-msg"></span>
         </div>
         <div id="setup"></div>
-        <div class="panel-title">Fahrzeuge</div>
-        <p class="sub" style="margin:0 0 8px">Fahrzeuge werden unabhängig von der Wallbox angelegt (mehrere möglich). Je nach <b>Fähigkeit</b>: <i>nur SoC</i> (Stopp-Signal), <i>ladbar</i> (Lader lädt bis Ziel-SoC) oder <i>bidirektional</i> (V2H/V2G – nimmt wie ein Speicher an Eigenverbrauch, Peak-Shaving und Reserve teil).</p>
-        <div id="vehicles"></div>
-        <div style="margin-top:10px"><button class="btn" onclick="addVehicle()">+ Fahrzeug</button>
-          <span class="sub" id="veh-msg" style="margin-left:8px"></span></div>
+        <details class="foldcard"><summary>Fahrzeuge <span class="count" id="veh-count">0</span></summary>
+          <div class="foldbody">
+            <p class="sub" style="margin:0 0 8px">Fahrzeuge werden unabhängig von der Wallbox angelegt (mehrere möglich). Je nach <b>Fähigkeit</b>: <i>nur SoC</i> (Stopp-Signal), <i>ladbar</i> (Lader lädt bis Ziel-SoC) oder <i>bidirektional</i> (V2H/V2G – nimmt wie ein Speicher an Eigenverbrauch, Peak-Shaving und Reserve teil).</p>
+            <div id="vehicles"></div>
+            <div style="margin-top:10px"><button class="btn" onclick="addVehicle()">+ Fahrzeug</button>
+              <span class="sub" id="veh-msg" style="margin-left:8px"></span></div>
+          </div>
+        </details>
       </section>
 
       <!-- Geräte (nach Gattung) -->
@@ -595,14 +598,14 @@
       <!-- Grundeinstellungen (inkl. Tarife) -->
       <section id="view-basic" hidden>
         <div class="page-h"><svg class="ico"><use href="#i-set"/></svg><h1>Grundeinstellungen</h1></div>
-        <details class="foldcard" open><summary>Allgemein</summary><div class="foldbody">
+        <details class="foldcard"><summary>Allgemein</summary><div class="foldbody">
         <div class="setrow"><label>Aufbewahrung Historie (Tage)</label>
           <input type="number" id="set-ret" min="1" max="3650" title="Wie lange Verlaufsdaten gespeichert werden (Tage); leer = Standard"> <span class="sub">leer = Standard</span></div>
         <div class="setrow"><label>PV-Prognose-Entität</label>
           <input type="text" id="set-pvfc" title="Optionale Solcast-/sonstige PV-Prognose-Entität (Forecast.Solar wird automatisch erkannt)" placeholder="sensor.solcast_pv_forecast_forecast_today" style="width:260px">
           <span class="sub">nur für Solcast/sonstige — Forecast.Solar wird automatisch erkannt</span></div>
         </div></details>
-        <details class="foldcard" open><summary>PV-Überschuss &amp; Speicher</summary><div class="foldbody">
+        <details class="foldcard"><summary>PV-Überschuss &amp; Speicher</summary><div class="foldbody">
         <div class="setrow"><label>PV-Überschuss-Vorrang</label>
           <select id="set-loadsfirst" title="Bei echtem PV-Überschuss: Batterie zuerst laden oder steuerbare Verbraucher (Heizstab etc.) direkt versorgen. In beiden Fällen wird ein entladender Speicher nie als Überschuss gewertet – Verbraucher laufen also nie aus der Batterie.">
             <option value="0">Batterie zuerst (Speicher füllen)</option>
@@ -651,7 +654,7 @@
         <div class="setrow"><button class="btn" title="Grundeinstellungen speichern" onclick="saveSettings()">Speichern</button>
           <span id="set-msg" class="sub"></span></div>
         </div></details>
-        <details class="foldcard" open><summary>Tarife — Bezugspreis &amp; Einspeisevergütung</summary><div class="foldbody">
+        <details class="foldcard"><summary>Tarife — Bezugspreis &amp; Einspeisevergütung</summary><div class="foldbody">
         <p class="sub" id="t-prefill-hint" style="margin:0 0 6px"></p>
         <div class="setrow"><label>Tarifmodell</label>
           <select id="t-mode" title="Statischer Preis, HT/NT oder dynamischer Preis aus einer HA-Entität" onchange="onTariffModeChange()">
@@ -690,7 +693,7 @@
           <span id="t-msg" class="sub"></span></div>
         <table class="info-tbl"><tbody id="t-info"></tbody></table>
         </div></details>
-        <details class="foldcard" open><summary>Status</summary><div class="foldbody">
+        <details class="foldcard"><summary>Status</summary><div class="foldbody">
         <table class="info-tbl"><tbody id="info-body"></tbody></table>
         </div></details>
       </section>
@@ -1009,8 +1012,8 @@
     }
     const openInstances = new Set(["grid"]);
     function onToggleDev(id, open) { if (open) openInstances.add(id); else openInstances.delete(id); }
-    const closedKinds = new Set();   // category cards default open; remember collapses
-    function onToggleKind(key, open) { if (open) closedKinds.delete(key); else closedKinds.add(key); }
+    const openKinds = new Set();   // category cards default collapsed; remember expansions
+    function onToggleKind(key, open) { if (open) openKinds.add(key); else openKinds.delete(key); }
     // Jump to one device's settings: collapse all others, open just this one.
     // `ref` is either a strategy key ("kind:id") or a plain instance id.
     function openDeviceSettings(ref) {
@@ -1054,7 +1057,7 @@
         const addLbl = kind.add_label || (kind.label+' hinzufügen');
         const body = list.map((inst,idx) => deviceDetails(kind, inst, idx)).join("")
           + `<button class="btn" title="${addLbl}" onclick="addInstance('${kind.key}')">+ ${addLbl}</button>`;
-        const open = !closedKinds.has(kind.key);
+        const open = openKinds.has(kind.key);
         html += `<details class="foldcard"${open?' open':''} ontoggle="onToggleKind('${kind.key}',this.open)">
             <summary>${kind.label} <span class="count">${list.length}</span></summary>
             <div class="foldbody">${body}</div></details>`;
@@ -1062,7 +1065,7 @@
       el.innerHTML = html;
     }
     function gridDetails(g) {
-      const open = !closedKinds.has("grid");
+      const open = openKinds.has("grid");
       const body = `<div class="swbody">${(g.fields||[]).map(f => fieldHtml("grid/"+f.key, f, "grid")).join("")}</div>`;
       return `<details class="foldcard"${open?' open':''} ontoggle="onToggleKind('grid',this.open)">
           <summary>${g.label||"Netz"}</summary><div class="foldbody">${body}</div></details>`;
@@ -1269,6 +1272,7 @@
       const inst = {id:genId(kindKey), name:kind.label+" "+(l.length+1)};
       (kind.fields||[]).forEach(f => { inst[f.key] = f.kind==="entity" ? "" : (f.kind==="flag" ? false : []); });
       if (kind.control) inst.control = {mode:"", switch:"", setpoint:""};
+      openKinds.add(kindKey);       // keep the category card open after adding
       openInstances.add(inst.id);   // new device starts expanded
       l.push(inst); setByPath(kindKey, l); saveConfig();
     }
@@ -2372,6 +2376,7 @@
     }
     function renderVehicles() {
       const el = document.getElementById("vehicles");
+      const cnt = document.getElementById("veh-count"); if (cnt) cnt.textContent = vehData.vehicles.length;
       if (!vehData.vehicles.length) { el.innerHTML = "<p class='sub'>Noch keine Fahrzeuge. Mit „+ Fahrzeug“ anlegen.</p>"; return; }
       const chargerOpts = (cur) => `<option value="">— keiner —</option>` +
         vehData.chargers.map(c=>`<option value="${esc(c.key)}" ${c.key===cur?'selected':''}>${esc(c.name)}</option>`).join("");
