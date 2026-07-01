@@ -244,13 +244,13 @@
     .hist-row #range-seg{flex:1}
     .hist-row #range-seg button{flex:1}
     /* savings controls: full-width stack (label | control), control spans like the 4 cards */
-    .sav-top{display:grid;grid-template-columns:max-content 1fr;gap:10px 14px;align-items:center;margin-top:16px}
+    .sav-top{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:10px 14px;align-items:center;margin-top:16px}
     .sav-top .lbl{color:var(--muted);font-size:13px;white-space:nowrap}
     .sav-top .seg{width:100%}
     .sav-top .seg button{flex:1;padding:0 6px}
     .sav-card{width:100%;background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:6px 10px}
     .sav-card-head{display:flex;gap:10px;align-items:center}
-    .sav-card-head select{flex:1;border:none;background:transparent;font:inherit;color:var(--ink);outline:none}
+    .sav-card-head select{flex:1;min-width:0;border:none;background:transparent;font:inherit;color:var(--ink);outline:none}
     .sav-card .info{flex:none;width:34px;height:30px;border-radius:var(--r-sm);padding:0;line-height:1}
     .sav-prem-grid{display:grid;grid-template-columns:max-content 1fr;gap:8px 12px;align-items:center}
     .sav-card.has-prem .sav-prem-grid{margin-top:8px;padding-top:8px;border-top:1px solid var(--alt)}
@@ -417,7 +417,7 @@
       .hist-row input[type=datetime-local]{flex:1 1 100%;min-width:0}
       .hist-row #hist-apply{flex:1 1 100%}
       /* Einsparung: Label über Steuerung, alles volle Breite */
-      .sav-top{grid-template-columns:1fr;gap:2px 0}
+      .sav-top{grid-template-columns:minmax(0,1fr);gap:2px 0}
       .sav-top .lbl{margin-top:8px}
       .sav-top .lbl[style]{align-self:auto!important;padding-top:0!important}
       .sav-prem-grid{grid-template-columns:1fr;gap:2px 0}
