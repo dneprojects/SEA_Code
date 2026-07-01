@@ -14,7 +14,11 @@
   **Aktiv-Schalter**, **Entfernen** und JSON-Feld — statt eines einzigen JSON-Blocks.
 - **Scroll-Navigation**: am Seitenende weiter nach unten scrollen öffnet die **nächste Seite**
   (nach oben am Anfang die vorherige), mit sanfter Einblend-/Snap-Animation; das Menü wird
-  mitgesetzt. Schwelle gegen versehentliches Umschalten.
+  mitgesetzt. Höhere Schwelle gegen versehentliches Umschalten und **weiches „Vorschau"-Ziehen**:
+  die Seite kommt beim Ziehen schon ein Stück und **flippt zurück**, wenn man nicht weiterzieht;
+  auch per **Wischen** am Handy.
+- **Temperaturabsenkung**: jede Gruppe als ein-/ausklappbare Karte (Gruppenname als Titel,
+  „Gruppe entfernen" in der Titelzeile).
 - **Grundeinstellungen** sind jetzt in **ein-/ausklappbare Karten** gegliedert (Allgemein,
   PV-Überschuss & Speicher, Tarife, Status) — wie die Strategien; beim Öffnen zugeklappt.
 - **Komponenten**: jede Kategorie (Netz, Verbraucher, Fahrzeuge, …) ist eine **klappbare Karte**,

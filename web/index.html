@@ -200,6 +200,7 @@
     .foldcard>.foldbody{padding:12px 16px 14px;border-top:1px solid var(--line2)}
     .foldcard>.foldbody>.setrow:first-child,.foldcard>.foldbody>.subhead:first-child{margin-top:0}
     .subcard{border:1px solid var(--line);border-radius:var(--r);background:var(--card);box-shadow:var(--shadow);padding:12px 14px;margin-bottom:12px}
+    #rules-list .foldcard>summary,#thermo .foldcard>summary{color:var(--ink)}   /* named-item cards: black title */
     /* overscroll page navigation: gentle slide-in with a slight snap overshoot */
     @keyframes viewIn{from{opacity:0;transform:translateY(18px)}60%{opacity:1;transform:translateY(-4px)}to{transform:translateY(0)}}
     .view-anim{animation:viewIn .5s cubic-bezier(.2,.7,.2,1)}
@@ -2533,6 +2534,8 @@
       } catch(e) { thFlash("Fehler beim Speichern"); }
       if (rerender) renderThermo();
     }
+    const sbGroupOpen = new Set();   // thermostat group ids currently expanded
+    function onSbGroupToggle(id, open) { if (open) sbGroupOpen.add(id); else sbGroupOpen.delete(id); }
     function renderThermo() {
       const el = document.getElementById("thermo");
       let h = `<p class="sub" style="margin:0 0 8px">Hauptschalter „Temperaturabsenkung aktiv" auf der Seite <b>Strategien</b>.</p>
@@ -2542,12 +2545,14 @@
       (sbData.groups||[]).forEach((g,gi) => {
         const pres = sbPresence[g.id];
         const presTxt = pres===true?"anwesend":pres===false?"abwesend":"unbekannt";
-        h += `<div style="border:1px solid var(--border);background:#fff;padding:8px 10px;margin:8px 0">
-          <div class="setrow"><label>Gruppe</label>
-            <input type="text" value="${(g.name||'').replace(/"/g,'&quot;')}" style="width:180px"
-                   onchange="sbData.groups[${gi}].name=this.value;saveSb(false)">
-            <span class="sub">· Status: ${presTxt}</span>
-            <button class="btn" style="margin-left:auto" title="Diese Gruppe löschen" onclick="sbData.groups.splice(${gi},1);saveSb(true)">Gruppe entfernen</button></div>
+        h += `<details class="foldcard"${sbGroupOpen.has(g.id)?' open':''} ontoggle="onSbGroupToggle('${g.id}',this.open)">
+          <summary><span id="sbg-title-${gi}">${(g.name||'').trim()?escT(g.name):'(unbenannte Gruppe)'}</span>
+            <span class="sub" style="margin-left:8px">· ${presTxt}</span>
+            <button class="btn" style="margin-left:auto" title="Diese Gruppe löschen" onclick="event.stopPropagation();sbData.groups.splice(${gi},1);saveSb(true)">Gruppe entfernen</button></summary>
+          <div class="foldbody">
+          <div class="setrow" style="margin:0"><label>Gruppe</label>
+            <input type="text" value="${(g.name||'').replace(/"/g,'&quot;')}" style="width:200px"
+                   oninput="sbData.groups[${gi}].name=this.value;var t=document.getElementById('sbg-title-${gi}');if(t)t.textContent=this.value.trim()||'(unbenannte Gruppe)'" onchange="saveSb(false)"></div>
           <div class="setrow"><label>Personen (alle abwesend → absenken)</label>
             <div style="flex:1">${(g.persons||[]).map((p,pi) =>
               `<span class="swchip" style="display:inline-flex;align-items:center;gap:4px;border:1px solid var(--alt);padding:2px 5px;margin:2px 4px 2px 0">
@@ -2572,12 +2577,12 @@
             <span class="sub">${k}</span>
             <button class="btn" style="margin-left:auto" title="Thermostat entfernen" onclick="sbData.groups[${gi}].thermostats.splice(${ti},1);saveSb(true)">−</button></div>`;
         });
-        h += `<button class="btn" title="Raum-Thermostat zu dieser Gruppe hinzufügen" onclick="addTh(${gi})">+ Thermostat</button></div>`;
+        h += `<button class="btn" title="Raum-Thermostat zu dieser Gruppe hinzufügen" onclick="addTh(${gi})">+ Thermostat</button></div></details>`;
       });
       h += `<button class="btn" title="Neue Gruppe (Personen + ihre Räume)" onclick="addGroup()">+ Gruppe hinzufügen</button>`;
       el.innerHTML = h;
     }
-    function addGroup() { sbData.groups.push({id:thGid(), name:"Gruppe "+(sbData.groups.length+1), persons:[], comfort_time:"", thermostats:[]}); saveSb(true); }
+    function addGroup() { const id=thGid(); sbGroupOpen.add(id); sbData.groups.push({id, name:"Gruppe "+(sbData.groups.length+1), persons:[], comfort_time:"", thermostats:[]}); saveSb(true); }
     function addTh(gi) { sbData.groups[gi].thermostats.push({id:"t"+Math.random().toString(36).slice(2,7), name:"Raum", climate:"", comfort_c:21, eco_c:17, reheat_k:0}); saveSb(true); }
     function pickPerson(gi) {
       openPickerCb("presence", "", "", eid => { if (eid){ sbData.groups[gi].persons.push(eid); } saveSb(true); });
@@ -2600,13 +2605,24 @@
 
     // ---- overscroll page navigation (scroll past the end -> next page) ----
     const VIEW_ORDER = ["dashboard","history","consumers","savings","devices","basic","setup","thermostats"];
-    let navBusy = false, overscroll = 0;
+    const OVER_THRESH = 520;    // wheel distance past the edge before flipping
+    const TOUCH_THRESH = 150;   // finger travel past the edge before flipping
+    const MAX_PEEK = 96;        // how far the page rubber-bands during the pull
+    const navContent = document.querySelector(".content");
+    let navBusy = false, overscroll = 0, peek = 0, snapTimer = null;
+    function setPeek(px, animate) {
+      peek = px;
+      if (!navContent) return;
+      navContent.style.transition = animate ? "transform .28s cubic-bezier(.2,.8,.2,1)" : "none";
+      navContent.style.transform = px ? "translateY(" + px + "px)" : "";
+    }
+    function snapBack() { overscroll = 0; if (peek) setPeek(0, true); }
     function navBy(dir) {
+      clearTimeout(snapTimer); overscroll = 0; setPeek(0, false);
       const active = document.querySelector(".sidebar a.active");
       const curName = active ? active.dataset.view : "dashboard";
       const i = VIEW_ORDER.indexOf(curName);
       const cur = i < 0 ? 0 : i, nx = cur + dir;
-      overscroll = 0;
       if (nx < 0 || nx >= VIEW_ORDER.length) return;   // already at first/last
       navBusy = true;
       showView(VIEW_ORDER[nx]);                        // sets the menu + scrolls to top
@@ -2614,44 +2630,42 @@
       if (sec) { sec.classList.remove("view-anim"); void sec.offsetWidth; sec.classList.add("view-anim"); }
       setTimeout(() => { navBusy = false; }, 620);
     }
-    const OVER_THRESH = 240;   // wheel distance past the edge before flipping
-    window.addEventListener("wheel", (e) => {
-      if (navBusy) return;
-      const pk = document.getElementById("picker");
-      if (pk && pk.style.display === "flex") return;                 // picker open
-      const sh = document.getElementById("strathelp");
-      if (sh && sh.style.display === "flex") return;                 // help popup open
-      const t = e.target;
-      if (t && t.closest && t.closest("textarea,select,.sidebar")) return;  // scrolling a control
-      const bottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
-      const top = window.scrollY <= 0;
-      if (e.deltaY > 0 && bottom) { overscroll = Math.max(0, overscroll) + e.deltaY; if (overscroll > OVER_THRESH) navBy(1); }
-      else if (e.deltaY < 0 && top) { overscroll = Math.min(0, overscroll) + e.deltaY; if (overscroll < -OVER_THRESH) navBy(-1); }
-      else overscroll = 0;
-    }, { passive: true });
-
-    // touch equivalent: keep dragging past the edge -> next/previous page
-    const TOUCH_THRESH = 90;   // extra finger travel past the edge (px)
-    let touchLastY = null, touchOver = 0;
-    function touchBlocked(t){
+    function navBlocked(t) {
       const pk = document.getElementById("picker"), sh = document.getElementById("strathelp");
       if (pk && pk.style.display === "flex") return true;
       if (sh && sh.style.display === "flex") return true;
       return !!(t && t.closest && t.closest("textarea,select,.sidebar"));
     }
-    window.addEventListener("touchstart", (e) => {
-      touchLastY = e.touches[0].clientY; touchOver = 0;
+    window.addEventListener("wheel", (e) => {
+      if (navBusy || navBlocked(e.target)) return;
+      const bottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      const top = window.scrollY <= 0;
+      if (e.deltaY > 0 && bottom) {
+        overscroll = Math.max(0, overscroll) + e.deltaY;
+        if (overscroll > OVER_THRESH) { navBy(1); return; }
+        setPeek(-Math.min(overscroll / OVER_THRESH, 1) * MAX_PEEK, false);
+        clearTimeout(snapTimer); snapTimer = setTimeout(snapBack, 170);
+      } else if (e.deltaY < 0 && top) {
+        overscroll = Math.min(0, overscroll) + e.deltaY;
+        if (overscroll < -OVER_THRESH) { navBy(-1); return; }
+        setPeek(Math.min(-overscroll / OVER_THRESH, 1) * MAX_PEEK, false);
+        clearTimeout(snapTimer); snapTimer = setTimeout(snapBack, 170);
+      } else { overscroll = 0; if (peek) snapBack(); }
     }, { passive: true });
+
+    // touch equivalent: keep dragging past the edge -> next/previous page
+    let touchLastY = null, touchOver = 0;
+    window.addEventListener("touchstart", (e) => { touchLastY = e.touches[0].clientY; touchOver = 0; }, { passive: true });
     window.addEventListener("touchmove", (e) => {
-      if (navBusy || touchLastY == null || touchBlocked(e.target)) return;
+      if (navBusy || touchLastY == null || navBlocked(e.target)) return;
       const y = e.touches[0].clientY, dy = y - touchLastY; touchLastY = y;
       const bottom = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
       const top = window.scrollY <= 0;
-      if (bottom && dy < 0) { touchOver += -dy; if (touchOver > TOUCH_THRESH) navBy(1); }
-      else if (top && dy > 0) { touchOver += dy; if (touchOver > TOUCH_THRESH) navBy(-1); }
-      else touchOver = 0;
+      if (bottom && dy < 0) { touchOver += -dy; if (touchOver > TOUCH_THRESH) { navBy(1); return; } setPeek(-Math.min(touchOver / TOUCH_THRESH, 1) * MAX_PEEK, false); }
+      else if (top && dy > 0) { touchOver += dy; if (touchOver > TOUCH_THRESH) { navBy(-1); return; } setPeek(Math.min(touchOver / TOUCH_THRESH, 1) * MAX_PEEK, false); }
+      else { touchOver = 0; if (peek) setPeek(0, true); }
     }, { passive: true });
-    window.addEventListener("touchend", () => { touchLastY = null; touchOver = 0; }, { passive: true });
+    window.addEventListener("touchend", () => { touchLastY = null; touchOver = 0; if (peek) setPeek(0, true); }, { passive: true });
 
     (async () => { refresh(); setInterval(refresh, 5000); })();
   </script>
