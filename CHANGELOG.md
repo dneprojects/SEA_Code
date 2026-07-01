@@ -2,6 +2,11 @@
 
 ## 0.8.1
 
+- **Fix: Heizstab bleibt nach kurzer Haus-Spitze nicht mehr zu lange aus.** Das harte Absenken
+  bei kurzem Netzbezug hatte den geglätteten Überschuss-Zustand verbogen → die Last kroch danach
+  nur langsam zurück (schaltete scheinbar grundlos aus). Jetzt wird nur kurz abgeregelt, und sobald
+  der Überschuss zurück ist, rampt die Last sofort wieder hoch.
+
 - **Geräte-Seite** zeigt jetzt auch die **regelungsrelevanten Entitäten aus der Strategie**
   (Stopp-/Limit-Sensor wie die ELWA-Temperatur, „angesteckt", SG-Ready-Relais) — nicht nur
   Leistung/Energie.

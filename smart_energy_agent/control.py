@@ -907,10 +907,12 @@ class ControlEngine:
         confirmed_deficit = self._import_streak >= const.MOD_SHED_DEBOUNCE
         smoothed = self._smooth_surplus(now, raw_surplus)
         if confirmed_deficit and raw_surplus < smoothed:
-            # a real, sustained import -> don't ride the (lagging) smoothing up;
-            # regulate modulating loads on the actual deficit so they shed now
+            # a real, confirmed import -> regulate modulating loads on the actual
+            # deficit so they shed now (don't ride the lagging smoothing up).
+            # NOTE: only the *output* is overridden, not the EWMA state — so once
+            # the surplus returns (e.g. a short house spike ends) the load ramps
+            # straight back up instead of crawling out of a snapped-down value.
             smoothed = raw_surplus
-            self._surplus_ewma = raw_surplus
         # Staleness gate: if a critical balance sensor (grid/battery) is older than
         # STALE_FACTOR × its update interval, the snapshot is unreliable → freeze
         # modulating setpoints instead of acting on out-of-date data.

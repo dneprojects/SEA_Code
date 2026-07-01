@@ -921,3 +921,23 @@ def test_charge_rated_w_uses_min_of_wallbox_and_vehicle():
     # no vehicle max -> wallbox max
     s._settings["vehicles"] = [{"id": "v1", "charger_key": "ev_charger:c1"}]
     assert eng._charge_rated_w(dev) == 11000.0
+
+
+def test_build_image_recovers_fast_after_short_deficit():
+    # after a short confirmed deficit, when surplus returns the modulation must
+    # ramp straight back up (not crawl out of a snapped-down value).
+    s = Store()
+    s._settings["control_enabled"] = True
+    s._settings["modulation_smoothing_s"] = 120.0
+    s._config = {"grid": {"power": "sensor.g"},
+                 "battery": [{"id": "b1", "name": "Bat", "power": "sensor.b"}]}
+    eng = ControlEngine(s, None)  # type: ignore[arg-type]
+
+    def bal(g):
+        s._live_by_id = {"sensor.g": {"state": str(g)}, "sensor.b": {"state": "0"}}
+    bal(-4000); eng.build_image(0.0)
+    bal(5000); eng.build_image(10.0)
+    bal(5000); img3 = eng.build_image(20.0)
+    assert img3.surplus_smoothed < 0
+    bal(-4000); img4 = eng.build_image(30.0)
+    assert img4.surplus_smoothed > 0
