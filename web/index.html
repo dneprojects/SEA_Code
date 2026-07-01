@@ -141,6 +141,9 @@
       --r:12px; --r-sm:8px;
       --ui:"Lucida Sans",Arial,Verdana,Helvetica,sans-serif;
     }
+    /* always reserve the vertical scrollbar so short pages don't shift the
+       centered layout horizontally (no left/right jump between views) */
+    html{overflow-y:scroll}
     body{font-family:var(--ui);font-size:14px;line-height:1.45;color:var(--ink);
       background:var(--pg);overflow-x:auto;margin:0;}
     a{color:var(--brand)}
