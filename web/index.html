@@ -199,6 +199,7 @@
     .foldcard[open]>summary::before{transform:rotate(90deg)}
     .foldcard>.foldbody{padding:12px 16px 14px;border-top:1px solid var(--line2)}
     .foldcard>.foldbody>.setrow:first-child,.foldcard>.foldbody>.subhead:first-child{margin-top:0}
+    .subcard{border:1px solid var(--line);border-radius:var(--r);background:var(--card);box-shadow:var(--shadow);padding:12px 14px;margin-bottom:12px}
     /* subcategory heading (black, bold, between category and body) — e.g. Leistung, Energie */
     .subhead{font-family:var(--ui);font-size:13px;font-weight:700;color:var(--ink);margin:14px 0 6px}
     .page-h{display:flex;align-items:center;gap:10px;margin:0 0 6px}
@@ -600,11 +601,15 @@
         <div class="panel-title">Geräte-Strategien</div>
         <p class="sub" style="margin:8px 0 6px">Verfügbare Strategien werden automatisch aus den konfigurierten Entitäten ermittelt. Box aufklappen für die Einstellungen.</p>
         <div id="strategies"></div>
-        <div class="panel-title">Regeln (erweitert)</div>
-        <p class="sub" style="margin:8px 0 6px">Eigene Regeln als JSON-logic (<code>when → then</code>). Variablen: <code>grid_w, surplus, hour, price_ct</code> oder eine Entitäts-ID. Beispiel: <code>[{"id":"boiler","when":{"&gt;":[{"var":"surplus"},1500]},"then":[{"switch":{"entity":"switch.boiler","on":true}}]}]</code></p>
-        <textarea id="rules-json" spellcheck="false" style="width:100%;min-height:120px;font-family:ui-monospace,Consolas,monospace;font-size:12px;box-sizing:border-box"></textarea>
-        <div class="setrow"><button class="btn" onclick="saveRules()">Regeln speichern</button>
-          <span class="sub" id="rules-msg"></span></div>
+        <details class="foldcard"><summary>Regeln (erweitert) <span class="count" id="rules-count">0</span></summary>
+          <div class="foldbody">
+            <p class="sub" style="margin:0 0 8px">Eigene Regeln als JSON-logic (<code>when → then</code>). Variablen: <code>grid_w, surplus, hour, price_ct</code> oder eine Entitäts-ID. Beispiel <code>when</code>: <code>{"&gt;":[{"var":"surplus"},1500]}</code>, <code>then</code>: <code>[{"switch":{"entity":"switch.boiler","on":true}}]</code>.</p>
+            <div id="rules-list"></div>
+            <div class="setrow"><button class="btn" onclick="addRule()">+ Regel</button>
+              <button class="btn" onclick="saveRules()">Regeln speichern</button>
+              <span class="sub" id="rules-msg"></span></div>
+          </div>
+        </details>
       </section>
 
       <!-- Grundeinstellungen (inkl. Tarife) -->
@@ -1964,8 +1969,8 @@
         const s = await fetch(api("/api/settings")).then(r=>r.json());
         appSettings = s;
         ctrlEnabled = !!s.control_enabled;
-        const rj = document.getElementById("rules-json");
-        if (rj && document.activeElement !== rj) rj.value = JSON.stringify(s.rules || [], null, 2);
+        rulesData = (s.rules || []).map(r => ({...r}));
+        renderRules();
         fillStrategy(s);
       } catch(e) {}
       try { stratList = (await fetch(api("/api/strategies")).then(r=>r.json())).strategies || []; } catch(e) {}
@@ -2308,17 +2313,52 @@
       } catch(e) {}
       loadConsumers();  // refresh status badge (verfügbar <-> aktiv)
     }
+    let rulesData = [];
+    function escT(s){ return String(s==null?"":s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function renderRules() {
+      const el = document.getElementById("rules-list"); if (!el) return;
+      const cnt = document.getElementById("rules-count"); if (cnt) cnt.textContent = rulesData.length;
+      if (!rulesData.length) { el.innerHTML = "<p class='sub'>Noch keine Regeln. Mit „+ Regel“ anlegen.</p>"; return; }
+      el.innerHTML = rulesData.map((r,i) => {
+        const on = r.enabled !== false;
+        const body = r._json != null ? r._json
+          : JSON.stringify({when: r.when!=null?r.when:true, then: r.then||[]}, null, 2);
+        return `<div class="subcard">
+          <div class="setrow" style="margin:0;gap:10px">
+            <input type="text" placeholder="Name" value="${esc(r.name||r.id||'')}" onchange="setRuleField(${i},'name',this.value)" style="width:200px">
+            <label class="opt" style="margin-left:auto" title="Regel aktiv"><input type="checkbox" ${on?'checked':''} onchange="setRuleField(${i},'enabled',this.checked)"> <span class="sub">aktiv</span></label>
+            <button class="btn" title="Regel entfernen" onclick="removeRule(${i})">Entfernen</button>
+          </div>
+          <textarea spellcheck="false" oninput="setRuleField(${i},'_json',this.value)" style="width:100%;min-height:96px;font-family:ui-monospace,Consolas,monospace;font-size:12px;box-sizing:border-box;margin-top:8px">${escT(body)}</textarea>
+        </div>`;
+      }).join("");
+    }
+    function setRuleField(i, field, val) { if (rulesData[i]) rulesData[i][field] = val; }
+    function addRule() {
+      rulesData.push({id:"rule"+(rulesData.length+1), name:"", enabled:true,
+        when:{">":[{var:"surplus"},1500]}, then:[]});
+      renderRules();
+    }
+    function removeRule(i) { rulesData.splice(i,1); renderRules(); }
     async function saveRules() {
       const msg = document.getElementById("rules-msg");
-      let rules;
-      try { rules = JSON.parse(document.getElementById("rules-json").value || "[]"); }
-      catch(e) { msg.textContent = "Ungültiges JSON: " + e.message; return; }
-      if (!Array.isArray(rules)) { msg.textContent = "Muss eine Liste sein (…[…])"; return; }
+      const out = [];
+      for (let i=0;i<rulesData.length;i++) {
+        const r = rulesData[i]; let wt;
+        if (r._json != null) { try { wt = JSON.parse(r._json); } catch(e) { msg.textContent = "Regel "+(i+1)+": JSON-Fehler"; return; } }
+        else wt = {when: r.when!=null?r.when:true, then: r.then||[]};
+        if (typeof wt !== "object" || wt === null) { msg.textContent = "Regel "+(i+1)+": muss ein Objekt {when,then} sein"; return; }
+        const rule = {id: r.id || ("rule"+(i+1)), name: r.name||"", enabled: r.enabled!==false,
+          when: wt.when!=null?wt.when:true, then: wt.then||[]};
+        if (r.priority!=null) rule.priority = r.priority;
+        out.push(rule);
+      }
       try {
         await fetch(api("/api/settings"), { method:"POST",
-          headers:{"Content-Type":"application/json"}, body:JSON.stringify({rules}) });
-        msg.textContent = rules.length + " Regel(n) gespeichert"; setTimeout(()=>msg.textContent="", 2500);
-        loadConsumers();
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({rules: out}) });
+        rulesData = out.map(r => ({...r}));   // clear transient _json, keep parsed
+        renderRules();
+        msg.textContent = out.length + " Regel(n) gespeichert"; setTimeout(()=>msg.textContent="", 2500);
       } catch(e) { msg.textContent = "Fehler beim Speichern"; }
     }
     async function toggleOptimizer(on) {

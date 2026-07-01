@@ -10,6 +10,8 @@
   angezeigte Leistung ist die **Live-Ist-Leistung** (synchron mit dem Energiefluss; Sollwert als Nebeninfo).
 - **Geräte**-Seite listet jetzt auch die **Fahrzeuge** (mit ihren Entitäten).
 - **Verlauf**: größerer Hauptchart, ruhigere Legende.
+- **Regeln (Strategien)**: eigene Klappkarte; jede Regel als Unterkarte mit **Name**,
+  **Aktiv-Schalter**, **Entfernen** und JSON-Feld — statt eines einzigen JSON-Blocks.
 - **Grundeinstellungen** sind jetzt in **ein-/ausklappbare Karten** gegliedert (Allgemein,
   PV-Überschuss & Speicher, Tarife, Status) — wie die Strategien; beim Öffnen zugeklappt.
 - **Komponenten**: jede Kategorie (Netz, Verbraucher, Fahrzeuge, …) ist eine **klappbare Karte**,
