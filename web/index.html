@@ -408,6 +408,20 @@
       #view-setup .fname{width:100%}
       #view-setup input,#view-setup select{height:30px}
       #view-setup .btn{min-height:28px;font-size:12px;padding:0 9px}
+      /* Verlauf: Zeitraum-Steuerung stapeln statt überlaufen */
+      .hist-ctl{display:flex;width:100%;margin-top:12px}
+      .hist-row{flex-wrap:wrap;gap:6px}
+      .hist-row .seg{width:auto}                       /* override global .seg width:100% */
+      .hist-row #range-seg{flex:1 1 100%}              /* Heute…Jahr: eigene volle Zeile */
+      .hist-row .seg:not(#range-seg){flex:1}           /* „bis jetzt" + Pfeile teilen sich eine Zeile */
+      .hist-row input[type=datetime-local]{flex:1 1 100%;min-width:0}
+      .hist-row #hist-apply{flex:1 1 100%}
+      /* Einsparung: Label über Steuerung, alles volle Breite */
+      .sav-top{grid-template-columns:1fr;gap:2px 0}
+      .sav-top .lbl{margin-top:8px}
+      .sav-top .lbl[style]{align-self:auto!important;padding-top:0!important}
+      .sav-prem-grid{grid-template-columns:1fr;gap:2px 0}
+      .sav-prem-grid .lbl{margin-top:6px}
     }
     @media (min-width:761px){ .menu-btn{display:none} }
   </style>
