@@ -66,6 +66,13 @@ CONTROL_ON_MARGIN_W = 50  # surplus must exceed this to consider switching on
 CONTROL_OFF_MARGIN_W = 50 # import (negative surplus) beyond this triggers switch off
 # Signal synchronisation: per-sensor update samples kept for rate/age + averaging.
 SAMPLES_MAXLEN = 40
+# Hard cap on the time-alignment window (s). The window normally = the slowest
+# balance sensor's update interval, but a near-static sensor (e.g. PV ~0 W or an
+# idle battery in the evening) can push its "interval" to minutes — which would
+# average the grid over minutes and mix stale (daytime export) with fresh (evening
+# import) samples, leaving a wrong, "stuck" surplus. Capping keeps the balance and
+# the control feedback responsive.
+MAX_ALIGN_WINDOW_S = 30.0
 # A balance sensor counts as "stale" when its value is older than this factor
 # times its measured update interval (staleness gate holds modulating loads).
 STALE_FACTOR = 3.0

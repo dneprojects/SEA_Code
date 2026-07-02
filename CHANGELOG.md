@@ -2,6 +2,13 @@
 
 ## 0.8.1
 
+- **Fix: „hängende" Bilanz/Überschuss abends behoben.** Das Zeit-Angleichungs-Fenster war nicht
+  begrenzt — ein fast statischer Bilanzsensor (PV ~0 W oder ruhende Batterie am Abend) blähte es auf
+  Minuten auf, sodass das Netzsignal über Minuten gemittelt wurde und **veraltete Tag-Werte
+  (Einspeisung) mit aktuellen Abend-Werten (Bezug) vermischt** wurden. Ergebnis: ein falscher,
+  „festhängender" Überschuss, der die ELWA fälschlich weiter hochhielt. Das Fenster ist jetzt auf
+  **30 s gedeckelt** → Dashboard und Regelung reagieren wieder zeitnah.
+
 - **Fix: Geräte-Leistungen werden nicht mehr geglättet angezeigt.** Die Zeitangleichung
   (signal_sync) hat bisher **auch die einzelnen Geräte-Leistungen** über ihr Fenster gemittelt —
   dadurch zeigte z. B. der Heizstab noch ~1,8 kW, obwohl er längst 0 zog (Fenster-Mittelwert), und

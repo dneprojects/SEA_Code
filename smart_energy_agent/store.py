@@ -1749,13 +1749,16 @@ class Store:
         return False
 
     def _align_window(self) -> float:
-        """Alignment window = the slowest balance sensor's update interval."""
+        """Alignment window = the slowest balance sensor's update interval, but
+        capped at ``MAX_ALIGN_WINDOW_S``. Without the cap a near-static sensor
+        (evening PV ~0 W, idle battery) reports a minutes-long "interval", which
+        would average the grid over minutes and leave a stale, stuck surplus."""
         win = 0.0
         for eid in self._balance_power_ids():
             interval, _ = self.signal_rate(eid)
             if interval:
                 win = max(win, interval)
-        return win
+        return min(win, const.MAX_ALIGN_WINDOW_S)
 
     def _aligned_value(self, entity_id: str, window: float) -> Optional[float]:
         """Time-averaged value over the window; slow sensors (no in-window sample

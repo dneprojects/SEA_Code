@@ -143,3 +143,17 @@ def test_aligned_live_does_not_average_device_loads():
     assert float(al["sensor.elwa"]["state"]) == 0.0        # load raw, not the ~910 average
     assert float(al["sensor.bp"]["state"]) == 1000.0       # balance input still averaged
     assert "sensor.elwa" not in s._balance_power_ids()     # loads excluded from alignment
+
+
+def test_align_window_capped_prevents_stale_surplus():
+    # A near-static balance sensor (evening PV) must not inflate the alignment
+    # window to minutes and leave the grid averaged over stale (daytime) samples.
+    s = Store()
+    s._config = {"grid": {"power": "sensor.g"},
+                 "pv": [{"id": "p", "powers": [{"entity": "sensor.pv"}]}]}
+    now = time.monotonic()
+    s._samples["sensor.pv"] = _dq([(now - 400, 40.0), (now - 200, 41.0), (now - 5, 42.0)])
+    s._samples["sensor.g"] = _dq([(now - 120, -3000.0), (now - 4, 4000.0), (now - 1, 4000.0)])
+    assert s._align_window() <= 30.0                       # capped, not ~200 s
+    # -> only the recent (import) grid samples count; the stale export is excluded
+    assert s._aligned_value("sensor.g", s._align_window()) == 4000.0
