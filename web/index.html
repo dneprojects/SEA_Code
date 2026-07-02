@@ -2175,10 +2175,20 @@
           <div class="panel-title" style="margin:8px 0 6px">Verschiebbare Geräte</div>
           ${deviceRows('tariff_shift')}${statusLine}`;
       }
-      if (["peak_shaving","feed_in_limit","emergency_reserve","battery_care"].includes(st.key)) {
-        return `<div class="sub" style="margin:4px 0">${st.desc||''}</div>${miss}
-          <button class="btn" onclick="showView('basic')">In Grundeinstellungen einstellen →</button>`;
-      }
+      if (st.key === "peak_shaving")
+        return `<div class="sub" style="margin:0 0 6px">${st.desc||''}</div>${miss}
+          ${stratNum("Netzbezug-Limit", "peak_limit_w", "W", "0 = aus")}
+          <div class="sub">Zeitabhängige Limits (Zeitfenster) unter <a href="#" onclick="event.preventDefault();showView('basic')">Grundeinstellungen</a>.</div>`;
+      if (st.key === "feed_in_limit")
+        return `<div class="sub" style="margin:0 0 6px">${st.desc||''}</div>${miss}
+          ${stratNum("Einspeise-Limit", "feed_in_limit_w", "W", "0 = aus")}
+          ${stratNum("PV-Abregeln bis (max.)", "pv_limit_max_w", "W", "optional, falls Zwangsladen nicht reicht")}`;
+      if (st.key === "emergency_reserve")
+        return `<div class="sub" style="margin:0 0 6px">${st.desc||''}</div>${miss}
+          ${stratNum("Reserve-SoC", "emergency_reserve_soc", "%", "0 = aus")}`;
+      if (st.key === "battery_care")
+        return `<div class="sub" style="margin:0 0 6px">${st.desc||''}</div>${miss}
+          ${stratNum("Vollladung alle", "soh_cycle_days", "Tage", "0 = aus")}`;
       if (st.key === "optimizer") {
         return `<div class="sub" style="margin:0 0 4px">${st.desc||''}</div>${miss}`;
       }
@@ -2410,23 +2420,43 @@
     }
     // Enable/disable checkbox in the title row (boolean strategies only; the
     // threshold services peak/feed-in/reserve/care are configured via Grundeinstellungen).
+    // Boolean strategies driven by a single setting; the threshold services use a
+    // separate per-strategy enable flag (strategy_enabled) that leaves their values.
     const STRAT_ENABLE = { self_consumption:"control_enabled", tariff_shift:"tariff_enabled",
                            optimizer:"optimizer_enabled" };
+    const STRAT_SERVICES = ["peak_shaving","feed_in_limit","emergency_reserve","battery_care"];
     function stratActiveToggle(st) {
-      let on = !!st.active;
-      if (st.key === "self_consumption") on = !!ctrlEnabled;
-      else if (st.key === "tariff_shift") on = !!appSettings.tariff_enabled;
-      else if (st.key === "optimizer") on = !!appSettings.optimizer_enabled;
-      const box = ch => `<label title="Strategie aktiv" style="display:inline-flex" onclick="event.stopPropagation()">
-          <input type="checkbox" ${on?'checked':''} onchange="event.stopPropagation();${ch}"></label>`;
+      const box = ch => `<label title="Strategie aktiv (zusätzliches Enable — ändert die Einstellwerte nicht)"
+          style="display:inline-flex" onclick="event.stopPropagation()">
+          <input type="checkbox" ${st.enabled?'checked':''} onchange="event.stopPropagation();${ch}"></label>`;
       if (st.key === "setback") return box("toggleSetbackStrategy(this.checked)");
-      const sk = STRAT_ENABLE[st.key];
-      return sk ? box(`setStratActive('${sk}',this.checked)`) : '<span class="iconbtn" aria-hidden="true"></span>';
+      if (STRAT_ENABLE[st.key]) return box(`setStratActive('${STRAT_ENABLE[st.key]}',this.checked)`);
+      if (STRAT_SERVICES.includes(st.key)) return box(`setStratEnabled('${st.key}',this.checked)`);
+      return '<span class="iconbtn" aria-hidden="true"></span>';
     }
     async function setStratActive(settingKey, on) {
       try { await fetch(api("/api/settings"), { method:"POST",
         headers:{"Content-Type":"application/json"}, body:JSON.stringify({[settingKey]:on}) }); } catch(e) {}
       loadConsumers();   // refresh status label (verfügbar/aktiv/operativ)
+    }
+    async function setStratEnabled(key, on) {   // per-strategy enable (does not touch the values)
+      try { await fetch(api("/api/settings"), { method:"POST",
+        headers:{"Content-Type":"application/json"}, body:JSON.stringify({strategy_enabled:{[key]:on}}) }); } catch(e) {}
+      loadConsumers();
+    }
+    // A strategy-specific numeric setting, edited right in the strategy card.
+    function stratNum(label, key, unit, hint) {
+      const v = (appSettings[key] != null ? appSettings[key] : 0);
+      return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0">
+        <label style="min-width:180px">${label}</label>
+        <input type="number" min="0" style="width:96px" value="${v}" onchange="saveStratSetting('${key}',this.value)">
+        ${unit?`<span class="sub">${unit}</span>`:''}${hint?`<span class="sub">· ${hint}</span>`:''}</div>`;
+    }
+    async function saveStratSetting(key, val) {
+      appSettings[key] = val;
+      try { await fetch(api("/api/settings"), { method:"POST",
+        headers:{"Content-Type":"application/json"}, body:JSON.stringify({[key]:val}) }); } catch(e) {}
+      loadConsumers();   // refresh status (a value > 0 makes the strategy "konfiguriert")
     }
     function renderStrategies() {
       document.getElementById("strategies").innerHTML = stratList.map(st => `

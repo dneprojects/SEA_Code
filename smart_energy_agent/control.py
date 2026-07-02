@@ -1184,9 +1184,10 @@ class ControlEngine:
         ess, care = self._storage_inputs(expensive)
         self._persist_state(now)
         if ess:
-            image.extra["ess_batteries"] = ess
+            if self._store.strategy_enabled("emergency_reserve", True):
+                image.extra["ess_batteries"] = ess
             fi_limit = self._store.feed_in_limit_w()
-            if fi_limit > 0:                                # grid feed-in limit
+            if fi_limit > 0 and self._store.strategy_enabled("feed_in_limit", True):
                 image.extra["feed_in"] = {
                     "limit_w": fi_limit,
                     "pv_limit": self._store.pv_limit_entity(),
@@ -1194,11 +1195,11 @@ class ControlEngine:
                     "batteries": [
                         {"charge": e["charge"], "max_w": e["max_w"], "wpu": e["wpu"],
                          "soc": e["soc"], "soc_max": e["soc_max"]} for e in ess]}
-        if care:
+        if care and self._store.strategy_enabled("battery_care", True):
             image.extra["care"] = care
         # Peak shaving inputs — the effective cap may vary by time slot.
         peak_limit = active_peak_limit(now_min, self._store.peak_limit_w(), self._store.peak_slots())
-        if surplus_on and peak_limit > 0:
+        if surplus_on and peak_limit > 0 and self._store.strategy_enabled("peak_shaving", True):
             image.extra["peak"] = {"limit_w": peak_limit, "batteries": self._peak_batteries()}
         # EVCS (wallbox) gate inputs for participating chargers.
         if surplus_on:

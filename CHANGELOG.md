@@ -2,6 +2,14 @@
 
 ## 0.8.1
 
+- **Strategie-Einstellungen direkt in der Karte + separates Aktiv-Enable.** Die schwellenbasierten
+  Dienste (Peak-Shaving, Einspeise-Limit, Notstrom-Reserve, Batteriepflege) werden jetzt **in ihrer
+  eigenen Strategiekarte** eingestellt (Schwellwert-Feld statt „→ Grundeinstellungen"). Zusätzlich
+  hat **jede Strategie eine Aktiv-Checkbox**, die als **separates Enable** wirkt und die Einstellwerte
+  **nicht** verändert — so kann man z. B. das Peak-Limit gesetzt lassen und den Dienst trotzdem
+  vorübergehend abschalten. Bestehende Konfigurationen bleiben unverändert (Dienst mit gesetztem
+  Schwellwert ist automatisch aktiv).
+
 - **Geräte-Priorität eindeutig & per Pfeilen sortierbar.** Jedes steuerbare Gerät hat jetzt eine
   eindeutige Priorität; die Prio-Zahl entfällt, stattdessen **▲/▼-Pfeile** pro Zeile zum Verschieben.
   Neue Geräte kommen **unten** dazu. Überschrift jetzt **„Geräte (höchste Priorität oben)"** (schwarz).

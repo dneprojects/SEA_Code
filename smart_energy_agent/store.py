@@ -277,6 +277,13 @@ class Store:
                     "signal_sync"):
             if key in patch and patch[key] is not None:
                 self._settings[key] = bool(patch[key])
+        # Per-strategy enable flags (separate from the strategy's setting values):
+        # an extra on/off gate that does NOT touch e.g. the peak/feed-in threshold.
+        se = patch.get("strategy_enabled")
+        if isinstance(se, dict):
+            cur = self._settings.setdefault("strategy_enabled", {})
+            for k, v in se.items():
+                cur[str(k)] = bool(v)
         if "retention_days" in patch:
             rd = patch["retention_days"]
             try:
@@ -676,6 +683,13 @@ class Store:
             s["operativ"] = bool(s.get("active") and
                                  sources.intersection(self._STRAT_CONTROLLERS.get(s["key"], ())))
         return ov
+
+    def strategy_enabled(self, key: str, configured: bool = True) -> bool:
+        """The per-strategy enable flag (separate on/off, does not change the
+        strategy's setting values). If never set, defaults to ``configured`` so a
+        strategy that already had a threshold stays on (backward compatible)."""
+        se = self._settings.get("strategy_enabled") or {}
+        return bool(se[key]) if key in se else bool(configured)
 
     # --- controllable devices (from the wizard) participating in strategies --
     def controllable_devices(self) -> list[dict[str, Any]]:

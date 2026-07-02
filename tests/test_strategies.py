@@ -76,3 +76,18 @@ def test_self_consumption_available_with_wallbox_or_battery():
     ov = _ov(config, {"control_enabled": True, "tariff": {}}, [])
     assert ov["self_consumption"]["available"] is True
     assert ov["self_consumption"]["active"] is True
+
+
+def test_strategy_enable_flag_is_separate_from_the_value():
+    # The per-strategy enable is an extra gate that does NOT change the threshold.
+    ov = _ov({}, {"peak_limit_w": 5000}, [])
+    assert ov["peak_shaving"]["enabled"] is True      # migration: threshold set -> on
+    assert ov["peak_shaving"]["active"] is True
+    # explicit disable keeps the value but deactivates the strategy
+    ov = _ov({}, {"peak_limit_w": 5000, "strategy_enabled": {"peak_shaving": False}}, [])
+    assert ov["peak_shaving"]["enabled"] is False
+    assert ov["peak_shaving"]["active"] is False       # value untouched, just gated off
+    # enabled but not configured (no threshold) -> available, not yet active
+    ov = _ov({}, {"strategy_enabled": {"peak_shaving": True}}, [])
+    assert ov["peak_shaving"]["enabled"] is True
+    assert ov["peak_shaving"]["active"] is False
