@@ -124,3 +124,22 @@ def test_strategies_operativ_from_control_trace():
     ov = {x["key"]: x for x in s.strategies_overview()}
     assert ov["self_consumption"]["operativ"] is True
     assert ov["peak_shaving"]["operativ"] is False
+
+
+def test_aligned_live_does_not_average_device_loads():
+    # Only the balance inputs (grid/PV/battery) are time-aligned; individual load
+    # powers show their INSTANTANEOUS value, so a load that just switched off reads
+    # 0 instead of a lagging window-average.
+    s = Store()
+    s._config = {"grid": {"power": "sensor.g"}, "battery": [{"id": "b", "power": "sensor.bp"}],
+                 "water_heater": [{"id": "w", "powers": [{"entity": "sensor.elwa"}]}]}
+    now = time.monotonic()
+    s._samples["sensor.elwa"] = _dq([(now - 8, 1820.0), (now - 4, 1820.0), (now, 0.0)])  # just off
+    s._samples["sensor.g"] = _dq([(now - 10, -100.0), (now, -100.0)])
+    s._samples["sensor.bp"] = _dq([(now - 3, 0.0), (now, 2000.0)])
+    s._live_by_id = {"sensor.elwa": {"state": "0"}, "sensor.g": {"state": "-100"},
+                     "sensor.bp": {"state": "2000"}}
+    al = s._aligned_live()
+    assert float(al["sensor.elwa"]["state"]) == 0.0        # load raw, not the ~910 average
+    assert float(al["sensor.bp"]["state"]) == 1000.0       # balance input still averaged
+    assert "sensor.elwa" not in s._balance_power_ids()     # loads excluded from alignment

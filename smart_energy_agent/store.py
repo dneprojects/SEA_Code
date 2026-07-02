@@ -1699,24 +1699,27 @@ class Store:
         return bool(self._settings.get("signal_sync", True))
 
     def _balance_power_ids(self) -> list[str]:
-        """Entity ids of the power sensors that make up the energy balance."""
+        """Entity ids of the sensors that form the energy *balance itself* — grid,
+        battery and PV (the inputs to ``house = pv + grid − batt``). ONLY these are
+        time-aligned/averaged. Individual load powers (heat pump, ELWA, wallbox …)
+        are deliberately NOT included: they are shown at their instantaneous value,
+        so a load that just switched off reads 0 instead of a lagging window-average
+        — and one slow load sensor no longer inflates the alignment window."""
         c = self._config
         ids: list[str] = []
         g = c.get("grid") or {}
         for k in ("power", "import_power", "export_power"):
             if g.get(k):
                 ids.append(g[k])
-        b = c.get("battery") or []
-        for inst in (b if isinstance(b, list) else []):
+        for inst in (c.get("battery") or []):
             if isinstance(inst, dict) and inst.get("power"):
                 ids.append(inst["power"])
-        for kind in ("pv", "heat_pump", "water_heater", "ev_charger", "consumers"):
-            for inst in c.get(kind) or []:
-                if not isinstance(inst, dict):
-                    continue
-                for p in inst.get("powers") or []:
-                    if isinstance(p, dict) and p.get("entity"):
-                        ids.append(p["entity"])
+        for inst in (c.get("pv") or []):
+            if not isinstance(inst, dict):
+                continue
+            for p in inst.get("powers") or []:
+                if isinstance(p, dict) and p.get("entity"):
+                    ids.append(p["entity"])
         return ids
 
     def balance_key_ids(self) -> list[str]:

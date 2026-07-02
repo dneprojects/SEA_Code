@@ -2,6 +2,14 @@
 
 ## 0.8.1
 
+- **Fix: Geräte-Leistungen werden nicht mehr geglättet angezeigt.** Die Zeitangleichung
+  (signal_sync) hat bisher **auch die einzelnen Geräte-Leistungen** über ihr Fenster gemittelt —
+  dadurch zeigte z. B. der Heizstab noch ~1,8 kW, obwohl er längst 0 zog (Fenster-Mittelwert), und
+  ein langsamer Geräte-Sensor blähte das Fenster zusätzlich auf. Jetzt werden **nur die
+  Bilanz-Eingänge PV/Netz/Batterie** angeglichen; **Geräte-Leistungen zeigen ihren Momentanwert**
+  (eine gerade abgeschaltete Last steht sofort auf 0). Die Regelung nutzt weiterhin den geglätteten,
+  netzbasierten Überschuss.
+
 - **Strategie-Einstellungen direkt in der Karte + separates Aktiv-Enable.** Die schwellenbasierten
   Dienste (Peak-Shaving, Einspeise-Limit, Notstrom-Reserve, Batteriepflege) werden jetzt **in ihrer
   eigenen Strategiekarte** eingestellt (Schwellwert-Feld statt „→ Grundeinstellungen"). Zusätzlich
