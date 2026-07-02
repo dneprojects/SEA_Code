@@ -653,14 +653,28 @@ class Store:
             return False
         return None
 
+    # strategy key -> the controller name(s) that realise it in the control chain.
+    _STRAT_CONTROLLERS = {
+        "self_consumption": ("pv_surplus_switch", "pv_surplus_modulation"),
+        "tariff_shift": ("tariff_shift",), "optimizer": ("optimizer",),
+        "peak_shaving": ("peak_shaving",), "feed_in_limit": ("feed_in_limit",),
+        "emergency_reserve": ("ess_reserve",), "battery_care": ("battery_care",),
+    }
+
     def strategies_overview(self) -> list[dict[str, Any]]:
-        """Which energy-saving strategies are possible from the current config."""
+        """Which energy-saving strategies are possible from the current config.
+
+        Adds ``operativ``: True when the strategy is active AND actually took
+        influence in the last control cycle (its controller emitted a command)."""
         ov = strategies.overview(self._config, self._settings, self.groups())
         info = self.tariff_cheap_now()
+        sources = {it.get("source") for it in (self.control_trace().get("items") or [])}
         for s in ov:
             if s["key"] == "tariff_shift":
                 s["cheap"] = bool(info.get("cheap"))
                 s["status"] = info.get("reason")
+            s["operativ"] = bool(s.get("active") and
+                                 sources.intersection(self._STRAT_CONTROLLERS.get(s["key"], ())))
         return ov
 
     # --- controllable devices (from the wizard) participating in strategies --
@@ -791,11 +805,58 @@ class Store:
         self._sat_state[key] = sat
         return sat
 
+    def _normalized_priorities(self, keys: list[str]) -> dict[str, int]:
+        """Unique, contiguous priorities for all controllable devices (highest
+        number = top of the list). Devices without a stored priority go to the
+        bottom in config order, so a newly added device lands last. Persisted, so
+        display and control use the same explicit order (no hidden tie-breaks)."""
+        loads = self._settings.setdefault("strategy_loads", {})
+
+        def sortkey(item: tuple[int, str]) -> tuple[int, float, int]:
+            idx, k = item
+            p = (loads.get(k) or {}).get("priority")
+            if isinstance(p, (int, float)) and not isinstance(p, bool):
+                return (0, -float(p), idx)   # stored priority -> top, highest first
+            return (1, 0.0, idx)             # unset -> bottom, config order
+
+        order = [k for _, k in sorted(enumerate(keys), key=sortkey)]
+        n = len(order)
+        newmap = {k: n - i for i, k in enumerate(order)}   # top -> n, bottom -> 1
+        changed = False
+        for k, p in newmap.items():
+            entry = loads.setdefault(k, {})
+            if entry.get("priority") != p:
+                entry["priority"] = p
+                changed = True
+        if changed:
+            self._save_settings()
+        return newmap
+
+    def move_strategy_priority(self, key: str, direction: str) -> bool:
+        """Move a device one step up/down in the priority order (swap with its
+        neighbour). ``up`` = higher priority (earlier / further up the list)."""
+        order = [d["key"] for d in self.strategy_devices()]   # top-first, normalised
+        if key not in order:
+            return False
+        i = order.index(key)
+        j = i - 1 if direction == "up" else i + 1
+        if j < 0 or j >= len(order):
+            return False
+        loads = self._settings.setdefault("strategy_loads", {})
+        a, b = loads.setdefault(order[i], {}), loads.setdefault(order[j], {})
+        a["priority"], b["priority"] = b.get("priority"), a.get("priority")
+        self._save_settings()
+        return True
+
     def strategy_devices(self) -> list[dict[str, Any]]:
-        """Controllable devices merged with their strategy participation config."""
+        """Controllable devices merged with their strategy participation config,
+        sorted by priority (highest first). Priorities are normalised to a unique,
+        contiguous order so the sequence is fully explicit."""
+        devs = self.controllable_devices()
+        prio = self._normalized_priorities([d["key"] for d in devs])
         sl = self.strategy_loads()
         out = []
-        for d in self.controllable_devices():
+        for d in devs:
             cfg = {"self_consumption": False, "tariff_shift": False, "priority": 5,
                    "pv_threshold_w": 0, "min_runtime_min": 0, "min_off_min": 0,
                    "max_starts_per_day": 0, "min_w": 0, "max_w": 0, "w_per_unit": 1,
@@ -804,11 +865,13 @@ class Store:
                    "grid_soc_min": 0, "grid_soc_max": 100, "interruptible": True}
             cfg.update(d.get("_cfg", {}))          # device-provided cfg (e.g. a vehicle)
             cfg.update(sl.get(d["key"], {}))
+            cfg["priority"] = prio.get(d["key"], 5)   # normalised (prio covers all keys)
             # The battery's stop signal is always its SoC — fill it in automatically
             # so the UI only asks for the threshold (active once limit_max > 0).
             if d.get("kind") == "battery" and not cfg.get("limit_entity") and d.get("soc"):
                 cfg["limit_entity"] = d["soc"]
             out.append({**d, "cfg": cfg, "satisfied": self._device_satisfied(d["key"], cfg)})
+        out.sort(key=lambda x: -x["cfg"]["priority"])
         return out
 
     def history_entities(self) -> list[dict[str, Any]]:

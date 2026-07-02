@@ -88,3 +88,39 @@ def test_history_entities_include_control_setpoint():
     ids = {e["entity_id"] for e in grp["entities"]}
     assert "number.hz" in ids                    # commanded setpoint is listed
     assert "sensor.elwa_p" in ids                # measured power still listed
+
+
+def test_strategy_priorities_unique_and_sorted():
+    # Each device gets a unique, contiguous priority (top-first); no hidden ties.
+    s = Store(); s._save_settings = lambda: None
+    s._settings["vehicles"] = []; s._settings["strategy_loads"] = {}
+    s._config = {"water_heater": [{"id": "w1", "name": "ELWA", "control": {"setpoint": "number.e"}}],
+                 "consumers": [{"id": "c1", "name": "A", "control": {"switch": "switch.a"}},
+                               {"id": "c2", "name": "B", "control": {"switch": "switch.b"}}]}
+    devs = s.strategy_devices()
+    assert [d["cfg"]["priority"] for d in devs] == [3, 2, 1]     # unique, contiguous
+    assert [d["name"] for d in devs] == ["ELWA", "A", "B"]        # config order, top first
+
+
+def test_move_strategy_priority_swaps_order():
+    s = Store(); s._save_settings = lambda: None
+    s._settings["vehicles"] = []; s._settings["strategy_loads"] = {}
+    s._config = {"consumers": [{"id": "c1", "name": "A", "control": {"switch": "switch.a"}},
+                               {"id": "c2", "name": "B", "control": {"switch": "switch.b"}}]}
+    assert [d["name"] for d in s.strategy_devices()] == ["A", "B"]
+    s.move_strategy_priority("consumers:c2", "up")
+    assert [d["name"] for d in s.strategy_devices()] == ["B", "A"]
+    s.move_strategy_priority("consumers:c2", "down")
+    assert [d["name"] for d in s.strategy_devices()] == ["A", "B"]
+
+
+def test_strategies_operativ_from_control_trace():
+    # "operativ" = active AND the strategy's controller emitted a command last cycle.
+    s = Store(); s._save_settings = lambda: None
+    s._config = {"pv": [{"powers": [{"entity": "sensor.pv"}]}], "grid": {"power": "sensor.g"},
+                 "water_heater": [{"id": "w1", "control": {"switch": "switch.hz"}}]}
+    s._settings["control_enabled"] = True
+    s._control_trace = {"items": [{"entity": "switch.hz", "source": "pv_surplus_switch"}]}
+    ov = {x["key"]: x for x in s.strategies_overview()}
+    assert ov["self_consumption"]["operativ"] is True
+    assert ov["peak_shaving"]["operativ"] is False

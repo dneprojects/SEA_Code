@@ -2,6 +2,15 @@
 
 ## 0.8.1
 
+- **Geräte-Priorität eindeutig & per Pfeilen sortierbar.** Jedes steuerbare Gerät hat jetzt eine
+  eindeutige Priorität; die Prio-Zahl entfällt, stattdessen **▲/▼-Pfeile** pro Zeile zum Verschieben.
+  Neue Geräte kommen **unten** dazu. Überschrift jetzt **„Geräte (höchste Priorität oben)"** (schwarz).
+- **Strategie-Kopfzeile neu:** rechtsbündig **Status-Label · Aktiv-Schalter · Info**. Neues Label
+  **„operativ" (cyan)**, wenn die Strategie gerade tatsächlich eingreift (sonst aktiv / verfügbar /
+  nicht verfügbar). Der Aktiv-Schalter sitzt jetzt in der Titelzeile (bei den schwellenbasierten
+  Diensten Peak/Einspeise-Limit/Reserve/Pflege weiterhin über die Grundeinstellungen).
+- **Icon-Buttons vereinheitlicht:** ⚙/ⓘ/▲/▼ nur noch als Icon, etwas größer und alle gleich breit.
+
 - **Echter PI-Regler für regelbare Lasten (statt 1:1).** Der Heizstab wurde bisher pro Takt **1:1**
   auf den ganzen Überschuss gestellt (Deadbeat) — das schwingt bei Sensor-Totzeit und kippt in
   Netzbezug, was die geräteeigene Abschaltung des my-PV auslöst (Abstürze auf 0). Jetzt regelt ein

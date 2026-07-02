@@ -356,6 +356,10 @@
     #view-consumers .stratbox>summary::-webkit-details-marker{display:none}
     #view-consumers .stratbody{padding:14px 16px;border-top:1px solid var(--line2)}
     .badge{color:#fff;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700}
+    /* icon-only buttons: uniform width, slightly larger glyph (⚙ ⓘ ▲ ▼) */
+    .iconbtn{width:30px;height:28px;min-width:30px;padding:0;font-size:16px;line-height:1;
+      display:inline-flex;align-items:center;justify-content:center;flex:none}
+    .iconbtn:disabled{opacity:.3;cursor:default}
 
     /* disclosure triangle on every expandable box: ▶ collapsed, ▼ (rotated) when open */
     #view-setup .swdev>summary::before,
@@ -2093,17 +2097,27 @@
         .sort((a,b) => (Number(b.cfg.priority)||0) - (Number(a.cfg.priority)||0));
       if (!devs.length)
         return "<p class='sub'>Keine steuerbaren Geräte. Lege unter „Komponenten“ Geräte mit Steuerung an.</p>";
-      return devs.map(d => {
+      return devs.map((d, i) => {
         const cfg = d.cfg, sw = d.control_mode==='switch';
+        const up = i > 0, down = i < devs.length-1;
         return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border-bottom:1px solid var(--alt);padding:4px 0">
           <label title="In der PV-Überschuss-Steuerung verwenden" style="min-width:170px">
             <input type="checkbox" ${cfg.self_consumption?'checked':''} onchange="setLoad('${d.key}','self_consumption',this.checked)"> ${d.name}</label>
-          <span class="sub" title="Priorität 1–10: höhere Geräte bekommen den Überschuss zuerst / werden zuerst zugeschaltet">Prio</span>
-          <input type="number" min="1" max="10" style="width:48px" value="${cfg.priority}" onchange="setLoad('${d.key}','priority',this.value)">
           <span class="sub">${d.kind_label} · ${sw?'schaltbar':'regelbar'}${d.power_w!=null?' · '+fmtW(d.power_w):''}${d.satisfied?' · <b style=\"color:#3f9b2f\">Ziel erreicht</b>':''}${cfg.latest_start?' · ⏱ '+cfg.latest_start:''}</span>
-          <button class="btn" style="margin-left:auto;padding:1px 7px" title="Geräte-Einstellungen öffnen" onclick="openDeviceSettings('${d.key}')">⚙</button>
+          <span style="margin-left:auto;display:inline-flex;gap:4px">
+            <button class="btn iconbtn" title="Priorität erhöhen" ${up?'':'disabled'} onclick="moveLoad('${d.key}','up')">▲</button>
+            <button class="btn iconbtn" title="Priorität senken" ${down?'':'disabled'} onclick="moveLoad('${d.key}','down')">▼</button>
+            <button class="btn iconbtn" title="Geräte-Einstellungen öffnen" onclick="openDeviceSettings('${d.key}')">⚙</button>
+          </span>
         </div>`;
       }).join("");
+    }
+    async function moveLoad(key, dir) {
+      try {
+        await fetch(api("/api/strategy-loads"), { method:"POST",
+          headers:{"Content-Type":"application/json"}, body:JSON.stringify({key, patch:{move:dir}}) });
+      } catch(e) {}
+      await loadConsumers();   // re-render with the new order
     }
     // Tariff load-shifting list: deferrable loads (wallbox allowed; battery
     // excluded). Only participation here; the deadline „spätester Start“ and
@@ -2147,12 +2161,9 @@
       const miss = st.missing && st.missing.length
         ? `<div class="sub" style="color:#9c3a2f;margin-top:4px">Fehlt: ${st.missing.join(", ")}</div>` : '';
       if (st.key === "self_consumption") {
-        return `<label style="font-weight:bold;color:var(--fg)">
-            <input type="checkbox" id="ctrl-master" onchange="toggleControl()"> PV-Überschusssteuerung aktiv</label>
-          <span class="sub" id="ctrl-status" style="margin-left:8px"></span>
-          <div class="sub" style="margin:4px 0">Alle steuerbaren Geräte (auch Wallbox &amp; Batterie) folgen dem PV-Überschuss – höhere Priorität zuerst. Geräte-Einstellungen unter „Komponenten“. Solange aus, wird nichts geschaltet.</div>
+        return `<div class="sub" style="margin:0 0 4px">Alle steuerbaren Geräte (auch Wallbox &amp; Batterie) folgen dem PV-Überschuss – höhere Priorität zuerst. Geräte-Einstellungen unter „Komponenten“. Solange die Strategie oben aus ist, wird nichts geschaltet.</div>
           ${miss}
-          <div class="panel-title" style="margin:10px 0 6px">Geräte (nach Priorität)</div>
+          <div class="panel-title" style="margin:10px 0 6px;color:var(--ink)">Geräte (höchste Priorität oben)</div>
           ${surplusDeviceList()}`;
       }
       if (st.key === "tariff_shift") {
@@ -2160,9 +2171,7 @@
           ? `<div class="sub" style="margin-top:6px">Tarif jetzt:
                <b style="color:${st.cheap?'#3f9b2f':'var(--muted)'}">${st.cheap?'günstig':'nicht günstig'}</b>
                · ${st.status}</div>` : '';
-        return `<label style="font-weight:bold;color:var(--fg)">
-            <input type="checkbox" ${appSettings.tariff_enabled?"checked":""} onchange="toggleTariff(this.checked)"> Dynamischer Tarif: Lastverschiebung aktiv</label>
-          <div class="sub" style="margin:4px 0">${st.desc||''}</div>${miss}
+        return `<div class="sub" style="margin:0 0 4px">${st.desc||''}</div>${miss}
           <div class="panel-title" style="margin:8px 0 6px">Verschiebbare Geräte</div>
           ${deviceRows('tariff_shift')}${statusLine}`;
       }
@@ -2171,14 +2180,10 @@
           <button class="btn" onclick="showView('basic')">In Grundeinstellungen einstellen →</button>`;
       }
       if (st.key === "optimizer") {
-        return `<label style="font-weight:bold;color:var(--fg)">
-            <input type="checkbox" ${appSettings.optimizer_enabled?"checked":""} onchange="toggleOptimizer(this.checked)"> Prognose-Optimierer aktiv</label>
-          <div class="sub" style="margin:4px 0">${st.desc||''}</div>${miss}`;
+        return `<div class="sub" style="margin:0 0 4px">${st.desc||''}</div>${miss}`;
       }
       if (st.key === "setback") {
-        return `<label style="font-weight:bold;color:var(--fg)">
-            <input type="checkbox" ${st.active?"checked":""} onchange="toggleSetbackStrategy(this.checked)"> Temperaturabsenkung aktiv</label>
-          <div class="sub" style="margin:4px 0">${st.desc||''}</div>${miss}
+        return `<div class="sub" style="margin:0 0 4px">${st.desc||''}</div>${miss}
           <button class="btn" onclick="showView('thermostats')">Gruppen / Räume konfigurieren →</button>`;
       }
       return `<div class="sub">${st.desc||''}</div>${miss}
@@ -2391,15 +2396,44 @@
     function closeStratHelp() { document.getElementById("strathelp").style.display = "none"; }
     function stratInfoBtn(key) {
       return STRAT_META[key]
-        ? `<button class="btn" title="Beschreibung der Strategie" aria-label="Info"
-             style="padding:0;width:22px;height:22px;border-radius:50%;line-height:1;margin-left:6px"
+        ? `<button class="btn iconbtn" title="Beschreibung der Strategie" aria-label="Info"
              onclick="event.preventDefault();event.stopPropagation();showStratHelp('${key}')">ⓘ</button>`
-        : '';
+        : '<span class="iconbtn" aria-hidden="true"></span>';   // spacer -> uniform alignment
+    }
+    // Title-row status label: operativ (cyan) when the strategy is currently taking
+    // influence; else aktiv / verfügbar / nicht verfügbar.
+    function stratStatusLabel(st) {
+      if (st.operativ)  return '<span class="badge" style="background:#0f9bb0">operativ</span>';
+      if (st.active)    return '<span class="badge" style="background:#3f9b2f">aktiv</span>';
+      if (st.available) return '<span class="badge" style="background:#2f5f8f">verfügbar</span>';
+      return '<span class="badge" style="background:#9aa0a6">nicht verfügbar</span>';
+    }
+    // Enable/disable checkbox in the title row (boolean strategies only; the
+    // threshold services peak/feed-in/reserve/care are configured via Grundeinstellungen).
+    const STRAT_ENABLE = { self_consumption:"control_enabled", tariff_shift:"tariff_enabled",
+                           optimizer:"optimizer_enabled" };
+    function stratActiveToggle(st) {
+      let on = !!st.active;
+      if (st.key === "self_consumption") on = !!ctrlEnabled;
+      else if (st.key === "tariff_shift") on = !!appSettings.tariff_enabled;
+      else if (st.key === "optimizer") on = !!appSettings.optimizer_enabled;
+      const box = ch => `<label title="Strategie aktiv" style="display:inline-flex" onclick="event.stopPropagation()">
+          <input type="checkbox" ${on?'checked':''} onchange="event.stopPropagation();${ch}"></label>`;
+      if (st.key === "setback") return box("toggleSetbackStrategy(this.checked)");
+      const sk = STRAT_ENABLE[st.key];
+      return sk ? box(`setStratActive('${sk}',this.checked)`) : '<span class="iconbtn" aria-hidden="true"></span>';
+    }
+    async function setStratActive(settingKey, on) {
+      try { await fetch(api("/api/settings"), { method:"POST",
+        headers:{"Content-Type":"application/json"}, body:JSON.stringify({[settingKey]:on}) }); } catch(e) {}
+      loadConsumers();   // refresh status label (verfügbar/aktiv/operativ)
     }
     function renderStrategies() {
       document.getElementById("strategies").innerHTML = stratList.map(st => `
         <details class="stratbox"${stratOpen.has(st.key)?' open':''} ontoggle="onStratToggle('${st.key}',this.open)">
-          <summary><b style="color:var(--brand);font-size:15px">${st.name}</b> ${stratBadge(st)}${stratInfoBtn(st.key)}</summary>
+          <summary><b style="color:var(--brand);font-size:15px">${st.name}</b>
+            <span style="margin-left:auto;display:inline-flex;align-items:center;gap:10px">
+              ${stratStatusLabel(st)}${stratActiveToggle(st)}${stratInfoBtn(st.key)}</span></summary>
           <div class="stratbody">${stratBody(st)}</div>
         </details>`).join("");
       const cm = document.getElementById("ctrl-master");

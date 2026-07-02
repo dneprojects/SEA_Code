@@ -354,7 +354,12 @@ class WebServer:
             body = await request.json()
         except Exception:  # noqa: BLE001
             return web.json_response({"error": "invalid json"}, status=400)
-        if not self._store.set_strategy_load(body.get("key"), body.get("patch", {})):
+        patch = body.get("patch", {}) or {}
+        move = patch.get("move")
+        if move in ("up", "down"):
+            self._store.move_strategy_priority(body.get("key"), move)
+            return web.json_response({"ok": True, "devices": self._store.strategy_devices()})
+        if not self._store.set_strategy_load(body.get("key"), patch):
             return web.json_response({"error": "key required"}, status=400)
         return web.json_response({"ok": True, "devices": self._store.strategy_devices()})
 
